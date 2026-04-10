@@ -1,10 +1,10 @@
 CC = x86_64-elf-gcc
 LD = x86_64-elf-ld
 
-LIBC = ../lib/libc.a
-LIBC_HEADERS = ../include/
+LIBC = ../../stuos_libc/libc.a
+LIBC_HEADERS = ../../stuos_libc/include/
 
-CFLAGS = -ffreestanding -nostdlib -O2 -Wall -Wextra -mno-red-zone -march=x86-64 -I $(LIBC_HEADERS) -I ../../abi/
+CFLAGS = -ffreestanding -nostdlib -O2 -Wall -Wextra -mno-red-zone -march=x86-64 -I $(LIBC_HEADERS)
 LDFLAGS = -nostdlib
 
 SRCS = fuzz.c $(wildcard *_test.c)

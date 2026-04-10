@@ -1,8 +1,0 @@
-https://github.com/dhepper/font8x8
-
-install x86_64-elf-gcc and similar from homebrew
-install qemu, xorriso from apt
-
-limine from:
-git clone https://github.com/limine-bootloader/limine.git --branch=v9.x-binary --depth=1 $(LIMINE_FOLDER)
-make -C $(LIMINE_FOLDER)
