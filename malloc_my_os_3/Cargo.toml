@@ -1,0 +1,19 @@
+[package]
+name = "malloc_my_os_3"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+crate-type = ["staticlib"]
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
+
+[build-dependencies]
+cbindgen = "0.29.2"
+
+[dependencies]
+memory_size = {git = "https://github.com/trauts1234/MemorySize.git", default-features = false}

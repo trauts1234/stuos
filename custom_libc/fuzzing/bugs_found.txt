@@ -1,0 +1,13 @@
+free(0) and malloc(0) would crash
+free function didn't actually free the underlying memory, just marked it as free
+malloc function used < instead of <= so allocating a whole free segment would crash
+function to extend the heap from malloc gave the wrong address, so pages ended up unallocated
+forgot to check whether a page was free, so it got double allocated
+If I merged free regions at the end, I didn't update the last segment pointer, causing crashes
+I calculated the delays wrong, meaning that uptime_ms was completely wrong
+I had to rewrite my whole allocator due to bugs found here
+found bugs due to a > being instead of a >=, and old checks that were broken
+When creating a new page table entry, I only cleared the first item, not all of the items, causing a weird use-after-free esque situation
+Forgot to add child of fork() operation to the queue to be executed
+Forgot to add syscall to syscall table
+PS2 keyboards fire an interrupt that wasn't being masked
