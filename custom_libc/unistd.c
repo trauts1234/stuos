@@ -116,7 +116,7 @@ int chdir(const char *path) {
 }
 
 int execve(const char *filename, char *const argv[], char *const envp[]) {
-    if (*envp != NULL) {abort();}//currently can't handle this!
+    if (envp == NULL || *envp != NULL) {abort();}//currently can't handle this!
     struct ExecveData data = {
         .filename = filename,
         .argv = argv,

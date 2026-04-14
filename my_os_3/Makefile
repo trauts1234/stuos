@@ -6,7 +6,7 @@ LIMINE_CONFIG := $(SRC_DIR)/limine.conf
 C_SRCS = $(wildcard $(SRC_DIR)/*.c)
 ASM_SRCS = $(wildcard $(SRC_DIR)/*.asm)
 
-CFLAGS = -ffreestanding -m64 -nostdlib -O2 -Wall -Wextra -mcmodel=kernel -fno-pie -mno-red-zone -march=x86-64 -I../abi -I ../malloc_my_os_3/
+CFLAGS = -ffreestanding -m64 -nostdlib -O0 -Wall -Wextra -mcmodel=kernel -fno-pie -mno-red-zone -march=x86-64 -I../abi -I ../malloc_my_os_3/
 DBGFLAGS = -g -fno-omit-frame-pointer
 LDFLAGS = -T $(SRC_DIR)/linker.lds -nostdlib
 

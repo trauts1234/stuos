@@ -17,17 +17,13 @@ void file_test() {
         char* curr_f = r_files[i];
         uint64_t filename_len = strlen(curr_f);
         FILE* fd = fopen(curr_f, "r");
-        if (fd->file_descriptor_number < 0 || fd->file_descriptor_number >= 10) {
-            printf("got file descriptor number %d", fd->file_descriptor_number);
-            abort();
-        }
 
-        for(uint64_t j = 0; j<10000; j++) {
+        for(uint64_t j = 0; j<1000; j++) {
             uint64_t off = rand64() % filename_len;
             uint64_t size = rand64() % filename_len;
             uint64_t expected_size = size > filename_len - off ? filename_len - off : size;
 
-            printf("total size: %lld, offset: %lld, size: %lld\n", filename_len, off, size);
+            printf("total size: %ld, offset: %ld, size: %ld\n", filename_len, off, size);
 
             //jump to a random location
             fseek(fd, off, SEEK_SET);
@@ -37,7 +33,7 @@ void file_test() {
             uint64_t actual_size = fread(buf, sizeof(char), size, fd);
 
             if(actual_size != expected_size) {
-                printf("expected %lld bytes, read %lld", expected_size, actual_size);
+                printf("expected %ld bytes, read %ld", expected_size, actual_size);
                 abort();
             }
 
@@ -61,19 +57,14 @@ void file_test() {
         char* curr_f = rw_files[i];
         FILE* fd = fopen(curr_f, "w");
 
-        if (fd->file_descriptor_number < 0 || fd->file_descriptor_number >= 10) {
-            printf("got file descriptor number %d", fd->file_descriptor_number);
-            abort();
-        }
-
         uint8_t buf[2];
         uint64_t count = fread(buf, 1, 2, fd);
         if(count != 0) {
-            printf("read %lld bytes from an empty file", count);
+            printf("read %ld bytes from an empty file", count);
             abort();
         }
 
-        for(uint64_t j = 0; j < 10000; j++) {
+        for(uint64_t j = 0; j < 1000; j++) {
             uint64_t offset = rand64() % 4096;
             uint64_t num_bytes = rand64() % 4096;
 

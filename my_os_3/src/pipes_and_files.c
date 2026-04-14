@@ -41,7 +41,7 @@ static void just_free_close(void* special_data) {
 static uint64_t pipe_write(void* special_data, const uint8_t* output_buf, uint64_t num) {
     if(special_data == NULL) {HCF}
     struct PipeSpecialData* data = ((struct PipeSpecialData*)special_data)->other_pipe_data;
-    if(data == NULL) {HCF}
+    if(data == NULL) {HCF}//TODO return error, as this can happen
 
     //reallocate the buffer every time
     uint64_t new_buffer_length = num + data->buffer_length - data->reader_next_byte;
@@ -62,6 +62,14 @@ static struct FopReadResult pipe_read(void* special_data, uint8_t* output_buf, u
     if(special_data == NULL) {HCF}
     struct PipeSpecialData* data = special_data;
 
+    if(data->other_pipe_data == NULL || num == 0) {
+        //if write end is closed, I can't read
+        return (struct FopReadResult) {
+            .read_something = true,
+            .bytes_read = 0
+        };
+    }
+
     uint64_t max_bytes_to_read = data->buffer_length - data->reader_next_byte;
     if(num < max_bytes_to_read) {
         max_bytes_to_read = num;
@@ -74,6 +82,7 @@ static struct FopReadResult pipe_read(void* special_data, uint8_t* output_buf, u
         };
 
     memcpy(output_buf, data->buffer, max_bytes_to_read);
+    data->reader_next_byte += max_bytes_to_read;
 
     return (struct FopReadResult) {
         .read_something = true,

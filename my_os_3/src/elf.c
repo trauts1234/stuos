@@ -265,7 +265,7 @@ struct LoadedProgram instantiate_ELF(struct VNode exe, char*const *argv) {
     return (struct LoadedProgram) {
         .heap_start = heap_virt_base,
         .page_table_root = new_cr3,
-        .file_descriptors = {fop_generate_stdin(), fop_generate_stdout(), 0},
+        .file_descriptors = {fop_generate_stdin(), fop_generate_stdout(), fop_generate_stdout(), 0},// use stdout for stderr for the time being
         .initial_state = {
             .rip=header.entry_offset,
             .rbp=(uint64_t)stack_start,

@@ -52,7 +52,7 @@ void syscall_get_heap_start(struct GetHeapStartData* data) {
     data->output = get_current_heap_start();
 }
 
-void syscall_write_fd(struct WriteFDData* data) {
+void syscall_write_fd(struct WriteFDData* data, struct ProcessorState* processor_state) {
     struct FileOperations* file_operations = get_file_descriptors()[data->file_descriptor_number];
     if(file_operations == NULL) {HCF}
     data->num_bytes_actually_written = file_operations->write(file_operations->special_data, data->buffer, data->num_bytes);
