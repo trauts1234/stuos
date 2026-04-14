@@ -8,6 +8,8 @@
 #define STDOUT_FILENO 1
 #define STDERR_FILENO 2
 
+extern char **environ;
+
 pid_t fork();
 pid_t vfork();
 
@@ -33,5 +35,10 @@ char *getcwd(char *buf, size_t size);
 int chdir(const char *path);
 
 int execve(const char *filename, char *const argv[], char *const envp[]);
+int execvp(const char *file, char *const argv[]);
+
+int isatty(int fd);
+
+int pipe(int pipefd[2]);
 
 #endif

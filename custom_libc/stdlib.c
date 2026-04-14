@@ -1,9 +1,9 @@
 #include "stdlib.h"
 #include "stdint.h"
-#include "nonstandard.h"
 
 #include "uapi/syscalls.h"
 #include "rust_bindings.h"
+#include <stdio.h>
 
 static struct MemoryAllocator memory_allocator;
 static bool memory_allocator_is_init = false;
@@ -43,7 +43,9 @@ void free(void* ptr) {
 void exit(int status) {
     //TODO exit code
     do_syscall(0, HALT_SYSCALL);
+    while(1) {printf("ERROR: exit() returned somehow!\n");}
 }
 void abort() {
     do_syscall(0, HALT_SYSCALL);
+    while(1) {printf("ERROR: abort() returned somehow!\n");}
 }

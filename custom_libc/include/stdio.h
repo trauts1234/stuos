@@ -46,4 +46,8 @@ int    fseek(FILE *stream, long offset, int whence);
 
 int fflush (FILE *);
 
+int fileno(FILE *stream);
+
+void perror(const char *s);
+
 #endif

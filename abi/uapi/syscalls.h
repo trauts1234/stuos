@@ -139,4 +139,16 @@ struct WaitData {
     int output_pid;
 };
 
+static const uint64_t ISATTY_SYSCALL = 26;
+struct IsattyData {
+    int fd;
+    int result;
+};
+
+static const uint64_t PIPE_SYSCALL = 27;
+struct PipeData {
+    int fd_a;
+    int fd_b;
+};
+
 #endif

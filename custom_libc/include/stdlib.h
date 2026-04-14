@@ -5,7 +5,9 @@
 void* malloc(unsigned long bytes);
 void free(void* ptr);
 
+__attribute__((noreturn)) 
 void abort();
+__attribute__((noreturn)) 
 void exit(int status);
 
 long int strtol(const char *nptr, char **endptr, int base);

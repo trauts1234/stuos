@@ -10,16 +10,20 @@ LDFLAGS = -nostdlib
 SRCS = fuzz.c $(wildcard *_test.c)
 OBJS := $(SRCS:.c=.o)
 
-all: testing.out other.out
+OUTPUT_DIR = ../../my_os_3/included_binaries
+TESTING_OUT = $(OUTPUT_DIR)/testing.out
+OTHER_OUT = $(OUTPUT_DIR)/other.out
 
-other.out: other.c
+all: $(TESTING_OUT) $(OTHER_OUT)
+
+$(OTHER_OUT): other.c
 	$(CC) $(CFLAGS) $(LDFLAGS) $< $(LIBC) -o $@
 
-testing.out: $(OBJS)
+$(TESTING_OUT): $(OBJS)
 	$(LD) $(LDFLAGS) -o $@ $^ $(LIBC)
 
 %.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
-	rm -rf $(OBJS) testing.out
+	rm -rf $(OBJS) $(TESTING_OUT) $(OTHER_OUT)

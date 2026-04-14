@@ -1,8 +1,8 @@
 #ifndef PIPES_AND_FILES_H
 #define PIPES_AND_FILES_H
 
+
 #include "uapi/stdint.h"
-#include "fs.h"
 
 struct FopReadResult {
     // Set as true if the operation has completed
@@ -34,12 +34,15 @@ struct FileOperations {
     FopLseekFn offset;
     /// Call this only when reference_count == 0, and should free the underlying data
     FopCloseFn close;
+
+    bool is_a_tty;
 };
 
 // these functions generate FileOperations that can be put in the file descriptor table of a process
 struct FileOperations* fop_generate_stdout();
 struct FileOperations* fop_generate_stdin();
 struct FileOperations* fop_generate_file(const char* cwd, const char* path, int open_flags);
+void fop_generate_pipe(struct FileOperations* output[2]);
 
 /// decrements reference count and/or frees, as required
 void free_file_operations(struct FileOperations* ptr);

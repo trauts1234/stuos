@@ -1,6 +1,7 @@
 #include "stdio.h"
 #include "uapi/syscalls.h"
 #include "stdlib.h"
+#include <errno.h>
 #include <string.h>
 #include "fcntl.h"
 
@@ -151,6 +152,16 @@ char *fgets(char *s, int size, FILE *stream) {
 }
 
 int fflush (FILE *) {return 0;}//no buffering, so no need to flush
+
+int fileno(FILE *stream) {return stream->file_descriptor_number;}
+
+void perror(const char *s) {
+    if(s && *s) {
+        fprintf(stderr, "%s: ", s);
+    }
+
+    fprintf(stderr, "%s\n", strerror(errno));
+}
 
 int fputc(int c, FILE *stream) {
     uint8_t arr[1] = {c};

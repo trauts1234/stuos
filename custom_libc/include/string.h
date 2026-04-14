@@ -31,4 +31,6 @@ char *strtok(char *str, const char *delim);
 char *strpbrk(const char *s, const char *accept);
 char *strstr(const char *haystack, const char *needle);
 
+char *strerror(int errnum);
+
 #endif

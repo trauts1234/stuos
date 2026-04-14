@@ -1,7 +1,9 @@
 #ifndef ERRNO_H
 #define ERRNO_H
 
-static int __errno_value = 0;
+extern const char *sys_errlist[];
+extern int sys_nerr;
+extern int __errno_value;
 
 #define errno __errno_value
 

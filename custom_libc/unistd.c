@@ -1,6 +1,10 @@
+#include "stddef.h"
 #include "uapi/syscalls.h"
 #include "sys/types.h"
+#include <stdlib.h>
 #include "unistd.h"
+
+char **environ = {NULL};
 
 int fork() {
     struct ForkData data = {
@@ -112,10 +116,36 @@ int chdir(const char *path) {
 }
 
 int execve(const char *filename, char *const argv[], char *const envp[]) {
+    if (*envp != NULL) {abort();}//currently can't handle this!
     struct ExecveData data = {
         .filename = filename,
         .argv = argv,
     };
     do_syscall(&data, EXECVE_SYSCALL);
     return -1;
+}
+int execvp(const char *file, char *const argv[]) {
+    //TODO check $PATH for file, and handle ./thing
+    //todo use environ to pass to execve
+    return execve(file, argv, environ);
+}
+
+int isatty(int fd) {
+    struct IsattyData data = {
+        .fd = fd,
+        .result = -2
+    };
+    do_syscall(&data, ISATTY_SYSCALL);
+
+    return data.result;
+}
+
+int pipe(int pipefd[2]) {
+    struct PipeData data = {};
+    do_syscall(&data, PIPE_SYSCALL);
+
+    pipefd[0] = data.fd_a;
+    pipefd[1] = data.fd_b;
+    
+    return 0;
 }

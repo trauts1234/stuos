@@ -1,5 +1,4 @@
 #include <stddef.h>
-#include "uapi/stdint.h"
 #include "pipes_and_files.h"
 #include "fs.h"
 #include "kb_active_polling.h"
@@ -13,13 +12,23 @@ struct OpenVnodeSpecialData {
     uint64_t offset;
 };
 
+struct PipeSpecialData {
+    struct PipeSpecialData* other_pipe_data;
+
+    //This data is for my *reading*; to write data, look at the other's pipe data
+    void* buffer;
+    uint64_t buffer_length;
+    //index into buffer to read next byte
+    uint64_t reader_next_byte;
+
+};
+
 /// This is put as a fake read when reading is impossible
 static struct FopReadResult invalid_read(void*, uint8_t*, uint64_t) {HCF}
 /// This is put as a fake seek when seeking is impossible
 static uint64_t invalid_lseek(void*, int64_t, int) {HCF}
 /// This is put as a fake write when writing is impossible
 static uint64_t invalid_write(void*, const uint8_t*, uint64_t) {HCF}
-
 /// When nothing is required to close the special data, run this
 static void do_nothing_close(void* special_data) {
     if(special_data != NULL) {HCF}
@@ -27,6 +36,61 @@ static void do_nothing_close(void* special_data) {
 /// When the data just needs to be freed to close the special data, run this
 static void just_free_close(void* special_data) {
     kfree(special_data);
+}
+
+static uint64_t pipe_write(void* special_data, const uint8_t* output_buf, uint64_t num) {
+    if(special_data == NULL) {HCF}
+    struct PipeSpecialData* data = ((struct PipeSpecialData*)special_data)->other_pipe_data;
+    if(data == NULL) {HCF}
+
+    //reallocate the buffer every time
+    uint64_t new_buffer_length = num + data->buffer_length - data->reader_next_byte;
+    void* new_buffer = kmalloc(new_buffer_length);
+    if(data->buffer_length) memcpy(new_buffer, data->buffer, data->buffer_length);
+    memcpy(new_buffer + data->buffer_length, output_buf, num);
+
+    //replace buffer
+    kfree(data->buffer);
+    data->buffer = new_buffer;
+    data->buffer_length = new_buffer_length;
+    data->reader_next_byte = 0;
+
+    return num;
+}
+
+static struct FopReadResult pipe_read(void* special_data, uint8_t* output_buf, uint64_t num) {
+    if(special_data == NULL) {HCF}
+    struct PipeSpecialData* data = special_data;
+
+    uint64_t max_bytes_to_read = data->buffer_length - data->reader_next_byte;
+    if(num < max_bytes_to_read) {
+        max_bytes_to_read = num;
+    }
+
+    if(max_bytes_to_read == 0) 
+        return (struct FopReadResult) {
+            .read_something = false,
+            .bytes_read = 0
+        };
+
+    memcpy(output_buf, data->buffer, max_bytes_to_read);
+
+    return (struct FopReadResult) {
+        .read_something = true,
+        .bytes_read = max_bytes_to_read
+    };
+
+}
+
+static void pipe_close(void* special_data) {
+    if(special_data == NULL) {HCF}
+    struct PipeSpecialData* data = special_data;
+
+    //ensure that the other end of the pipe can't access me
+    if(data->other_pipe_data) data->other_pipe_data->other_pipe_data = NULL;
+
+    kfree(data->buffer);
+    kfree(data);
 }
 
 /// Prints to stdout, and can be put as a file operation
@@ -103,6 +167,7 @@ struct FileOperations* fop_generate_stdout(){
         .write = stdout_write,
         .close = do_nothing_close,
         .offset = invalid_lseek,
+        .is_a_tty = true,
     };
 
     return heap_allocation;
@@ -116,6 +181,7 @@ struct FileOperations* fop_generate_stdin(){
         .write = invalid_write,
         .close = do_nothing_close,
         .offset = invalid_lseek,
+        .is_a_tty = true,
     };
 
     return heap_allocation;
@@ -138,9 +204,53 @@ struct FileOperations* fop_generate_file(const char* cwd, const char* path, int 
         .write = file_write,
         .close = just_free_close,
         .offset = file_lseek,
+        .is_a_tty = false,
     };
 
     return heap_allocation;
+}
+
+void fop_generate_pipe(struct FileOperations* output[2]) {
+    struct PipeSpecialData* a = kmalloc(sizeof(struct PipeSpecialData));
+    struct PipeSpecialData* b = kmalloc(sizeof(struct PipeSpecialData));
+
+    *a = (struct PipeSpecialData) {
+        .other_pipe_data = b,
+        .buffer = NULL,
+        .buffer_length = 0,
+        .reader_next_byte = 0
+    };
+    *b = (struct PipeSpecialData) {
+        .other_pipe_data = a,
+        .buffer = NULL,
+        .buffer_length = 0,
+        .reader_next_byte = 0
+    };
+
+    struct FileOperations* a_ops = kmalloc(sizeof(struct FileOperations));
+    struct FileOperations* b_ops = kmalloc(sizeof(struct FileOperations));
+
+    *a_ops = (struct FileOperations) {
+        .reference_count= 1,
+        .special_data = a,
+        .read_nonblocking = pipe_read,
+        .write = pipe_write,
+        .close = pipe_close,
+        .offset = invalid_lseek,
+        .is_a_tty = false,
+    };
+    *b_ops = (struct FileOperations) {
+        .reference_count= 1,
+        .special_data = b,
+        .read_nonblocking = pipe_read,
+        .write = pipe_write,
+        .close = pipe_close,
+        .offset = invalid_lseek,
+        .is_a_tty = false,
+    };
+
+    output[0] = a_ops;
+    output[1] = b_ops;
 }
 
 void free_file_operations(struct FileOperations* ptr){

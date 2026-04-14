@@ -58,17 +58,20 @@ void syscall_write_fd(struct WriteFDData* data) {
     data->num_bytes_actually_written = file_operations->write(file_operations->special_data, data->buffer, data->num_bytes);
 }
 
-void syscall_open_file(struct OpenFileData* data) {
-    struct FileOperations** fd_list = get_file_descriptors();
-    struct FileOperations* file = fop_generate_file(get_current_cwd(), data->path, data->open_flags);
-
+static int find_free_fd() {
     //find a free file descriptor
     int fd_num = 0;
-    while(fd_list[fd_num] != 0) {
+    while(get_file_descriptors()[fd_num] != 0) {
         fd_num++;
         if(fd_num == MAX_FD_COUNT) {HCF}//out of file descriptors
     }
+    return fd_num;
+}
 
+void syscall_open_file(struct OpenFileData* data) {
+    struct FileOperations** fd_list = get_file_descriptors();
+    struct FileOperations* file = fop_generate_file(get_current_cwd(), data->path, data->open_flags);
+    int fd_num = find_free_fd();
     fd_list[fd_num] = file;
     data->output_file_descriptor_number = fd_num;
 }
@@ -194,6 +197,24 @@ void syscall_wait(struct WaitData* data, struct ProcessorState state) {
     });
 }
 
+void syscall_isatty(struct IsattyData* data) {
+    struct FileOperations* fop = get_file_descriptors()[data->fd];
+    data->result = fop->is_a_tty;
+}
+
+void syscall_pipe(struct PipeData* data) {
+    struct FileOperations *fds[2] = {NULL, NULL};
+    fop_generate_pipe(fds);
+
+    int fd_a = find_free_fd();
+    get_file_descriptors()[fd_a] = fds[0];
+    int fd_b = find_free_fd();
+    get_file_descriptors()[fd_b] = fds[1];
+
+    data->fd_a = fd_a;
+    data->fd_b = fd_b;
+}
+
 void *syscall_table[] = {
     syscall_crash,
     NULL,
@@ -221,4 +242,6 @@ void *syscall_table[] = {
     syscall_chdir,
     syscall_execve,
     syscall_wait,
+    syscall_isatty,
+    syscall_pipe,
 };

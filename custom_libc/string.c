@@ -1,3 +1,4 @@
+#include "errno.h"
 #include "stdint.h"
 #include "stdlib.h"
 #include <stddef.h>
@@ -244,4 +245,9 @@ char *strstr(const char *haystack, const char *needle) {
         }
     }
     return NULL;
+}
+
+char *strerror(int errnum) {
+    if(errnum >= sys_nerr) return "unknown error number!";
+    return (char*)sys_errlist[errnum];
 }

@@ -12,6 +12,7 @@
 #include "get_id_test.h"
 #include "stdlib_test.h"
 #include "file_test.h"
+#include "pipe_test.h"
 
 #include "tools.h"
 #include "unistd.h"
@@ -107,6 +108,7 @@ void malloc_free_test(uint64_t loops) {
 
 
 int main(int argc, char *argv[]) {
+    pipe_test();
     printf("type something");
     char buf[3];
     size_t read = fread(buf, 1, 3, stdin);
