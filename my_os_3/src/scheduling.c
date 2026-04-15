@@ -163,7 +163,10 @@ void set_current_cwd(const char* new_ptr) {
 }
 
 void register_as_waiting(struct WaitingData data) {
-    if(current_process_in_ll->waiting_data.status != NOT_WAITING) {HCF}
+    if(current_process_in_ll->waiting_data.status != NOT_WAITING) {
+        kprintf("process currently in state %d tried to wait", current_process_in_ll->waiting_data.status);
+        HCF
+    }
     current_process_in_ll->waiting_data = data;
 }
 
@@ -283,4 +286,5 @@ void run_next_task(const struct ProcessorState* const interrupted_processor_stat
 
         }
     }
+    HCF
 }

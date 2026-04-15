@@ -29,7 +29,7 @@ static int is_transmit_empty() {
    return in_byte(PORT + 5) & 0x20;
 }
 
-void debug_writechar(char a) {
+void putchar(char a) {
    while (!is_transmit_empty());
 
    out_byte(PORT,a);
@@ -37,7 +37,7 @@ void debug_writechar(char a) {
 
 void debug_print(const char *a){
     while(*a) {
-        debug_writechar(*a);
+        putchar(*a);
         a++;
     }
 }
@@ -51,7 +51,7 @@ void debug_int(uint64_t num) {
 
     for(; divisor>=1; divisor /= 10) {
         uint64_t digit = (num/divisor) % 10;
-        debug_writechar('0' + digit);
+        putchar('0' + digit);
     }
 }
 
@@ -61,9 +61,9 @@ void debug_hex(uint64_t num) {
     for(int shift = 60; shift >= 0; shift -= 4) {
         uint64_t data = (num >> shift) & 0xf;
         if(data <= 9) {
-            debug_writechar('0' + data);
+            putchar('0' + data);
         } else {
-            debug_writechar('A' + data - 10);
+            putchar('A' + data - 10);
         }
     }
 }

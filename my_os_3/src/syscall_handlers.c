@@ -13,11 +13,15 @@
 #include "scheduling.h"
 #include "kern_libc.h"
 
+#define DEBUG_SYSCALLS true
+
+
 static uint8_t syscall_stack[4096 * 4] __attribute__ ((__aligned__(16)));
 // used in assembly
 uint8_t *const syscall_stack_top = syscall_stack + sizeof(syscall_stack);
 
-void syscall_crash() {
+void syscall_crash(void*, struct ProcessorState* processor_state) {
+    if(DEBUG_SYSCALLS) kprintf("%s: \n", __func__);
     register_as_waiting((struct WaitingData) {
         .status = I_AM_ZOMBIE,
         .zombie = {
@@ -28,19 +32,23 @@ void syscall_crash() {
 }
 
 void syscall_write_pixel(struct WritePixelData* data) {
+    if(DEBUG_SYSCALLS) kprintf("%s: x=%d,y=%d = rgb %d %d %d\n", __func__, data->x, data->y, data->r, data->g, data->b);
     struct Colour col = {.r=data->r, .g=data->g, .b=data->b, .a=0};
     display_write_pixel(data->x, data->y, col);
 }
 
 void syscall_readchar_nonblocking(struct GetCharNonblockingData* data) {
+    if(DEBUG_SYSCALLS) kprintf("%s: \n", __func__);
     data->output = read_char_nonblocking(&data->pressed);
 }
 
 void syscall_get_uptime_ms(struct GetUptimeMsData* data) {
+    if(DEBUG_SYSCALLS) kprintf("%s: \n", __func__);
     data->ms = get_uptime_ms();
 }
 
 void syscall_request_page(struct RequsetPageData* data) {
+    if(DEBUG_SYSCALLS) kprintf("%s: requested %p\n", __func__, data->page_virt_addr);
     if ((uint64_t)data->page_virt_addr >> 63) {
         //higher half
         return;
@@ -49,10 +57,12 @@ void syscall_request_page(struct RequsetPageData* data) {
 }
 
 void syscall_get_heap_start(struct GetHeapStartData* data) {
+    if(DEBUG_SYSCALLS) kprintf("%s: \n", __func__);
     data->output = get_current_heap_start();
 }
 
 void syscall_write_fd(struct WriteFDData* data, struct ProcessorState* processor_state) {
+    if(DEBUG_SYSCALLS) kprintf("%s: write %lu bytes to fd %d\n", __func__, data->num_bytes, data->file_descriptor_number);
     struct FileOperations* file_operations = get_file_descriptors()[data->file_descriptor_number];
     if(file_operations == NULL) {HCF}
     data->num_bytes_actually_written = file_operations->write(file_operations->special_data, data->buffer, data->num_bytes);
@@ -69,6 +79,7 @@ static int find_free_fd() {
 }
 
 void syscall_open_file(struct OpenFileData* data) {
+    if(DEBUG_SYSCALLS) kprintf("%s: path: %s\n", __func__, data->path);
     struct FileOperations** fd_list = get_file_descriptors();
     struct FileOperations* file = fop_generate_file(get_current_cwd(), data->path, data->open_flags);
     int fd_num = find_free_fd();
@@ -77,6 +88,7 @@ void syscall_open_file(struct OpenFileData* data) {
 }
 
 void syscall_read_fd(struct ReadFDData* data, struct ProcessorState* processor_state) {
+    if(DEBUG_SYSCALLS) kprintf("%s: read up to %lu bytes from fd %d\n", __func__, data->num_bytes, data->file_descriptor_number);
     register_as_waiting((struct WaitingData) {
         .status = WAITING_FOR_READ,
         .read = {
@@ -91,6 +103,7 @@ void syscall_read_fd(struct ReadFDData* data, struct ProcessorState* processor_s
 }
 
 void syscall_lseek_fd(struct LseekFDData* data) {
+    if(DEBUG_SYSCALLS) kprintf("%s: offset %lu in fd %d. whence: %d\n", __func__, data->offset, data->file_descriptor_number, data->whence);
     struct FileOperations* file_operations = get_file_descriptors()[data->file_descriptor_number];
     if(file_operations == NULL) {HCF}
 
@@ -98,6 +111,7 @@ void syscall_lseek_fd(struct LseekFDData* data) {
 }
 
 void syscall_close_fd(struct CloseFDData* data) {
+    if(DEBUG_SYSCALLS) kprintf("%s: fd %d\n", __func__, data->file_descriptor_number);
     struct FileOperations** file_operations = get_file_descriptors() + data->file_descriptor_number;
 
     (*file_operations)->close((*file_operations)->special_data);
@@ -107,6 +121,7 @@ void syscall_close_fd(struct CloseFDData* data) {
 }
 
 void syscall_fork(struct ForkData* data, struct ProcessorState* parent_state) {
+    if(DEBUG_SYSCALLS) kprintf("%s: \n", __func__);
     uint64_t parent_page_table = get_pml4_phys();
     uint64_t child_page_table = clone_memory(parent_page_table);
 
@@ -134,14 +149,17 @@ void syscall_fork(struct ForkData* data, struct ProcessorState* parent_state) {
 }
 
 void syscall_get_pgrp(struct GetPgrpData* data) {
+    if(DEBUG_SYSCALLS) kprintf("%s: \n", __func__);
     data->result = get_pgrp(0);
 }
 
 void syscall_get_pid(struct GetPidData* data) {
+    if(DEBUG_SYSCALLS) kprintf("%s: \n", __func__);
     data->result = get_current_pid();
 }
 
 void syscall_dup2(struct Dup2Data* data) {
+    if(DEBUG_SYSCALLS) kprintf("%s: fd %d => fd %d\n", __func__, data->oldfd, data->newfd);
     struct FileOperations **fd = get_file_descriptors();
 
     if(data->newfd >= MAX_FD_COUNT || data->newfd < 0) {HCF}
@@ -164,6 +182,7 @@ void syscall_dup2(struct Dup2Data* data) {
 }
 
 void syscall_getcwd(struct GetCwdData* data) {
+    if(DEBUG_SYSCALLS) kprintf("%s: \n", __func__);
     const char* cwd = get_current_cwd();
     if(strlen(cwd) + 1 > data->size) {HCF}
 
@@ -171,10 +190,12 @@ void syscall_getcwd(struct GetCwdData* data) {
 }
 
 void syscall_chdir(struct ChdirData* data) {
+    if(DEBUG_SYSCALLS) kprintf("%s: %s\n", __func__, data->path);
     set_current_cwd(data->path);
 }
 
 void syscall_execve(struct ExecveData* data) {
+    if(DEBUG_SYSCALLS) kprintf("%s: %s\n", __func__, data->filename);
     const struct VNode to_execute = vfs_get(get_current_cwd(), data->filename, 0);
     const struct LoadedProgram loaded = instantiate_ELF(to_execute, data->argv);
     //TODO:
@@ -186,6 +207,7 @@ void syscall_execve(struct ExecveData* data) {
 }
 
 void syscall_wait(struct WaitData* data, struct ProcessorState state) {
+    if(DEBUG_SYSCALLS) kprintf("%s: for pid %d\n", __func__);
     register_as_waiting((struct WaitingData) {
         .status = WAITING_FOR_CHILD,
         .child = {
@@ -198,11 +220,13 @@ void syscall_wait(struct WaitData* data, struct ProcessorState state) {
 }
 
 void syscall_isatty(struct IsattyData* data) {
+    if(DEBUG_SYSCALLS) kprintf("%s: \n", __func__);
     struct FileOperations* fop = get_file_descriptors()[data->fd];
     data->result = fop->is_a_tty;
 }
 
 void syscall_pipe(struct PipeData* data) {
+    if(DEBUG_SYSCALLS) kprintf("%s: \n", __func__);
     struct FileOperations *fds[2] = {NULL, NULL};
     fop_generate_pipe(fds);
 

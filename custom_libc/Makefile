@@ -9,7 +9,7 @@ OUTPUT_DIR := ../stuos_libc
 # where the installed headers go
 OUTPUT_INCLUDE_DIR = $(OUTPUT_DIR)/include
 
-CFLAGS = -ffreestanding -m64 -nostdlib -O2 -Wall -Wextra -fno-pie -mno-red-zone -march=x86-64 -g -fno-omit-frame-pointer -fno-builtin \
+CFLAGS = -ffreestanding -m64 -nostdlib -O0 -Wall -Wextra -fno-pie -mno-red-zone -march=x86-64 -g -fno-omit-frame-pointer -fno-builtin \
 	-I include/ -I ../malloc_my_os_3/ -I $(ABI_DIR)
 
 C_SRCS = $(wildcard *.c)

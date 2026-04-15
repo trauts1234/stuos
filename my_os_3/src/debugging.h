@@ -13,7 +13,7 @@ void debug_int(uint64_t num);
 /// Prints an integer in hex to the serial port
 void debug_hex(uint64_t num);
 /// Writes one byte to the serial port, as ascii
-void debug_writechar(char a);
+void putchar(char a);
 
 __attribute__((noreturn)) void __debugging_hcf(int line, char* file);
 
