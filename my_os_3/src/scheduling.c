@@ -6,6 +6,8 @@
 
 #define MAX_THREADS_COUNT 1
 
+#define DEBUG_SCHEDULER false
+
 /// @brief Starts a userland program
 __attribute__((noreturn))
 extern void start_userland(struct ProcessorState* processor_state);
@@ -164,7 +166,6 @@ void set_current_cwd(const char* new_ptr) {
 
 void register_as_waiting(struct WaitingData data) {
     if(current_process_in_ll->waiting_data.status != NOT_WAITING) {
-        kprintf("process currently in state %d tried to wait", current_process_in_ll->waiting_data.status);
         HCF
     }
     current_process_in_ll->waiting_data = data;
@@ -242,13 +243,17 @@ void run_next_task(const struct ProcessorState* const interrupted_processor_stat
         current_process_in_ll = current_process_in_ll->next_process_to_run;
         set_pml4_phys(current_process_in_ll->page_table_root);
 
+        if(DEBUG_SCHEDULER) kprintf("scheduling process %p with pid=%d: ", current_process_in_ll, current_process_in_ll->pid);
+
         switch (current_process_in_ll->waiting_data.status) {
 
         case NOT_WAITING:
+            if(DEBUG_SCHEDULER) kprintf("running normally\n");
             // program needs running normally
             start_userland(&current_process_in_ll->paused_state);
 
         case WAITING_FOR_READ:
+            if(DEBUG_SCHEDULER) kprintf("waiting for read\n");
             // poll for read
             struct WaitingRead read_data = current_process_in_ll->waiting_data.read;
             struct FileOperations* fop = current_process_in_ll->file_descriptors[read_data.fd_number];
@@ -262,6 +267,7 @@ void run_next_task(const struct ProcessorState* const interrupted_processor_stat
             break;
 
         case WAITING_FOR_CHILD:
+            if(DEBUG_SCHEDULER) kprintf("wainting for child\n");
             struct WaitingChild request = current_process_in_ll->waiting_data.child;
             if(request.options != 0) HCF//TODO implement the flags that can be passed
 
@@ -282,6 +288,7 @@ void run_next_task(const struct ProcessorState* const interrupted_processor_stat
             }
             break;
         case I_AM_ZOMBIE:
+            if(DEBUG_SCHEDULER) kprintf("is a zombie\n");
             break;//nothing to do here
 
         }

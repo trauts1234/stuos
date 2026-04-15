@@ -171,6 +171,7 @@ struct VNode vfs_get(const char* cwd_path, const char* path, int open_flags) {
             /* FALLTHROUGH, since I have doesn't exist and no OPEN_CREATE */
             [[ fallthrough ]];
         case STEPPATH_NOTEXIST:
+            kprintf("failed to parse remaining part of path: %s", path);
             HCF
         default:
             HCF
