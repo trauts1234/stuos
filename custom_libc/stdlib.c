@@ -3,7 +3,7 @@
 
 #include "uapi/syscalls.h"
 #include "rust_bindings.h"
-#include <stdio.h>
+#include "stdio.h"
 
 static struct MemoryAllocator memory_allocator;
 static bool memory_allocator_is_init = false;
