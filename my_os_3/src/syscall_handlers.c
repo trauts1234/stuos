@@ -15,7 +15,6 @@
 
 #define DEBUG_SYSCALLS true
 
-
 static uint8_t syscall_stack[4096 * 4] __attribute__ ((__aligned__(16)));
 // used in assembly
 uint8_t *const syscall_stack_top = syscall_stack + sizeof(syscall_stack);
@@ -194,10 +193,29 @@ void syscall_chdir(struct ChdirData* data) {
     set_current_cwd(data->path);
 }
 
-void syscall_execve(struct ExecveData* data) {
+void syscall_execve(const struct ExecveData* data) {
     if(DEBUG_SYSCALLS) kprintf("%s: %s\n", __func__, data->filename);
     const struct VNode to_execute = vfs_get(get_current_cwd(), data->filename, 0);
-    const struct LoadedProgram loaded = instantiate_ELF(to_execute, data->argv);
+
+    uint64_t argc=0;
+    for(;data->argv[argc]; argc++);
+
+    char** kernel_space_argv = kmalloc(sizeof(char*) * (argc + 1));//+1 to store NULL
+    kernel_space_argv[argc] = NULL;
+
+    for(uint64_t i=0;i<argc;i++) {
+        uint64_t len = strlen(data->argv[i]);
+        char* kernel_copy = kmalloc(len + 1);
+        strcpy(kernel_copy, data->argv[i]);
+        kernel_space_argv[i] = kernel_copy;
+    }
+
+    const struct LoadedProgram loaded = instantiate_ELF(to_execute, kernel_space_argv);
+
+    for(uint64_t i=0;i<argc;i++) {
+        kfree(kernel_space_argv[i]);
+    }
+    kfree(kernel_space_argv);
     //TODO:
     // - do not preserve signals (ensure to handle signal stacks too if a signal called the execve!)
     // - do not copy the heap
