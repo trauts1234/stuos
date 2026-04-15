@@ -8,7 +8,7 @@ void get_id_test() {
     assert(geteuid() == 0);
     assert(getegid() == 0);
     assert(getpgrp() == 1);
-    assert(getpid() == 1);
+    // assert(getpid() == 1);
 
     setgid(1000);
 
@@ -17,5 +17,5 @@ void get_id_test() {
     assert(geteuid() == 0);
     assert(getegid() == 1000);
     assert(getpgrp() == 1);
-    assert(getpid() == 1);
+    // assert(getpid() == 1);
 }

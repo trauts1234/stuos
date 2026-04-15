@@ -108,7 +108,16 @@ void malloc_free_test(uint64_t loops) {
 
 
 int main(int argc, char *argv[]) {
-    pipe_test();
+    if(argc != 2) {
+        printf("got %d args: ", argc);
+        for(int i=0; i<argc; i++) printf("%s, ", argv[i]);
+        abort();
+    }
+    if(strcmp(argv[1], "helloworld")) {
+        printf("got wrong arg: %s", argv[1]);
+        abort();
+    }
+    
     printf("type something");
     char buf[3];
     size_t read = fread(buf, 1, 3, stdin);
@@ -116,15 +125,7 @@ int main(int argc, char *argv[]) {
         printf("bad input");
         abort();
     }
-    
-    if(argc != 2) {
-        printf("got %d args", argc);
-        abort();
-    }
-    if(strcmp(argv[1], "hello world")) {
-        printf("got wrong arg");
-        abort();
-    }
+
     printf("running sleep test\n");
     sleep_uptime_test(10);
     printf("running malloc test\n");
@@ -143,5 +144,7 @@ int main(int argc, char *argv[]) {
     if(fork() == 0) {
         execve("/tarfs/other.out", (char*const []) {"/tarfs/other.out", NULL}, NULL);
     }
+    printf("running pipe test\n");
+    pipe_test();
     fprintf(stdout, "success!\n");
 }

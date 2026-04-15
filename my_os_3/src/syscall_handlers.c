@@ -13,7 +13,7 @@
 #include "scheduling.h"
 #include "kern_libc.h"
 
-#define DEBUG_SYSCALLS true
+#define DEBUG_SYSCALLS false
 
 static uint8_t syscall_stack[4096 * 4] __attribute__ ((__aligned__(16)));
 // used in assembly

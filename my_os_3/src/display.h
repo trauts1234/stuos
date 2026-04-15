@@ -18,7 +18,7 @@ void display_init(volatile struct limine_framebuffer* framebuffer_ptr);
 /// Writes a character to the display at the current cursor, wrapping if required
 ///
 /// If the bottom right of the screen is reached, resets and starts writing from the top left
-int display_write_char(char x);
+void display_write_char(char x);
 
 /// Draws a pixel at the specified coordinates
 void display_write_pixel(uint64_t x, uint64_t y, struct Colour colour);
