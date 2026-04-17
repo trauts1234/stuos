@@ -34,6 +34,8 @@ extern void apply_idt(struct IdtPtr* idt_base);
 extern void vector_14_handler();
 /// interrupt handler for interrupt 32 - PIT timer
 extern void vector_32_handler();
+/// Interrupt handler for interrupt 33 - keyboard interrupt
+extern void vector_33_handler();
 
 uint64_t get_uptime_ms() {
     return total_timer_interrupts * 1000 / FREQ;
@@ -99,6 +101,7 @@ static void setup_pit() {
 static void setup_idt() {
     memset(interrupt_descriptor_table, 0, sizeof(interrupt_descriptor_table));
     generate_idt_entry(32, vector_32_handler);
+    generate_idt_entry(33, vector_33_handler);
     generate_idt_entry(14, vector_14_handler);
     apply_idt(&idt_table_ptr);
 }

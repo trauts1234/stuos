@@ -4,7 +4,7 @@
 #include "kb_active_polling.h"
 #include "kern_libc.h"
 #include "debugging.h"
-#include "display.h"
+#include "tty.h"
 #include "uapi/fcntl.h"
 
 struct OpenVnodeSpecialData {
@@ -106,30 +106,25 @@ static void pipe_close(void* special_data) {
 static uint64_t stdout_write(void* special_data, const uint8_t* output_buf, uint64_t num) {
     if(special_data != NULL) {HCF}
     for(uint64_t i=0; i<num; i++) {
-        display_write_char(output_buf[i]);
+        tty_write_char(output_buf[i]);
     }
     return num;
 }
 static struct FopReadResult stdin_read(void* special_data, uint8_t* output_buf, uint64_t num) {
     if(special_data != NULL) {HCF}
-    
-    int pressed;
-    char next = read_char_nonblocking(&pressed);
 
-    //button was released or no button was pressed
-    if(!next || !pressed) {
+    uint64_t bytes_read = tty_read((char*)output_buf, num);
+    if(!bytes_read){
         return (struct FopReadResult) {
             .read_something = false,
             .bytes_read = 0,
         };
     }
 
-    *output_buf = (uint8_t)next;
     return (struct FopReadResult) {
         .read_something = true,
-        .bytes_read = 1
+        .bytes_read = bytes_read,
     };
-
 }
 static uint64_t file_write(void* special_data, const uint8_t* input_buf, uint64_t num) {
     struct OpenVnodeSpecialData* data = special_data;

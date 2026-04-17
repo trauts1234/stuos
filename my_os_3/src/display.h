@@ -15,14 +15,14 @@ struct Colour {
 /// @warning This must be run before writing to the display
 void display_init(volatile struct limine_framebuffer* framebuffer_ptr);
 
-/// Writes a character to the display at the current cursor, wrapping if required
-///
-/// If the bottom right of the screen is reached, resets and starts writing from the top left
-void display_write_char(char x);
-
 /// Draws a pixel at the specified coordinates
 void display_write_pixel(uint64_t x, uint64_t y, struct Colour colour);
+struct Colour display_read_pixel(uint64_t x, uint64_t y);
+
 /// Sets the screen to solid black, and resets the cursor to top-left
 void display_clear_screen();
+
+uint64_t display_get_width();
+uint64_t display_get_height();
 
 #endif

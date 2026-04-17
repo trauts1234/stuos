@@ -4,6 +4,7 @@
 #include <stddef.h>
 #include "uapi/stdint.h"
 #include "kern_libc.h"
+#include "tty.h"
 
 struct ValidPhysicalPages {uint64_t base_phys; uint64_t num_pages;};
 
@@ -17,12 +18,12 @@ uint64_t ram_size_bytes() {
 }
 
 void debug_allocated_pages() {
-    display_write_char('\n');
+    tty_write_char('\n');
     for(size_t page_num = 0;page_num < valid_physical_memory.num_pages; page_num++) {
         if(slab_flags_base[page_num]) {
-            display_write_char('#');
+            tty_write_char('#');
         } else {
-            display_write_char(' ');
+            tty_write_char(' ');
         }
     }
 }

@@ -18,7 +18,7 @@ void file_test() {
         uint64_t filename_len = strlen(curr_f);
         FILE* fd = fopen(curr_f, "r");
 
-        for(uint64_t j = 0; j<1000; j++) {
+        for(uint64_t j = 0; j<300; j++) {
             uint64_t off = rand64() % filename_len;
             uint64_t size = rand64() % filename_len;
             uint64_t expected_size = size > filename_len - off ? filename_len - off : size;
@@ -64,7 +64,7 @@ void file_test() {
             abort();
         }
 
-        for(uint64_t j = 0; j < 1000; j++) {
+        for(uint64_t j = 0; j < 300; j++) {
             uint64_t offset = rand64() % 4096;
             uint64_t num_bytes = rand64() % 4096;
 

@@ -2,6 +2,7 @@ bits 64
 
 global total_timer_interrupts
 global vector_32_handler
+global vector_33_handler
 global vector_14_handler
 global start_userland
 
@@ -79,6 +80,46 @@ vector_32_handler:
     ; convert the stack into a struct, as it has the right layout - pass a pointer to it
     mov rdi, rsp
     call run_next_task; this should never return
+
+vector_33_handler:
+    ; push the remaining registers to form a full processor state (certain registers have already been pushed)
+    push rax
+    push rbx
+    push rcx
+    push rdx
+    push rbp
+    push rdi
+    push rsi
+    push r8
+    push r9
+    push r10
+    push r11
+    push r12
+    push r13
+    push r14
+    push r15
+
+    mov rdi, 32
+    call acknowledge_interrupt; might be to re-enable interrupts?
+
+    ; call read_keyboard ; TODO
+
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    pop r11
+    pop r10
+    pop r9
+    pop r8
+    pop rsi
+    pop rdi
+    pop rbp
+    pop rdx
+    pop rcx
+    pop rbx
+    pop rax
+    iretq
 
 ; RDI - pointer to interrupt context struct
 start_userland:

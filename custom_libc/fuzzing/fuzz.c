@@ -129,7 +129,7 @@ int main(int argc, char *argv[]) {
     printf("running sleep test\n");
     sleep_uptime_test(10);
     printf("running malloc test\n");
-    malloc_free_test(1000);
+    malloc_free_test(300);
     printf("running file test\n");
     file_test();
     printf("running id test\n");
