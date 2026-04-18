@@ -17,8 +17,8 @@ static unsigned int cursor_x = 0, cursor_y = 0;
 static char input_buffer[INPUT_BUF_LENGTH] = {0};
 static char* next = input_buffer;
 
-//TODO run this and test
 void tty_poll_keyboard() {
+    DEBUG_HERE
     char character;
     int pressed;
 
@@ -26,11 +26,12 @@ void tty_poll_keyboard() {
         character = read_char_nonblocking(&pressed);
         if(character == 0) break;
         if(!pressed) continue;
-        if(next == input_buffer + INPUT_BUF_LENGTH) HCF//out of buffer, so just crash
-
+        
         if(character == '\b') {
+            if(next == input_buffer) HCF//underflow
             next--;
         } else {
+            if(next == input_buffer + INPUT_BUF_LENGTH) HCF//overflow
             *next++ = character;
         }
         

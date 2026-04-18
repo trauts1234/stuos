@@ -9,6 +9,7 @@ global start_userland
 extern run_next_task
 extern memory_exception_handle
 extern acknowledge_interrupt
+extern tty_poll_keyboard
 
 SECTION .data
 total_timer_interrupts dq 0; counts the number of times the timer interrupt has gone off (uint64_t) - This is updated via assembly
@@ -82,6 +83,7 @@ vector_32_handler:
     call run_next_task; this should never return
 
 vector_33_handler:
+    ud2
     ; push the remaining registers to form a full processor state (certain registers have already been pushed)
     push rax
     push rbx
@@ -100,9 +102,9 @@ vector_33_handler:
     push r15
 
     mov rdi, 32
-    call acknowledge_interrupt; might be to re-enable interrupts?
+    call acknowledge_interrupt
 
-    ; call read_keyboard ; TODO
+    call tty_poll_keyboard
 
     pop r15
     pop r14

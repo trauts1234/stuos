@@ -82,7 +82,7 @@ static void setup_pic() {
 	io_wait();
 
 	// Unmask both PICs.
-	out_byte(PIC1_DATA, 1 << 1);//mask IRQ 1, since that is the ps2 keyboard, which I poll
+	out_byte(PIC1_DATA, 0);
 	out_byte(PIC2_DATA, 0);
 }
 
