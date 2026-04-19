@@ -3,7 +3,6 @@
 #include "elf.h"
 #include "fs.h"
 #include "interrupts.h"
-#include "kb_active_polling.h"
 #include "memory.h"
 #include "display.h"
 #include "debugging.h"
@@ -38,7 +37,8 @@ void syscall_write_pixel(struct WritePixelData* data) {
 
 void syscall_readchar_nonblocking(struct GetCharNonblockingData* data) {
     if(DEBUG_SYSCALLS) kprintf("%s: \n", __func__);
-    data->output = read_char_nonblocking(&data->pressed);
+    HCF
+    // data->output = read_char_nonblocking(&data->pressed);
 }
 
 void syscall_get_uptime_ms(struct GetUptimeMsData* data) {

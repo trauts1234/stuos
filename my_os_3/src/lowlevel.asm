@@ -67,8 +67,6 @@ invalidate_page:
     ret
 
 apply_gdt_tss:
-    cli ; stops interrupts
-
     lgdt [rdi]               ; rdi -> {limit, base} for your *new* GDT
 
     ; Reload CS from the NEW GDT
@@ -94,7 +92,6 @@ apply_gdt_tss:
 
 apply_idt:
     lidt [rdi]
-    sti
     ret
 
 ; stick with borrowing the user's stack for now
@@ -161,7 +158,7 @@ syscall_init:
     mov ecx, 0xC0000082
     mov rdx, handle_syscall
     mov rax, rdx
-    shr rdx, 32 ; get upper bits in edxi
+    shr rdx, 32 ; get upper bits in edx
     mov eax, eax ; get lower bits in eax
     wrmsr
 

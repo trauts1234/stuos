@@ -1,5 +1,4 @@
 #include "debugging.h"
-#include "kb_active_polling.h"
 #include "uapi/stdint.h"
 #include "display.h"
 #include "font8x8_basic.h"
@@ -22,7 +21,8 @@ void tty_poll_keyboard() {
     int pressed;
 
     while (1) {
-        character = read_char_nonblocking(&pressed);
+        HCF
+        // character = read_char_nonblocking(&pressed);
         if(character == 0) break;
         if(!pressed) continue;
         

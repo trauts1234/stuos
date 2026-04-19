@@ -5,8 +5,8 @@
 #include "fs.h"
 #include "fs_ram.h"
 #include "interrupts.h"
-#include "kb_active_polling.h"
 #include "limine.h"
+#include "ps2.h"
 #include "fs_tar.h"
 #include "memory.h"
 #include "elf.h"
@@ -94,13 +94,14 @@ void kmain(void) {
 
     debugging_init();
     display_init(framebuffer);
-    initialise_keyboard();
+    initialise_ps2();
     memory_init(memmap_response, hhdm_offset);
     setup_gdt_tss();
     setup_pic_pit_idt();
     ramfs_init();
     tarfs_init(file_response->address);
     syscall_init();
+    DEBUG_HERE
 
     struct VNode fuzz = vfs_get("/", "/tarfs/testing.out", 0);
     const struct LoadedProgram elf = instantiate_ELF(fuzz, (char*[]){"testing.out", "helloworld", NULL});

@@ -1,7 +1,6 @@
 #include <stddef.h>
 #include "pipes_and_files.h"
 #include "fs.h"
-#include "kb_active_polling.h"
 #include "kern_libc.h"
 #include "debugging.h"
 #include "tty.h"
