@@ -18,7 +18,6 @@ static char input_buffer[INPUT_BUF_LENGTH] = {0};
 static char* next = input_buffer;
 
 void tty_poll_keyboard() {
-    DEBUG_HERE
     char character;
     int pressed;
 

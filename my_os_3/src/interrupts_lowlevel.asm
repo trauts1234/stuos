@@ -83,7 +83,6 @@ vector_32_handler:
     call run_next_task; this should never return
 
 vector_33_handler:
-    ud2
     ; push the remaining registers to form a full processor state (certain registers have already been pushed)
     push rax
     push rbx

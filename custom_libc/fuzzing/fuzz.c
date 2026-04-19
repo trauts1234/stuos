@@ -118,11 +118,11 @@ int main(int argc, char *argv[]) {
         abort();
     }
     
-    printf("type something");
-    char buf[3];
-    size_t read = fread(buf, 1, 3, stdin);
-    if(read != 1 || !isalnum(buf[0])) {
-        printf("bad input");
+    printf("type hello");
+    char buf[100];
+    size_t read = fread(buf, 1, 100, stdin);
+    if(strcmp(buf, "hello\n")) {
+        printf("bad input: %s", buf);
         abort();
     }
 
