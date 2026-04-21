@@ -117,3 +117,11 @@ size_t strlen(const char* str) {
     }
     return result;
 }
+
+int toupper(int c) {
+    if(c >= 'a' && c <= 'z') {
+        return c + ('A' - 'a');
+    }
+
+    return c;
+}

@@ -9,7 +9,7 @@ global start_userland
 extern run_next_task
 extern memory_exception_handle
 extern acknowledge_interrupt
-extern tty_poll_keyboard
+extern handle_incoming_byte
 
 SECTION .data
 total_timer_interrupts dq 0; counts the number of times the timer interrupt has gone off (uint64_t) - This is updated via assembly
@@ -103,7 +103,7 @@ vector_33_handler:
     mov rdi, 32
     call acknowledge_interrupt
 
-    call tty_poll_keyboard
+    call handle_incoming_byte
 
     pop r15
     pop r14

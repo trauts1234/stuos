@@ -2,6 +2,7 @@
 #include "uapi/stdint.h"
 #include "display.h"
 #include "font8x8_basic.h"
+#include "ps2.h"
 
 // 8x8 bitmap chars
 static const uint64_t char_memorysize = 8;
@@ -11,29 +12,23 @@ static const uint64_t char_scalefactor = 2;
 static const uint64_t char_screensize = char_memorysize * char_scalefactor;
 
 static unsigned int cursor_x = 0, cursor_y = 0;
+//the previous n characters written to the display were echoes of keypresses
+static unsigned int num_prev_chars_were_kb = 0;
 
 #define INPUT_BUF_LENGTH 1000
 static char input_buffer[INPUT_BUF_LENGTH] = {0};
 static char* next = input_buffer;
 
-void tty_poll_keyboard() {
-    char character;
-    int pressed;
-
-    while (1) {
-        HCF
-        // character = read_char_nonblocking(&pressed);
-        if(character == 0) break;
-        if(!pressed) continue;
-        
-        if(character == '\b') {
-            if(next == input_buffer) HCF//underflow
-            next--;
-        } else {
-            if(next == input_buffer + INPUT_BUF_LENGTH) HCF//overflow
-            *next++ = character;
-        }
-        
+void tty_provide_stdin(struct KeyEvent ev) {
+    if(ev.event_type != KE_ASCII) return;
+    if(ev.is_break) return;
+    
+    if(ev.character == '\b') {
+        if(next == input_buffer) HCF//underflow
+        next--;
+    } else {
+        if(next == input_buffer + INPUT_BUF_LENGTH) HCF//overflow
+        *next++ = ev.character;
     }
 }
 

@@ -3,6 +3,8 @@
 #include "debugging.h"
 #include "io.h"
 #include "kern_libc.h"
+#include "ps2.h"
+#include "tty.h"
 #include "uapi/stdint.h"
 
 struct InterruptDescriptor
@@ -101,7 +103,7 @@ static void setup_pit() {
 static void setup_idt() {
     memset(interrupt_descriptor_table, 0, sizeof(interrupt_descriptor_table));
     generate_idt_entry(32, vector_32_handler);
-    // generate_idt_entry(33, vector_33_handler);
+    generate_idt_entry(33, vector_33_handler);
     generate_idt_entry(14, vector_14_handler);
     apply_idt(&idt_table_ptr);
 }

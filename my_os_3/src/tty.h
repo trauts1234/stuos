@@ -1,6 +1,7 @@
 #ifndef TTY_H
 #define TTY_H
 
+#include "ps2.h"
 #include "uapi/stdint.h"
 
 //Write to the TTY
@@ -11,7 +12,8 @@ void tty_write_char(char c);
 //returns 0 if there isn't anything to read
 uint64_t tty_read(char* out, uint64_t num);
 
-//request the TTY to read from the keyboard
-void tty_poll_keyboard();
+//provide keyboard input to the TTY
+//this is called by the PS/2 driver
+void tty_provide_stdin(struct KeyEvent ev);
 
 #endif
