@@ -19,8 +19,6 @@ void display_init(volatile struct limine_framebuffer* framebuffer_ptr);
 void display_write_pixel(uint64_t x, uint64_t y, struct Colour colour);
 struct Colour display_read_pixel(uint64_t x, uint64_t y);
 
-/// Sets the screen to solid black, and resets the cursor to top-left
-void display_clear_screen();
 
 uint64_t display_get_width();
 uint64_t display_get_height();

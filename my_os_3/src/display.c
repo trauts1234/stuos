@@ -1,3 +1,4 @@
+#include "debugging.h"
 #include "uapi/stdint.h"
 #include "display.h"
 #include "limine.h"
@@ -8,15 +9,9 @@ void display_init(volatile struct limine_framebuffer* framebuffer_ptr) {
     raw_framebuffer = framebuffer_ptr;
 }
 
-void display_clear_screen() {
-    for (uint64_t x = 0; x < raw_framebuffer->width; x++) {
-        for (uint64_t y = 0; y < raw_framebuffer->height; y++) {
-            display_write_pixel(x, y, (struct Colour){.r=0, .g=0, .b=0, .a=0});
-        }
-    }
-}
-
 void display_write_pixel(uint64_t x, uint64_t y, struct Colour colour) {
+    if(x >= display_get_width()) HCF
+    if(y >= display_get_height()) HCF
     volatile struct Colour *screen_ptr = (struct Colour*)raw_framebuffer->address;
     uint64_t index = x + raw_framebuffer->width * y;
     screen_ptr[index] = colour;

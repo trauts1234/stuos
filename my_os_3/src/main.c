@@ -12,6 +12,7 @@
 #include "elf.h"
 #include "debugging.h"
 #include "scheduling.h"
+#include "tty.h"
 
 //assembly functions
 extern void loop_hlt();
@@ -101,6 +102,7 @@ void kmain(void) {
     ramfs_init();
     tarfs_init(file_response->address);
     syscall_init();
+    initialise_tty();
     DEBUG_HERE
 
     struct VNode fuzz = vfs_get("/", "/tarfs/testing.out", 0);

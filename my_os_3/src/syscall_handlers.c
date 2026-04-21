@@ -266,7 +266,7 @@ void *syscall_table[] = {
     NULL,
     NULL,
     syscall_write_pixel,
-    display_clear_screen,
+    NULL,
     syscall_get_uptime_ms,
     NULL,
     NULL,

@@ -4,6 +4,9 @@
 #include "ps2.h"
 #include "uapi/stdint.h"
 
+//display must be initialised first
+void initialise_tty();
+
 //Write to the TTY
 void tty_write_char(char c);
 
