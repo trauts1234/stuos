@@ -51,6 +51,12 @@ char lookup_nonextended[128][2] = {
     [0x5a]= {'\n'},
     [0x66]= {'\b'},
     [0x29]= {' '},
+    [0x4a]= {'/', '?'},
+    [0x49]= {'.', '>'},
+    [0x41]= {',', '<'},
+    [0x5d]= {'\\', '|'},
+    [0x4c]= {';', ':'},
+    [0x52]= {'\'', '@'},
 };
 
 #define DATA_PORT 0x60
@@ -242,14 +248,6 @@ void handle_incoming_byte() {
     static union BufferData buffer;
 
     while(read_status_register().output_buffer_status) {
-        if(expected_number_of_bytes == 0) {
-            //finished one keypress, handle it and reset
-            expected_number_of_bytes = 1;
-            tty_provide_stdin(parse_full_buffer(buffer));
-            buffer.data = 0;
-            continue;
-        }
-
         uint8_t first = blocking_read_data();
         buffer.data = (buffer.data << 8) | first;
         if(first == 0xE0 || first == 0xF0) {
@@ -261,6 +259,14 @@ void handle_incoming_byte() {
             expected_number_of_bytes = 7;
         }
         expected_number_of_bytes--;
+
+        if(expected_number_of_bytes == 0) {
+            //finished one keypress, handle it and reset
+            expected_number_of_bytes = 1;
+            tty_provide_stdin(parse_full_buffer(buffer));
+            buffer.data = 0;
+            continue;
+        }
     }
 }
 
