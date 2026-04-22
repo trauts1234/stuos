@@ -72,15 +72,18 @@ static struct ProcessData* get_process(int pid, struct ProcessData** previous) {
 
 int add_new_process(struct LoadedProgram program) {
 
-    char* cwd = kmalloc(2);
-    strcpy(cwd, "/");
-
     int pgrp = 1;
     int ppid = 0;
+    char* cwd;
     if(current_process_in_ll) {
         //inherit
         pgrp = current_process_in_ll->pgrp;
         ppid = current_process_in_ll->pid;
+        cwd = kmalloc(strlen(current_process_in_ll->cwd) + 1);
+        strcpy(cwd, current_process_in_ll->cwd);
+    } else {
+        cwd = kmalloc(2);
+        strcpy(cwd, "/");
     }
 
     struct ProcessData* new = kmalloc(sizeof(struct ProcessData));

@@ -136,10 +136,8 @@ struct VNode vfs_get_root() {
 }
 
 struct VNode vfs_get(const char* cwd_path, const char* path, int open_flags) {
-    if(*cwd_path != '/') HCF//cwd cannot be relative
-
     //walk the cwd to generate a vnode (this destroys the pointer cwd_path)
-    struct VNode location;
+    struct VNode location = vfs_get_root();//so that a relative CWD is relative to root
     while(cwd_path) {
         switch (step_path2(&location, &cwd_path)) {
 
