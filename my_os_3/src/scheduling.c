@@ -120,6 +120,7 @@ void replace_current_process(struct LoadedProgram program) {
         //file_descriptors is set later
         .pid = current_process_in_ll->pid,
         .pgrp = current_process_in_ll->pgrp,
+        .ppid = current_process_in_ll->ppid,
         .page_table_root = program.page_table_root,
         .cwd = current_process_in_ll->cwd,
         .paused_state = program.initial_state,

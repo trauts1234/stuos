@@ -22,8 +22,8 @@ static unsigned int cursor_x = 0, cursor_y = 0;
 //indexed [x + width*y]
 //the "top of the screen" is at [0 + chars_width * ((cursor_y+1) % chars_height)] i.e the row below cursor_y
 static char *buffer = 0;
-//indexed the same, true if backspace should remove this character
-static bool *buffer_is_backspaceable;
+//the most recent n characters are backspace-able
+static uint64_t current_run_of_keyboard_inputs = 0;
 
 static enum {
     ONLY_PREV_CHAR_AFFECTED,//cursor_x must be > 0, and only cursor_x-1 will be re-rendered
@@ -71,10 +71,11 @@ static void blit_char(char c, uint64_t start_pixel_x, uint64_t start_pixel_y) {
     }
 }
 
-static void blit_row(uint64_t char_y) {
+//write `chars_width` bytes from chars and render at `char_y` lines from the top
+static void blit_row(char* chars, uint64_t char_y) {
     bool row_has_seen_newline = false;
     for(uint64_t char_x=0; char_x < chars_width; char_x++) {
-        char curr = buffer[index_buffer(char_x, char_y)];
+        char curr = chars[char_x];
         if (curr == '\n') row_has_seen_newline = true;
 
         if(row_has_seen_newline) curr = ' ';//print blank if a newline has been entered, to clear the rest of the line
@@ -88,7 +89,7 @@ static void blit() {
     switch (current_buffer_dirty_status) {
 
     case ONLY_PREV_CHAR_AFFECTED:
-        blit_char(buffer[index_buffer(cursor_x-1, cursor_y)], (cursor_x-1) * char_screensize, cursor_y * char_screensize);
+        blit_char(buffer[index_buffer(cursor_x-1, cursor_y)], (cursor_x-1) * char_screensize, (chars_height-1) * char_screensize);
         return;
 
     // case ONLY_ROW_AFFECTED:
@@ -97,14 +98,10 @@ static void blit() {
 
     case ALL_DIRTY:
         //loop from y= the row after the cursor, all the way back round to the cursor
-        uint64_t char_y=cursor_y;
-        do {
-            char_y++;
-            char_y %= chars_height;//wrap
-
-            blit_row(char_y);
-            
-        } while (char_y % chars_height != cursor_y);
+        for(uint64_t line_num=0; line_num < chars_height; line_num++) {
+            uint64_t buffer_y = (line_num + cursor_y + 1) % chars_height;//even though I start drawing from y=0, I read the buffer from after the cursor and loop round
+            blit_row(buffer + index_buffer(0, buffer_y), line_num);
+        }
     }
 }
 
@@ -114,19 +111,39 @@ void initialise_tty() {
 
     const uint64_t buf_len = chars_width * chars_height;
     buffer = kmalloc(buf_len);
-    buffer_is_backspaceable = kmalloc(buf_len);
     memset(buffer, ' ', buf_len);
-    memset(buffer_is_backspaceable, false, buf_len);
 
     current_buffer_dirty_status = ALL_DIRTY;
     blit();
 }
 
+static void do_newline() {
+    cursor_y = (cursor_y + 1) % chars_height;
+    cursor_x = 0;
+    memset(buffer + index_buffer(cursor_x, cursor_y), ' ', chars_width);
+    current_buffer_dirty_status = ALL_DIRTY;//new line could shift whole display
+}
+
 static void write_from_multiple_sources(char c, bool is_from_keyboard) {
     if(c == '\b') {
-        //backspace
-        //TODO scan backwards to find a backspaceable char, then remove it and shift everything up
-        DEBUG_HERE
+        if(current_run_of_keyboard_inputs == 0) return;
+        current_run_of_keyboard_inputs--;
+
+        //if at start of line, go up a line
+        if(cursor_x == 0) {
+            //if at top of screen, wrap backwards
+            if(cursor_y == 0) {
+                cursor_y = chars_height-1;
+            } else {
+                cursor_y--;
+            }
+
+            cursor_x = chars_width-1;
+        } else {
+            cursor_x--;
+        }
+
+        buffer[index_buffer(cursor_x, cursor_y)] = ' ';//clear char
 
         current_buffer_dirty_status = ALL_DIRTY;//this is messy
         blit();
@@ -141,22 +158,22 @@ static void write_from_multiple_sources(char c, bool is_from_keyboard) {
     //write character (\n prints blank so this is OK)
     const uint64_t idx = index_buffer(cursor_x, cursor_y);
     buffer[idx] = c;
-    buffer_is_backspaceable[idx] = is_from_keyboard;
+    if(is_from_keyboard) {
+        current_run_of_keyboard_inputs++;
+    } else {
+        current_run_of_keyboard_inputs = 0;
+    }
 
     if(c == '\n') {//TODO what about \r
-        cursor_y++;
-        cursor_x = 0;
-        current_buffer_dirty_status = ALL_DIRTY;//new line could shift whole display
+        current_run_of_keyboard_inputs = 0;//don't allow backspacing to before a newline
+        do_newline();
     } else {
         cursor_x++;
         current_buffer_dirty_status = ONLY_PREV_CHAR_AFFECTED;//simple char write
     }
 
     if(cursor_x == chars_width) {
-        //overflow, wrap to next line
-        cursor_x = 0;
-        cursor_y++;
-        current_buffer_dirty_status = ALL_DIRTY;//since y is affected
+        do_newline();
     }
 
     cursor_y %= chars_height;

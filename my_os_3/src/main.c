@@ -105,8 +105,8 @@ void kmain(void) {
     initialise_tty();
     DEBUG_HERE
 
-    struct VNode fuzz = vfs_get("/", "/tarfs/testing.out", 0);
-    const struct LoadedProgram elf = instantiate_ELF(fuzz, (char*[]){"testing.out", "helloworld", NULL});
+    struct VNode fuzz = vfs_get("/", "/tarfs/shell.out", 0);
+    const struct LoadedProgram elf = instantiate_ELF(fuzz, (char*[]){"shell.out", NULL});
 
     add_new_process(elf);
     run_next_task(NULL);
