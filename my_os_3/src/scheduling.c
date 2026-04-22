@@ -159,11 +159,32 @@ struct FileOperations** get_file_descriptors() {
 const char* get_current_cwd() {
     return current_process_in_ll->cwd;
 }
-//copies new_ptr's data
+
 void set_current_cwd(const char* new_ptr) {
-    uint64_t len = strlen(new_ptr);
-    char* dest = kmalloc(len+1);
-    memcpy(dest, new_ptr, len+1);
+    uint64_t new_ptr_len = strlen(new_ptr);
+    uint64_t cwd_len = strlen(current_process_in_ll->cwd);
+    char* dest;
+
+    if (*new_ptr == '/') {
+        //absolute path, just set
+        dest = kmalloc(new_ptr_len+1);
+        memcpy(dest, new_ptr, new_ptr_len+1);
+    } else {
+        if(current_process_in_ll->cwd[cwd_len - 1] == '/') {
+            //old cwd ends with slash, just concatenate
+            uint64_t len = new_ptr_len + cwd_len;
+            dest = kmalloc(len+1);
+            memcpy(dest, current_process_in_ll->cwd, cwd_len);
+            memcpy(dest + cwd_len, new_ptr, new_ptr_len+1);
+        } else {
+            //old cwd doesn't have a slash, add one
+            uint64_t len = new_ptr_len + cwd_len + 1;
+            dest = kmalloc(len+1);
+            memcpy(dest, current_process_in_ll->cwd, cwd_len);
+            dest[cwd_len] = '/';
+            memcpy(dest + cwd_len + 1, new_ptr, new_ptr_len+1);
+        }
+    }
 
     current_process_in_ll->cwd = dest;
 }
