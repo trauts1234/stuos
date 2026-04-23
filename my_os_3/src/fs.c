@@ -7,6 +7,18 @@
 #define ROOT_INODE_NUM 69
 #define MAX_MOUNTS 10
 
+/// You can only mount against the root directory i.e /mountpoint is OK, but /a/b/mountpoint is not OK
+struct MountPoint {
+    /// the filesystem will be mounted at /{mount_name}
+    ///
+    /// NULL pointer represents a NULL mountpoint
+    const char* mount_name;
+    /// Root of the filesystem that is mounted, represents /{mount_name}/
+    ///
+    /// Must be a directory, and includes function pointers for how to use the vnode
+    struct VNode mount_root;
+} filesystem_mount_points[MAX_MOUNTS] = {};
+
 static uint64_t path_segment_len(const char* path) {
     uint64_t size = 0;
     while(*path != '\0' && *path != '/') {
@@ -14,6 +26,35 @@ static uint64_t path_segment_len(const char* path) {
         path++;
     }
     return size;
+}
+
+//scan for mount points that match a directory name
+static int vfs_root_dir_lookup(uint64_t dir_inode_num, const char* name, struct VNode* out) {
+    if(dir_inode_num != ROOT_INODE_NUM) HCF
+
+    for (uint64_t mount_idx = 0; mount_idx < MAX_MOUNTS && filesystem_mount_points[mount_idx].mount_name;mount_idx++) {
+        if(strcmp(name, filesystem_mount_points[mount_idx].mount_name) == 0) {
+            *out = filesystem_mount_points[mount_idx].mount_root;//start at the filesystem's root
+            return 0;
+        }
+    }
+
+    return -1;
+}
+//fail to do the following as I can only handle mount points
+static uint64_t fail_write_file(uint64_t, uint64_t, const uint8_t*, uint64_t) { HCF }
+static uint64_t fail_read_file(uint64_t, uint64_t, uint8_t*, uint64_t) { HCF }
+int fail_create_inode(uint64_t, enum VNodeType, const char*, struct VNode*) { HCF }
+
+struct VNode vfs_get_root() {
+    return (struct VNode) {
+        .inode_number = ROOT_INODE_NUM,
+        .inode_type = VNODE_DIR,
+        .directory_lookup = vfs_root_dir_lookup,
+        .write_file = fail_write_file,
+        .read_file = fail_read_file,
+        .create_inode = fail_create_inode,
+    };
 }
 
 enum StepPathResult {
@@ -84,18 +125,6 @@ static enum StepPathResult step_path2(struct VNode* current, const char** path_s
     }
 }
 
-/// You can only mount against the root directory i.e /mountpoint is OK, but /a/b/mountpoint is not OK
-struct MountPoint {
-    /// the filesystem will be mounted at /{mount_name}
-    ///
-    /// NULL pointer represents a NULL mountpoint
-    const char* mount_name;
-    /// Root of the filesystem that is mounted, represents /{mount_name}/
-    ///
-    /// Must be a directory, and includes function pointers for how to use the vnode
-    struct VNode mount_root;
-} filesystem_mount_points[MAX_MOUNTS] = {};
-
 void vfs_add_mount(const char* mount_name, struct VNode filesystem_root) {
     uint64_t mount_idx = 0;
     while (filesystem_mount_points[mount_idx].mount_name) {
@@ -104,35 +133,6 @@ void vfs_add_mount(const char* mount_name, struct VNode filesystem_root) {
     }
 
     filesystem_mount_points[mount_idx] = (struct MountPoint) {.mount_name = mount_name, .mount_root=filesystem_root};
-}
-
-//scan for mount points that match a directory name
-static int vfs_root_dir_lookup(uint64_t dir_inode_num, const char* name, struct VNode* out) {
-    if(dir_inode_num != ROOT_INODE_NUM) HCF
-
-    for (uint64_t mount_idx = 0; mount_idx < MAX_MOUNTS && filesystem_mount_points[mount_idx].mount_name;mount_idx++) {
-        if(strcmp(name, filesystem_mount_points[mount_idx].mount_name) == 0) {
-            *out = filesystem_mount_points[mount_idx].mount_root;//start at the filesystem's root
-            return 0;
-        }
-    }
-
-    return -1;
-}
-//fail to do the following as I can only handle mount points
-static uint64_t fail_write_file(uint64_t, uint64_t, const uint8_t*, uint64_t) { HCF }
-static uint64_t fail_read_file(uint64_t, uint64_t, uint8_t*, uint64_t) { HCF }
-int fail_create_inode(uint64_t, enum VNodeType, const char*, struct VNode*) { HCF }
-
-struct VNode vfs_get_root() {
-    return (struct VNode) {
-        .inode_number = ROOT_INODE_NUM,
-        .inode_type = VNODE_DIR,
-        .directory_lookup = vfs_root_dir_lookup,
-        .write_file = fail_write_file,
-        .read_file = fail_read_file,
-        .create_inode = fail_create_inode,
-    };
 }
 
 struct VNode vfs_get(const char* cwd_path, const char* path, int open_flags) {

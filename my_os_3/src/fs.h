@@ -45,9 +45,7 @@ struct VNode make_null_vnode();
 /// mount_name's data must live forever, as the pointer is copied, as must filesystem_root
 void vfs_add_mount(const char* mount_name, struct VNode filesystem_root);
 
-struct VNode vfs_get_root();
-
-
+//gets the VNode at `path`
 struct VNode vfs_get(const char* cwd_path, const char* path, int open_flags);
 
 #endif
