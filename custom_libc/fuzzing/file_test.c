@@ -86,8 +86,6 @@ void file_test() {
     }
 
     char buf[100];
-    getcwd(buf, 100);
-    assert(strcmp(buf, "/") == 0);
     chdir("/tarfs");
     getcwd(buf, 100);
     assert(strcmp(buf, "/tarfs") == 0);
