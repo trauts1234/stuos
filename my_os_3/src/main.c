@@ -13,6 +13,7 @@
 #include "debugging.h"
 #include "scheduling.h"
 #include "tty.h"
+#include "pci.h"
 
 //assembly functions
 extern void loop_hlt();
@@ -103,7 +104,7 @@ void kmain(void) {
     tarfs_init(file_response->address);
     syscall_init();
     initialise_tty();
-    DEBUG_HERE
+    initialise_pci();
 
     struct VNode fuzz = vfs_get("/", "/tarfs/shell.out", 0);
     const struct LoadedProgram elf = instantiate_ELF(fuzz, (char*[]){"shell.out", NULL});
