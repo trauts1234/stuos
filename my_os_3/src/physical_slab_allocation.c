@@ -1,6 +1,5 @@
 #include "physical_slab_allocation.h"
 #include "debugging.h"
-#include "physical_addresses.h"
 #include "uapi/stdint.h"
 #include "kern_libc.h"
 
@@ -40,9 +39,6 @@ void free4k_phys(uint64_t phys_addr) {
 void init_physical_memory(uint64_t base_phys, void* base_virt_hhdm, uint64_t mem_size_bytes) {
     uint64_t total_page_count = mem_size_bytes / PAGE_SIZE;
     uint64_t pages_required_for_slab_flag_data = (total_page_count+PAGE_SIZE-1) / PAGE_SIZE;//1 byte of data for each 4k page (round up)
-
-    //reserve all physical addresses used by RAM
-    reserve_physical_region(base_phys, total_page_count);
 
     slab_flags_base = (bool*)base_virt_hhdm;//start of RAM is used for tracking which pages are used
     physical_memory_base = base_phys + pages_required_for_slab_flag_data * PAGE_SIZE;//start valid memory after all the memory used for slab flags

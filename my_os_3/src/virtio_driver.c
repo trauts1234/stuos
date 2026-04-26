@@ -1,7 +1,6 @@
 #include "debugging.h"
 #include "kern_libc.h"
 #include "pci.h"
-#include "physical_addresses.h"
 #include "uapi/stdint.h"
 #include "virtio_driver.h"
 
@@ -72,16 +71,10 @@ void initialise_virtio(struct PciConfigurationHeader header, void* header_buffer
             
             case 2:
             // 64 bit address
-            
-            uint64_t bar_full = reserve_next_physical_region();
-            uint32_t bar_upper = header.BAR[capabilities->bar+1];
-            uint64_t bar_full = ((uint64_t)bar_upper << 32) | (bar & ~0xF);
+            //TODO find contiguous physical RAM
             break;
         }
     }
-
-    kprintf("last bit: %d\n", bar & 1);
-    if((bar & 1) == 0) HCF//memory mapped BAR, I don't like it
 
     //virtio registers should be immediately after the capabilities header
     //TODO set up and read from the BAR
