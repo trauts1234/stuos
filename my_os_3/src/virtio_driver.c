@@ -1,5 +1,6 @@
 #include "debugging.h"
 #include "kern_libc.h"
+#include "pci.h"
 #include "uapi/stdint.h"
 #include "virtio_driver.h"
 
@@ -32,12 +33,32 @@ struct VirtioIORegisters {
     } block_device_regs;
 };
 
+struct VirtioCapabilitiesHeader {
+    uint8_t capability_id;
+    //0 for NULL
+    uint8_t next;
+    uint8_t capability_length;
+    uint8_t config_type;
+    uint8_t bar;
+    uint8_t padding[3];
+    uint32_t offset_in_bar;
+    uint32_t length_in_bar;
+};
+
 void initialise_virtio(struct PciConfigurationHeader header, void* header_buffer) {
     if(header.vendor_id != 0x1AF4) HCF
     if(header.device_id < 0x1000 || header.device_id > 0x103F) HCF
 
-    //virtio registers should be immediately after the PCI header
-    struct VirtioIORegisters virtio_regs = *(struct VirtioIORegisters*)(header_buffer + sizeof(header));
+    if((header.status & 0b10000) == 0) HCF//need capabilities list
+    struct VirtioCapabilitiesHeader *capabilities = (struct VirtioCapabilitiesHeader*)(header_buffer + (header.capabilities_pointer & ~0b11));
+    while(capabilities->capability_id != 0x09) {
+        if(capabilities->next == 0) HCF//ran out of capabilities
+        capabilities = (struct VirtioCapabilitiesHeader*)(header_buffer + capabilities->next);
+    }
+
+    //virtio registers should be immediately after the capabilities header
+    //TODO set up and read from the BAR
+    // struct VirtioIORegisters virtio_regs = *(struct VirtioIORegisters*)(capabilities + 1);
     
     switch(header.subsystem_id) {
         case 2:
