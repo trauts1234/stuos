@@ -23,6 +23,15 @@ struct PciConfigurationHeader {
     uint8_t interrupt_line, interrupt_pin, min_grant, max_latency;
 };
 
+struct BarInfo {
+    uint64_t bar_size;
+    uint64_t address;
+    // only if `!is_io_bar`
+    uint64_t virtual_address;
+    //true if bar uses in/out - else uses memory mapped IO
+    bool is_io_bar;
+};
+
 void initialise_pci();
 
 #endif

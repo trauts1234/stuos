@@ -1,6 +1,7 @@
 #include "debugging.h"
 #include "kern_libc.h"
 #include "pci.h"
+#include "memory.h"
 #include "uapi/stdint.h"
 #include "virtio_driver.h"
 
@@ -45,7 +46,7 @@ struct VirtioCapabilitiesHeader {
     uint32_t length_in_bar;
 };
 
-void initialise_virtio(struct PciConfigurationHeader header, void* header_buffer) {
+void initialise_virtio(struct PciConfigurationHeader header, void* header_buffer, struct BarInfo bar_list[6]) {
     if(header.vendor_id != 0x1AF4) HCF
     if(header.device_id < 0x1000 || header.device_id > 0x103F) HCF
 
@@ -56,62 +57,46 @@ void initialise_virtio(struct PciConfigurationHeader header, void* header_buffer
         capabilities = (struct VirtioCapabilitiesHeader*)(header_buffer + capabilities->next);
     }
 
-    uint32_t bar = header.BAR[capabilities->bar];
-    if(bar & 1) {
-        //uses IN/OUT to write, as this is an IO space BAR
-        HCF
-    } else {
-        switch ((bar >> 1) & 0b11) {
-            case 0:
-            HCF//32 bit - I don't like it
+    struct BarInfo bar = bar_list[capabilities->bar];
 
-            case 1:
-            case 3:
-            HCF//invalid
-            
-            case 2:
-            // 64 bit address
-            //TODO find contiguous physical RAM
-            break;
-        }
-    }
+    kprintf("bar %d at phys 0x%lX, virt 0x%lX size 0x%lX (is io bar: %d)", capabilities->bar, bar.address, bar.virtual_address, bar.bar_size, bar.is_io_bar);
 
     //virtio registers should be immediately after the capabilities header
     //TODO set up and read from the BAR
-    struct VirtioIORegisters virtio_regs = *(struct VirtioIORegisters*)(capabilities + 1);
+    // struct VirtioIORegisters virtio_regs = *(struct VirtioIORegisters*)(bar_full + get_hhdm());
     
-    switch(header.subsystem_id) {
-        case 2:
-        //block device
+    // switch(header.subsystem_id) {
+    //     case 2:
+    //     //block device
 
-        struct VirtioIORegisters *v = &virtio_regs;
+    //     struct VirtioIORegisters *v = &virtio_regs;
 
-        kprintf("VirtioIORegisters {\n");
-    kprintf("  device_features      = 0x%08X\n", v->device_features);
-    kprintf("  guest_features       = 0x%08X\n", v->guest_features);
-    kprintf("  queue_address        = 0x%08X\n", v->queue_address);
-    kprintf("  queue_size           = %u (0x%04X)\n", v->queue_size, v->queue_size);
-    kprintf("  queue_select         = %u (0x%04X)\n", v->queue_select, v->queue_select);
-    kprintf("  queue_notify         = 0x%08X\n", v->queue_notify);
-    kprintf("  device_status        = 0x%02X\n", v->device_status);
-    kprintf("  isr_status           = 0x%02X\n", v->isr_status);
+    //     kprintf("VirtioIORegisters {\n");
+    // kprintf("  device_features      = 0x%08X\n", v->device_features);
+    // kprintf("  guest_features       = 0x%08X\n", v->guest_features);
+    // kprintf("  queue_address        = 0x%08X\n", v->queue_address);
+    // kprintf("  queue_size           = %u (0x%04X)\n", v->queue_size, v->queue_size);
+    // kprintf("  queue_select         = %u (0x%04X)\n", v->queue_select, v->queue_select);
+    // kprintf("  queue_notify         = 0x%08X\n", v->queue_notify);
+    // kprintf("  device_status        = 0x%02X\n", v->device_status);
+    // kprintf("  isr_status           = 0x%02X\n", v->isr_status);
 
-    /* BlockDeviceRegisters ----------------------------------------------*/
-    const struct BlockDeviceRegisters *b = &v->block_device_regs;
-    kprintf("  block_device_regs {\n");
-    kprintf("    total_sector_count   = %llu (0x%016llX)\n",
-           (unsigned long long)b->total_sector_count,
-           (unsigned long long)b->total_sector_count);
-    kprintf("    maximum_segment_size = 0x%08X\n", b->maximum_segment_size);
-    kprintf("    maximum_segment_count= 0x%08X\n", b->maximum_segment_count);
-    kprintf("    cylinder_count       = %u (0x%04X)\n", b->cylinder_count, b->cylinder_count);
-    kprintf("    head_count           = %u (0x%02X)\n", b->head_count, b->head_count);
-    kprintf("    sector_count         = %u (0x%02X)\n", b->sector_count, b->sector_count);
-    kprintf("    block_length         = 0x%08X\n", b->block_length);
-    kprintf("  }\n");
-    kprintf("}\n");
+    // /* BlockDeviceRegisters ----------------------------------------------*/
+    // const struct BlockDeviceRegisters *b = &v->block_device_regs;
+    // kprintf("  block_device_regs {\n");
+    // kprintf("    total_sector_count   = %llu (0x%016llX)\n",
+    //        (unsigned long long)b->total_sector_count,
+    //        (unsigned long long)b->total_sector_count);
+    // kprintf("    maximum_segment_size = 0x%08X\n", b->maximum_segment_size);
+    // kprintf("    maximum_segment_count= 0x%08X\n", b->maximum_segment_count);
+    // kprintf("    cylinder_count       = %u (0x%04X)\n", b->cylinder_count, b->cylinder_count);
+    // kprintf("    head_count           = %u (0x%02X)\n", b->head_count, b->head_count);
+    // kprintf("    sector_count         = %u (0x%02X)\n", b->sector_count, b->sector_count);
+    // kprintf("    block_length         = 0x%08X\n", b->block_length);
+    // kprintf("  }\n");
+    // kprintf("}\n");
 
-        default:
-        return;
-    }
+    //     default:
+    //     return;
+    // }
 }

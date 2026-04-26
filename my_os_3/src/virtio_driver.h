@@ -3,6 +3,6 @@
 
 #include "pci.h"
 
-void initialise_virtio(struct PciConfigurationHeader header, void* header_buffer);
+void initialise_virtio(struct PciConfigurationHeader header, void* header_buffer, struct BarInfo bar_list[6]);
 
 #endif
