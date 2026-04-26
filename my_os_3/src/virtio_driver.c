@@ -58,7 +58,7 @@ void initialise_virtio(struct PciConfigurationHeader header, void* header_buffer
 
     //virtio registers should be immediately after the capabilities header
     //TODO set up and read from the BAR
-    // struct VirtioIORegisters virtio_regs = *(struct VirtioIORegisters*)(capabilities + 1);
+    struct VirtioIORegisters virtio_regs = *(struct VirtioIORegisters*)(capabilities + 1);
     
     switch(header.subsystem_id) {
         case 2:
