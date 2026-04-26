@@ -1,6 +1,7 @@
 #include "debugging.h"
 #include "kern_libc.h"
 #include "pci.h"
+#include "physical_addresses.h"
 #include "uapi/stdint.h"
 #include "virtio_driver.h"
 
@@ -55,6 +56,32 @@ void initialise_virtio(struct PciConfigurationHeader header, void* header_buffer
         if(capabilities->next == 0) HCF//ran out of capabilities
         capabilities = (struct VirtioCapabilitiesHeader*)(header_buffer + capabilities->next);
     }
+
+    uint32_t bar = header.BAR[capabilities->bar];
+    if(bar & 1) {
+        //uses IN/OUT to write, as this is an IO space BAR
+        HCF
+    } else {
+        switch ((bar >> 1) & 0b11) {
+            case 0:
+            HCF//32 bit - I don't like it
+
+            case 1:
+            case 3:
+            HCF//invalid
+            
+            case 2:
+            // 64 bit address
+            
+            uint64_t bar_full = reserve_next_physical_region();
+            uint32_t bar_upper = header.BAR[capabilities->bar+1];
+            uint64_t bar_full = ((uint64_t)bar_upper << 32) | (bar & ~0xF);
+            break;
+        }
+    }
+
+    kprintf("last bit: %d\n", bar & 1);
+    if((bar & 1) == 0) HCF//memory mapped BAR, I don't like it
 
     //virtio registers should be immediately after the capabilities header
     //TODO set up and read from the BAR

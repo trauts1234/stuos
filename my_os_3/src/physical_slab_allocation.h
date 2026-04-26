@@ -7,7 +7,7 @@ static const size_t PAGE_SIZE = 4096;
 static const uint64_t PAGE_MASK = PAGE_SIZE-1;
 
 /// Sets up pages by reserving memory to store whether physical pages are used
-void init_slab_allocator(uint64_t base_phys, void* base_virt_hhdm, uint64_t mem_size_bytes);
+void init_physical_memory(uint64_t base_phys, void* base_virt_hhdm, uint64_t mem_size_bytes);
 
 /// @returns The total amount of ram that could be allocated, assuming none was allocated to start with
 uint64_t ram_size_bytes();

@@ -427,7 +427,7 @@ void memory_init(volatile struct limine_memmap_response *memmap_response, uint64
     }
 
     void* base_virt_hhdm = (void*)(result->base + hhdm_offset);
-    init_slab_allocator(result->base, base_virt_hhdm, result->length);
+    init_physical_memory(result->base, base_virt_hhdm, result->length);
 
     void* kheap_start = (void*)0xFFFFFF8000000000;//a few F's above higherhalf start, so hopefully above the HHDM but below the kernel_start
     fill_kernel_pml4();//fill the original kernel page table with empty entries, so EVERYONE will share the kernel space
