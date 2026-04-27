@@ -24,7 +24,7 @@ void sleep_uptime_test(uint64_t loops) {
         uint64_t delay = rand8();
         uint64_t start = get_uptime_ms();
         if(start < prev) {abort();}
-        sleep_ms(delay);
+        usleep(delay * 1000);
         uint64_t end = get_uptime_ms();
         if(start > end) {abort();}
         int64_t actual = end - start;

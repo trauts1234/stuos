@@ -1,6 +1,8 @@
+#include "nonstandard.h"
 #include "stddef.h"
 #include "uapi/syscalls.h"
 #include "sys/types.h"
+#include <stdint.h>
 #include <stdlib.h>
 #include "stdio.h"
 #include "unistd.h"
@@ -148,5 +150,23 @@ int pipe(int pipefd[2]) {
     pipefd[0] = data.fd_a;
     pipefd[1] = data.fd_b;
     
+    return 0;
+}
+
+static void mssleep(uint64_t ms) {
+    uint64_t start = get_uptime_ms();
+    while (get_uptime_ms() - start <= ms){
+        __asm("nop");
+    }
+}
+
+int usleep(useconds_t usec) {
+    //TODO error out if signal interrupts me
+    mssleep(usec / 1000);
+    return 0;
+}
+unsigned int sleep(unsigned int seconds) {
+    //TODO error out if signal interrupts me
+    mssleep((uint64_t)seconds * 1000ul);
     return 0;
 }

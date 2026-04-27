@@ -69,13 +69,11 @@ long int strtol(const char *nptr, char **endptr, int base) {
 
     //if no digits consumed
     if(current == current_checkpoint) {
-        *endptr = (char*)nptr;
+        if (endptr) *endptr = (char*)nptr;
         return 0;
     }
 
-    if(endptr) {
-        *endptr = (char*)current;
-    }
+    if(endptr) *endptr = (char*)current;
 
     if(overflowing) {
         return is_negative ? LONG_MIN : LONG_MAX;

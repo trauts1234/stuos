@@ -4,6 +4,8 @@
 #include "stddef.h"
 #include "stdarg.h"
 
+#define EOF (-1)
+
 typedef struct {
     int file_descriptor_number;
 } FILE;
@@ -41,6 +43,7 @@ size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream);
 size_t fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream);
 int fputs(const char *s, FILE *stream);
 char *fgets(char *s, int size, FILE *stream);
+int fgetc(FILE *stream);
 
 int    fseek(FILE *stream, long offset, int whence);
 

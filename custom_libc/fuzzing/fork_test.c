@@ -1,4 +1,3 @@
-#include "nonstandard.h"
 #include <stdlib.h>
 #include <unistd.h>
 #include <stdio.h>
@@ -8,7 +7,7 @@ void fork_test() {
     int result = fork();
     if(result == 0) {
         printf("hello from child\n");
-        sleep_ms(100);
+        usleep(100 * 1000);
         abort();
     } else {
         printf("Hello from parent. Child's pid is %d\n", result);
@@ -21,7 +20,7 @@ void fork_test() {
         abort();
     } else {
         printf("Hello from parent. Child's pid is %d\n", result2);
-        sleep_ms(100);
+        usleep(100 * 1000);
         waitpid(0, NULL, 0);
     }
 }

@@ -49,3 +49,7 @@ void abort() {
     do_syscall(0, HALT_SYSCALL);
     while(1) {printf("ERROR: abort() returned somehow!\n");}
 }
+
+int atoi(const char *nptr) {
+    return strtol(nptr, NULL, 10);
+}

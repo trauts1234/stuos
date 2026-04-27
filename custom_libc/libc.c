@@ -36,10 +36,3 @@ uint64_t get_uptime_ms() {
     do_syscall(&data, GET_UPTIME_MS_SYSCALL);
     return data.ms;
 }
-
-void sleep_ms(uint64_t ms){
-    uint64_t start = get_uptime_ms();
-    while (get_uptime_ms() - start <= ms){
-        __asm("nop");
-    }
-}

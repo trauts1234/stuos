@@ -122,6 +122,22 @@ int fputs(const char *s, FILE *stream) {
 
     return 0;//no-one actually specifies what this should return
 }
+int fgetc(FILE *stream) {
+    uint8_t buffer[1];
+    struct ReadFDData data = {
+        .file_descriptor_number = stream->file_descriptor_number,
+        .buffer = buffer,
+        .num_bytes = 1,
+        .num_bytes_actually_read = 0
+    };
+    do_syscall(&data, READ_FD_SYSCALL);
+
+    if(data.num_bytes_actually_read == 0) {
+        return EOF;
+    }
+    
+    return *buffer;
+}
 char *fgets(char *s, int size, FILE *stream) {
     if(size == 0) {
         *s = 0;

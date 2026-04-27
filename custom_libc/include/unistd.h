@@ -8,6 +8,8 @@
 #define STDOUT_FILENO 1
 #define STDERR_FILENO 2
 
+#define useconds_t unsigned int
+
 extern char **environ;
 
 pid_t fork();
@@ -40,5 +42,8 @@ int execvp(const char *file, char *const argv[]);
 int isatty(int fd);
 
 int pipe(int pipefd[2]);
+
+unsigned int sleep(unsigned int seconds);
+int usleep(useconds_t usec);
 
 #endif
