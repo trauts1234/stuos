@@ -105,8 +105,12 @@ static struct GdtTable gdt_table;
 static struct TssEntry tss_entry;
 static struct __attribute__((packed)) GdtTablePtr {uint16_t limit; void* base;} gdt_table_ptr = {.limit = sizeof(struct GdtTable) - 1, .base = &gdt_table};
 
+#define BIG_AMOUNT_OF_RAM (1ul << 38)
+
 //how much to add to physical addresses to get virtual addresses
 static uint64_t hhdm_offset;
+
+void *mmio_start;
 
 struct PageTableEntry *get_pml4_virt() {
     return (struct PageTableEntry*)(get_pml4_phys() + hhdm_offset);
@@ -196,14 +200,14 @@ void remove_virtual_addressing() {
 }
 
 static void leaf_callback_clone_page(void* virt, uint64_t phys) {
-    allocate_page(virt);
+    allocate_ram_page(virt);
     void* phys_hhdm = (void*)(phys + hhdm_offset);
     memcpy(virt, phys_hhdm, PAGE_SIZE);
 }
 
 static void table_entry_callback_do_nothing(uint64_t) {}
 
-uint64_t clone_memory(uint64_t original_root_phys) {
+uint64_t clone_virtual_addressing(uint64_t original_root_phys) {
     uint64_t result = generate_clean_virtual_addressing();
     set_pml4_phys(result);//temporarily use new virtual addressing to populate it
     walk_virtual_tree(original_root_phys, leaf_callback_clone_page, table_entry_callback_do_nothing);
@@ -246,7 +250,7 @@ static void fill_kernel_pml4() {
     }
 }
 
-void allocate_page(void* virtual_addr) {
+void map_page(uint64_t physical_addr, void* virtual_addr) {
     union PointerBitmap virt_addr_bitmap;
     virt_addr_bitmap.raw_ptr = virtual_addr;
 
@@ -282,10 +286,10 @@ void allocate_page(void* virtual_addr) {
         HCF
     }//virtual address already allocated!
 
-    uint64_t new_page_phys = malloc4k_phys();
+    if(physical_addr & 0xFFF) HCF
 
     my_pt->global = false;//when cr3 is overwritten, clear this from cache
-    my_pt->addr = new_page_phys >> 12;//shift by 12 as it is 4k aligned, so they should be zeroes anyways
+    my_pt->addr = physical_addr >> 12;//shift by 12 as it is 4k aligned, so they should be zeroes anyways
     my_pt->huge = 0;//4k page please
     my_pt->pcd = false;//don't disable caches
     my_pt->pwt = true;//some cache thing
@@ -296,7 +300,11 @@ void allocate_page(void* virtual_addr) {
 
     //refresh the cache
     invalidate_page(virtual_addr);
+}
 
+void allocate_ram_page(void* virtual_addr) {
+    uint64_t new_page_phys = malloc4k_phys();
+    map_page(new_page_phys, virtual_addr);
 }
 
 void deallocate_page(void* virtual_addr) {
@@ -390,25 +398,6 @@ static void init_tss_descriptor(struct TssDescriptor *desc, struct TssEntry *tss
 /// disables interrupts
 extern void apply_gdt_tss(struct GdtTablePtr* gdt_base);
 
-
-void setup_gdt_tss() {
-    memset(&tss_entry, 0, sizeof(struct TssEntry));
-    tss_entry.rsp0 = (uint64_t)interrupt_stack_top;
-    tss_entry.iomap_base = sizeof(struct TssEntry);
-
-    gdt_table.blank = 0;//first entry should be 0
-    gdt_table.kern_code = generate_gdt_entry(true, 0);
-    gdt_table.kern_data = generate_gdt_entry(false, 0);
-
-    gdt_table.user_code = generate_gdt_entry(true, 3);
-    gdt_table.user_data = generate_gdt_entry(false, 3);
-
-    init_tss_descriptor(&gdt_table.tss_descriptor, &tss_entry);
-    
-    apply_gdt_tss(&gdt_table_ptr);
-
-}
-
 void memory_init(volatile struct limine_memmap_response *memmap_response, uint64_t hhdm_ofs) {
     hhdm_offset = hhdm_ofs;
     original_kernel_page_table = (struct PageTableEntry*)(get_pml4_phys() + hhdm_offset);//cr3 is the physical address
@@ -429,7 +418,29 @@ void memory_init(volatile struct limine_memmap_response *memmap_response, uint64
     void* base_virt_hhdm = (void*)(result->base + hhdm_offset);
     init_physical_memory(result->base, base_virt_hhdm, result->length);
 
-    void* kheap_start = (void*)0xFFFFFF8000000000;//a few F's above higherhalf start, so hopefully above the HHDM but below the kernel_start
+    void* kheap_start = base_virt_hhdm + BIG_AMOUNT_OF_RAM;
+    mmio_start = kheap_start + BIG_AMOUNT_OF_RAM;
+    if(mmio_start + BIG_AMOUNT_OF_RAM >= (void*)0xffffffff80000000) {
+        //I have overflowed into kernel instruction space
+        HCF
+    }
+
     fill_kernel_pml4();//fill the original kernel page table with empty entries, so EVERYONE will share the kernel space
     kmalloc_init(kheap_start);
+
+    //set up GDT and TSS
+    memset(&tss_entry, 0, sizeof(struct TssEntry));
+    tss_entry.rsp0 = (uint64_t)interrupt_stack_top;
+    tss_entry.iomap_base = sizeof(struct TssEntry);
+
+    gdt_table.blank = 0;//first entry should be 0
+    gdt_table.kern_code = generate_gdt_entry(true, 0);
+    gdt_table.kern_data = generate_gdt_entry(false, 0);
+
+    gdt_table.user_code = generate_gdt_entry(true, 3);
+    gdt_table.user_data = generate_gdt_entry(false, 3);
+
+    init_tss_descriptor(&gdt_table.tss_descriptor, &tss_entry);
+    
+    apply_gdt_tss(&gdt_table_ptr);
 }

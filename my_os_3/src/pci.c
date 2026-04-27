@@ -169,6 +169,7 @@ void initialise_pci() {
 
                 struct BarInfo bar_list[6];
                 handle_bar(device, header, bar_list);
+                for(int i=0;i<6;i++) kprintf("%d: 0x%lX @ 0x%lX\n", i, bar_list[i].bar_size, bar_list[i].address);
 
                 if(header.vendor_id == 0x1AF4) {
                     //virtio device
