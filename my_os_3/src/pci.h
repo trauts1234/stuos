@@ -27,11 +27,13 @@ struct BarInfo {
     uint64_t bar_size;
     uint64_t address;
     // only if `!is_io_bar`
-    uint64_t virtual_address;
+    volatile void* virtual_address;
     //true if bar uses in/out - else uses memory mapped IO
     bool is_io_bar;
 };
 
 void initialise_pci();
+
+void read_bar(struct BarInfo bar, void* dest, uint64_t offset, uint64_t count);
 
 #endif
