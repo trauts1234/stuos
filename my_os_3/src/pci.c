@@ -157,7 +157,7 @@ static void handle_bar(struct PciDevice device, struct PciConfigurationHeader he
                     output_bar_list[bar_number + 1] = output_bar_list[bar_number] = (struct BarInfo) {
                         .bar_size = bar_size,
                         .address = address,
-                        .virtual_address = virtual_address,//TODO
+                        .virtual_address = virtual_address,
                         .is_io_bar = false,
                     };
 
