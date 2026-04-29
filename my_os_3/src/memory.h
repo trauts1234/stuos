@@ -7,6 +7,9 @@
 
 extern void *mmio_start;
 
+//how much to add to physical addresses to get virtual addresses
+extern uint64_t hhdm_offset;
+
 /// Sets up physical RAM, by allocating a region to track which pages are free
 ///
 /// Also Sets up archaic paginging things, and allows interrupts to work properly

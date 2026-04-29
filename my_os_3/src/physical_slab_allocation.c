@@ -15,12 +15,43 @@ uint64_t ram_size_bytes() {
 }
 
 uint64_t malloc4k_phys() {
-    size_t page_num;
-    for(page_num = 0;page_num < physical_memory_pages; page_num++) {
+    for(uint64_t page_num = 0;page_num < physical_memory_pages; page_num++) {
         if(slab_flags_base[page_num] == 0) {
             //free page
             slab_flags_base[page_num] = 1;//allocate it
             return physical_memory_base + page_num*PAGE_SIZE;
+        }
+    }
+    HCF
+    return 0;//out of memory
+}
+
+uint64_t malloc_contiguous_phys(uint64_t num_pages) {
+    uint64_t run_start = UINT64_MAX;
+    uint64_t run_length = 0;
+
+    for(uint64_t page_num = 0;page_num < physical_memory_pages; page_num++) {
+        if(slab_flags_base[page_num] == 0) {
+            //if this is the first of a contiguous chunk, start a run
+            if(run_start == UINT64_MAX) {
+                run_start = page_num;
+                run_length = 0;
+            }
+
+            run_length++;
+        } else {
+            run_length = 0;
+            run_start = UINT64_MAX;
+        }
+
+        //if I have a full run
+        if(run_length == num_pages) {
+            //found an adequete run, allocate it
+            for(uint64_t i=run_start; i<run_start+run_length; i++) {
+                slab_flags_base[i] = 1;
+            }
+
+            return physical_memory_base + run_start*PAGE_SIZE;
         }
     }
     HCF

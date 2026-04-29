@@ -108,7 +108,7 @@ static struct __attribute__((packed)) GdtTablePtr {uint16_t limit; void* base;} 
 #define BIG_AMOUNT_OF_RAM (1ul << 38)
 
 //how much to add to physical addresses to get virtual addresses
-static uint64_t hhdm_offset;
+uint64_t hhdm_offset;
 
 void *mmio_start;
 

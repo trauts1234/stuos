@@ -17,4 +17,7 @@ uint64_t malloc4k_phys();
 /// Marks a page free, using its physical address. Make sure to modify page tables too!
 void free4k_phys(uint64_t phys_addr);
 
+// like malloc4k_phys, but allocates contigously
+uint64_t malloc_contiguous_phys(uint64_t num_pages);
+
 #endif
