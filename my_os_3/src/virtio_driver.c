@@ -6,28 +6,6 @@
 #include "uapi/stdint.h"
 #include "virtio_driver.h"
 
-// struct BlockDeviceRegisters {
-//     uint64_t total_sector_count;
-//     uint32_t maximum_segment_size;
-//     uint32_t maximum_segment_count;
-//     uint16_t cylinder_count;
-//     uint8_t head_count;
-//     uint8_t sector_count;
-//     uint32_t block_length;
-// };
-
-struct VirtioCapabilitiesHeader {
-    uint8_t capability_id;
-    //0 for NULL
-    uint8_t next;
-    uint8_t capability_length;
-    uint8_t config_type;
-    uint8_t bar;
-    uint8_t padding[3];
-    uint32_t offset_in_bar;
-    uint32_t length_in_bar;
-};
-
 struct VQBuffer {
     uint64_t Address; // 64-bit address of the buffer on the guest machine.
     uint32_t Length;  // 32-bit length of the buffer.
@@ -40,43 +18,30 @@ struct VQRing {
     uint32_t len;
 };
 
+//u32, R
 #define DEVICE_FEATURES_OFF 0
+
+//u32, RW
 #define GUEST_FEATURES_OFF 4
+
+//u32, RW
 #define QUEUE_ADDRESS_OFF 8
+
+//u16, R
 #define QUEUE_SIZE_OFF 12
+
+//u16, RW
 #define QUEUE_SELECT_OFF 14
+
+//u32, RW
 #define QUEUE_NOTIFY_OFF 16
+
+//u8, RW
 #define DEVICE_STATUS_OFF 18
+enum {DEVICE_STATUS_ACKNOWLEDGE=1, DEVICE_STATUS_DRIVER=2, DEVICE_STATUS_DRIVER_OK=4, DEVICE_STATUS_FAILED=128};
+
+//u8, R
 #define ISR_STATUS_OFF 19
-
-// struct VirtioIORegisters {
-//     //R
-//     uint32_t device_features;
-//     //RW
-//     uint32_t guest_features;
-//     //RW
-//     uint32_t queue_address;
-//     //R
-//     uint16_t queue_size;
-//     //RW
-//     uint16_t queue_select;
-//     //RW
-//     uint32_t queue_notify;
-//     //RW
-//     uint8_t device_status;
-//     //R
-//     uint8_t isr_status;
-
-//     struct BlockDeviceRegisters {
-//         uint64_t total_sector_count;
-//         uint32_t maximum_segment_size;
-//         uint32_t maximum_segment_count;
-//         uint16_t cylinder_count;
-//         uint8_t head_count;
-//         uint8_t sector_count;
-//         uint32_t block_length;
-//     } block_device_regs;
-// };
 
 struct VirtioQueueMetadata {
     uint64_t queue_size;
@@ -94,13 +59,25 @@ struct VirtioQueueMetadata {
 };
 
 struct VirtioDevice {
-    enum VirtioDeviceType {VIRTIO_BLOCK_DEV} dev_type;
+    enum VirtioDeviceType {VIRTIO_NO_DEV=0,VIRTIO_BLOCK_DEV} dev_type;
     union {
         struct VirtioBlockDev {
             struct VirtioQueueMetadata queue;
         } block;
     } dev_data;
 };
+
+#define VIRTIO_MAX_DEVICES 10
+struct VirtioDevice installed_devices[VIRTIO_MAX_DEVICES] = {};
+
+//result.queue_size == 0 => null value
+static struct VirtioQueueMetadata initialise_queue(uint64_t bar_port, uint32_t queue_number) {
+    out16(bar_port + QUEUE_SELECT_OFF, queue_number);
+    uint16_t sz = in16(bar_port + QUEUE_SIZE_OFF);
+    if(sz == 0) return (struct VirtioQueueMetadata) {.queue_size=0};//return sentinel
+    kprintf("detected queue %d size %d\n", queue_number, sz);
+    HCF
+}
 
 void initialise_virtio(struct PciConfigurationHeader header, void* header_buffer, struct BarInfo bar_list[6]) {
     if(header.vendor_id != 0x1AF4) HCF
@@ -110,23 +87,34 @@ void initialise_virtio(struct PciConfigurationHeader header, void* header_buffer
     if(!bar_list[0].is_io_bar) HCF;
     uint64_t bar_port = bar_list[0].address;
 
+    //find a slot for the new device
+    struct VirtioDevice* new_device = NULL;
+    for(uint64_t i=0; i<VIRTIO_MAX_DEVICES; i++) {
+        if(installed_devices[i].dev_type == VIRTIO_NO_DEV) {
+            new_device = installed_devices + i;
+            break;
+        }
+    }
+    if(new_device == NULL) HCF
+
     //reset the device
     out8(bar_port + DEVICE_STATUS_OFF, 0);
     spin_wait();
+    uint8_t status = in8(bar_port + DEVICE_STATUS_OFF);
+    kprintf("after resetting virtio, status: 0x%X\n", status);
+    out8(bar_port + DEVICE_STATUS_OFF, DEVICE_STATUS_ACKNOWLEDGE | DEVICE_STATUS_DRIVER);
+    spin_wait();
+    status = in8(bar_port + DEVICE_STATUS_OFF);
+    kprintf("after acknowledging, status: 0x%X\n", status);
 
-    //print queues
-    for(uint32_t i=0; i<0xFFFF; i++) {
-        out16(bar_port + QUEUE_SELECT_OFF, i);
-        uint16_t sz = in16(bar_port + QUEUE_SIZE_OFF);
-        if(sz == 0) break;
-        kprintf("detected queue %d size %d\n", i, sz);
-
-        //TODO set queue address
-    }
 
     switch(header.subsystem_id) {
         case 2:
         //block device
+
+        //load first queue
+        struct VirtioQueueMetadata queue = initialise_queue(bar_port, 0);
+        if(queue.queue_size == 0) HCF//queue is invalid
 
         default:
         return;

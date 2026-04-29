@@ -200,8 +200,7 @@ void initialise_pci() {
 
                 struct BarInfo bar_list[6];
                 handle_bar(device, header, bar_list, &next_free_mmio);
-                kprintf("vendor id: %X device id: %X\n", header.vendor_id, header.device_id);
-                for(int i=0;i<6;i++) kprintf("%d: 0x%lX @ 0x%lX (virt %p)\n", i, bar_list[i].bar_size, bar_list[i].address, bar_list[i].virtual_address);
+                
                 if(header.vendor_id == 0x1AF4) {
                     //virtio device
                     initialise_virtio(header, header_buffer, bar_list);
