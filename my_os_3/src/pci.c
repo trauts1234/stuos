@@ -30,12 +30,12 @@ union ConfigAddress {
 };
 
 static uint32_t config_read(union ConfigAddress address) {
-    out_long(CONFIG_ADDRESS, address.data);
-    return in_long(CONFIG_DATA);
+    out32(CONFIG_ADDRESS, address.data);
+    return in32(CONFIG_DATA);
 }
 static void config_write(union ConfigAddress address, uint32_t value) {
-    out_long(CONFIG_ADDRESS, address.data);
-    out_long(CONFIG_DATA, value);
+    out32(CONFIG_ADDRESS, address.data);
+    out32(CONFIG_DATA, value);
 }
 
 // output_buffer must be 256 bytes writeable
@@ -171,7 +171,12 @@ static void handle_bar(struct PciDevice device, struct PciConfigurationHeader he
 
 void read_bar(struct BarInfo bar, void* dest, uint64_t offset, uint64_t count) {
     if(bar.is_io_bar) {
-        HCF
+        uint8_t* dest_u8 = dest;
+        for(uint64_t i=0; i<count; i++) {
+            if(bar.address + i > 0xFFFF) HCF
+            uint8_t val = in8(bar.address + i);
+            *dest_u8++ = val;
+        }
     } else {
         memcpy(dest, (const void*)bar.virtual_address + offset, count);//cast away volatile as it is a read?
     }
@@ -195,8 +200,8 @@ void initialise_pci() {
 
                 struct BarInfo bar_list[6];
                 handle_bar(device, header, bar_list, &next_free_mmio);
-                // for(int i=0;i<6;i++) kprintf("%d: 0x%lX @ 0x%lX\n", i, bar_list[i].bar_size, bar_list[i].address);
-
+                kprintf("vendor id: %X device id: %X\n", header.vendor_id, header.device_id);
+                for(int i=0;i<6;i++) kprintf("%d: 0x%lX @ 0x%lX (virt %p)\n", i, bar_list[i].bar_size, bar_list[i].address, bar_list[i].virtual_address);
                 if(header.vendor_id == 0x1AF4) {
                     //virtio device
                     initialise_virtio(header, header_buffer, bar_list);

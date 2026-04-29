@@ -121,20 +121,20 @@ union ControllerConfiguration {
 
 //IO COMMAND_PORT
 static union StatusRegister read_status_register() {
-    return (union StatusRegister) {.byte = in_byte(COMMAND_PORT)};
+    return (union StatusRegister) {.byte = in8(COMMAND_PORT)};
 }
 static void send_command(enum ControllerCommand command) {
     if(read_status_register().input_buffer_status) HCF
-    out_byte(COMMAND_PORT, command);
+    out8(COMMAND_PORT, command);
 }
 //IO DATA_PORT
 static uint8_t blocking_read_data() {
     while(!read_status_register().output_buffer_status);//wait for full buffer
-    return in_byte(DATA_PORT);
+    return in8(DATA_PORT);
 }
 static void blocking_write_data(uint8_t data) {
     while(read_status_register().input_buffer_status);// wait for empty buffer
-    out_byte(DATA_PORT, data);
+    out8(DATA_PORT, data);
 }
 
 static void send_byte_to_first_ps2(uint8_t data) {
