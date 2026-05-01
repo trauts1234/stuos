@@ -7,8 +7,8 @@
 
 extern void *mmio_start;
 
-//how much to add to physical addresses to get virtual addresses
-extern uint64_t hhdm_offset;
+//converts physical addresses to get virtual addresses
+void* phys_to_hhdm(uint64_t phys);
 
 /// Sets up physical RAM, by allocating a region to track which pages are free
 ///

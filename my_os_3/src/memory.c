@@ -108,12 +108,17 @@ static struct __attribute__((packed)) GdtTablePtr {uint16_t limit; void* base;} 
 #define BIG_AMOUNT_OF_RAM (1ul << 38)
 
 //how much to add to physical addresses to get virtual addresses
-uint64_t hhdm_offset;
+static uint64_t hhdm_offset;
 
 void *mmio_start;
 
+//TODO use this more
+void* phys_to_hhdm(uint64_t phys) {
+    return (void*)(phys + hhdm_offset);
+}
+
 struct PageTableEntry *get_pml4_virt() {
-    return (struct PageTableEntry*)(get_pml4_phys() + hhdm_offset);
+    return phys_to_hhdm(get_pml4_phys());
 }
 
 //gets the n'th child of parent - parent can't be a pt as that points to allocated memory, not a list of children
@@ -121,7 +126,7 @@ struct PageTableEntry *get_page_table_child(struct PageTableEntry* parent, int n
     uint64_t child_arr_phys = parent->addr << 12;
     if(!parent->present) HCF
     if(n < 0 || n >= 512) HCF
-    struct PageTableEntry* child_arr = (struct PageTableEntry*)(child_arr_phys + hhdm_offset);
+    struct PageTableEntry* child_arr = phys_to_hhdm(child_arr_phys);
 
     return child_arr + n;
 }
@@ -129,7 +134,7 @@ struct PageTableEntry *get_page_table_child(struct PageTableEntry* parent, int n
 uint64_t generate_clean_virtual_addressing() {
     //allocate memory for pml4 
     uint64_t pml4_phys = malloc4k_phys();
-    struct PageTableEntry* pml4_hhdm = (struct PageTableEntry*)(pml4_phys + hhdm_offset);
+    struct PageTableEntry* pml4_hhdm = phys_to_hhdm(pml4_phys);
 
     //copy the original kernel page table
     memcpy(pml4_hhdm, original_kernel_page_table, PAGE_SIZE);
@@ -144,7 +149,7 @@ uint64_t generate_clean_virtual_addressing() {
 
 //for each virtual page allocated, calls leaf_callback(virtual page start, physical location of page) then once each page at each level is exhausted, calls table_entry_callback(physical location of start of array)
 static void walk_virtual_tree(uint64_t page_table_phys, void (*leaf_callback)(void* virt, uint64_t phys), void (*table_entry_callback)(uint64_t table_start_phys)) {
-    struct PageTableEntry* pml4_table = (struct PageTableEntry*)(page_table_phys + hhdm_offset);
+    struct PageTableEntry* pml4_table = phys_to_hhdm(page_table_phys);
 
     for(int pml4_idx=0; pml4_idx < 256; pml4_idx++) {//up to 255 so no walking kernel pages
         struct PageTableEntry* pml4 = pml4_table + pml4_idx;
@@ -201,8 +206,7 @@ void remove_virtual_addressing() {
 
 static void leaf_callback_clone_page(void* virt, uint64_t phys) {
     allocate_ram_page(virt);
-    void* phys_hhdm = (void*)(phys + hhdm_offset);
-    memcpy(virt, phys_hhdm, PAGE_SIZE);
+    memcpy(virt, phys_to_hhdm(phys), PAGE_SIZE);
 }
 
 static void table_entry_callback_do_nothing(uint64_t) {}
@@ -219,7 +223,7 @@ static void setup_page_table_entry(struct PageTableEntry* parent) {
     if(parent->present) {HCF}//should only operate on parent with no child
 
     uint64_t new_entry_phys = malloc4k_phys();
-    struct PageTableEntry* new_entry_hhdm = (struct PageTableEntry*)(new_entry_phys + hhdm_offset);
+    struct PageTableEntry* new_entry_hhdm = phys_to_hhdm(new_entry_phys);
 
     for(int i=0; i<512; i++) {
         new_entry_hhdm[i].present = false;

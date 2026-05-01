@@ -3,6 +3,7 @@
 #include "kern_libc.h"
 #include "pci.h"
 #include "memory.h"
+#include "physical_slab_allocation.h"
 #include "uapi/stdint.h"
 #include "virtio_driver.h"
 
@@ -43,8 +44,9 @@ enum {DEVICE_STATUS_ACKNOWLEDGE=1, DEVICE_STATUS_DRIVER=2, DEVICE_STATUS_DRIVER_
 //u8, R
 #define ISR_STATUS_OFF 19
 
+//all the pointers are HHDM
 struct VirtioQueueMetadata {
-    uint64_t queue_size;
+    uint16_t queue_size;
     //HHDM pointer to the array of queue_size buffers
     struct VQBuffer *buffers_arr;
 
@@ -52,31 +54,172 @@ struct VirtioQueueMetadata {
     uint16_t *available_index;
     uint16_t *available_ring_arr;
 
+    //4096 byte alignment for the uint16
     uint16_t *used_flags;
     uint16_t *used_index;
     struct VQRing *used_ring_arr;
-    uint16_t *used_avail_event;// Only used if VIRTIO_F_EVENT_IDX was negotiated
+    // uint16_t *used_avail_event;// Only used if VIRTIO_F_EVENT_IDX was negotiated
 };
 
-struct VirtioDevice {
-    enum VirtioDeviceType {VIRTIO_NO_DEV=0,VIRTIO_BLOCK_DEV} dev_type;
-    union {
-        struct VirtioBlockDev {
-            struct VirtioQueueMetadata queue;
-        } block;
-    } dev_data;
+struct VirtioBlockDevice {
+    uint16_t bar_port;
+    struct VirtioQueueMetadata queue;
 };
 
-#define VIRTIO_MAX_DEVICES 10
-struct VirtioDevice installed_devices[VIRTIO_MAX_DEVICES] = {};
+struct __attribute__((packed)) BlockDevicePacket {
+    uint32_t Type;              // 0: Read; 1: Write; 4: Flush; 11: Discard; 13: Write zeroes
+    uint32_t Reserved;
+    uint64_t Sector; //get the (Sector*512)'th bytes of the drive
+    volatile uint8_t Data[BLOCK_DEVICE_READ_SIZE];             // Data's size must be a multiple of 512
+    volatile uint8_t Status;             // 0: OK; 1: Error; 2: Unsupported
+};
+
+static struct VirtioBlockDevice block_device = {};
 
 //result.queue_size == 0 => null value
 static struct VirtioQueueMetadata initialise_queue(uint64_t bar_port, uint32_t queue_number) {
     out16(bar_port + QUEUE_SELECT_OFF, queue_number);
     uint16_t sz = in16(bar_port + QUEUE_SIZE_OFF);
     if(sz == 0) return (struct VirtioQueueMetadata) {.queue_size=0};//return sentinel
-    kprintf("detected queue %d size %d\n", queue_number, sz);
-    HCF
+
+    //the size includes some unused fields
+    uint64_t first_part_size_bytes = sizeof(struct VQBuffer)*sz + 2 + 2 + 2*sz + 2;
+    uint64_t first_part_size_pages = round_up_pages(first_part_size_bytes);
+    uint64_t second_part_size_bytes = 2 + 2 + sizeof(struct VQRing)*sz + 2;
+    uint64_t second_part_size_pages = round_up_pages(second_part_size_bytes);
+    uint64_t total_pages = first_part_size_pages + second_part_size_pages;
+
+    //allocate and zero contiguous region
+    uint64_t first_part_phys = malloc_contiguous_phys(total_pages);
+    uint64_t second_part_phys = first_part_phys + PAGE_SIZE*first_part_size_pages;
+    memset(phys_to_hhdm(first_part_phys), 0, total_pages * PAGE_SIZE);
+
+    //tell the virtio device about the region
+    out32(bar_port + QUEUE_ADDRESS_OFF, first_part_phys/PAGE_SIZE);//write the page number
+    
+    struct VirtioQueueMetadata r;
+    r.queue_size = sz;
+    r.buffers_arr = phys_to_hhdm(first_part_phys);
+    r.available_flags = phys_to_hhdm(first_part_phys += (sizeof(struct VQBuffer) * sz));
+    r.available_index = phys_to_hhdm(first_part_phys += 2);
+    r.available_ring_arr = phys_to_hhdm(first_part_phys += 2);
+
+    r.used_flags = phys_to_hhdm(second_part_phys);
+    r.used_index = phys_to_hhdm(second_part_phys += 2);
+    r.used_ring_arr = phys_to_hhdm(second_part_phys += 2);
+
+    *r.available_flags = 1;//disable interrupts
+
+    return r;
+}
+
+enum {VQBufferFlagsWrite = 0b10, VQBufferFlagsNotLast = 0b1};// not including any of these flags means the opposite
+enum {VQTypeRead, VQTypeWrite};//this is to be read only or write only *for the deviec* - you must do the opposite
+
+void virtio_block_read(uint64_t sector_number, uint8_t output[BLOCK_DEVICE_READ_SIZE]) {
+    if(block_device.queue.queue_size == 0) HCF
+
+    uint64_t packet_phys = malloc4k_phys();
+
+    const uint8_t PLACEHOLDER_STATUS = 69;
+
+    struct BlockDevicePacket *packet_hhdm = phys_to_hhdm(packet_phys);
+    *packet_hhdm = (struct BlockDevicePacket) {
+        .Type = VQTypeRead,
+        .Reserved = 0,
+        .Sector = 0,
+        .Data = {},
+        .Status = PLACEHOLDER_STATUS
+    };
+
+    struct VirtioQueueMetadata md = block_device.queue;
+    md.buffers_arr[0] = (struct VQBuffer) {
+        .Address = packet_phys,
+        .Flags = VQBufferFlagsNotLast,//next is valid, read only (for the device)
+        .Next = 1,
+        .Length = 16
+    };
+    md.buffers_arr[1] = (struct VQBuffer) {
+        .Address = packet_phys + 16,
+        .Flags = VQBufferFlagsNotLast | VQBufferFlagsWrite,
+        .Next = 2,
+        .Length = sizeof(struct BlockDevicePacket) - 16 - 1
+    };
+    md.buffers_arr[2] = (struct VQBuffer) {
+        .Address = packet_phys + sizeof(struct BlockDevicePacket) - 1,
+        .Flags = VQBufferFlagsWrite,
+        .Next = 0,
+        .Length = 1,
+    };
+
+    uint16_t ring_slot = *md.available_index % md.queue_size;
+    md.available_ring_arr[ring_slot] = 0;//index into buffers_arr
+    (*md.available_index)++;
+
+    out32(block_device.bar_port + QUEUE_NOTIFY_OFF, 0);//write the buffer select number
+    
+    while (packet_hhdm->Status == PLACEHOLDER_STATUS) {
+        spin_wait();
+    }
+
+    if(packet_hhdm->Status != 0) HCF
+    memcpy(output, (const void*)packet_hhdm->Data, BLOCK_DEVICE_READ_SIZE);
+
+    //free the page again
+    free4k_phys(packet_phys);
+}
+
+void virtio_block_write(uint64_t sector_number, uint8_t input[BLOCK_DEVICE_READ_SIZE]) {
+    if(block_device.queue.queue_size == 0) HCF
+
+    uint64_t packet_phys = malloc4k_phys();
+
+    const uint8_t PLACEHOLDER_STATUS = 69;
+
+    struct BlockDevicePacket *packet_hhdm = phys_to_hhdm(packet_phys);
+    *packet_hhdm = (struct BlockDevicePacket) {
+        .Type = VQTypeWrite,//write
+        .Reserved = 0,
+        .Sector = 0,
+        .Data = {},
+        .Status = PLACEHOLDER_STATUS
+    };
+    memcpy((void*)packet_hhdm->Data, input, BLOCK_DEVICE_READ_SIZE);
+
+    struct VirtioQueueMetadata md = block_device.queue;
+    md.buffers_arr[0] = (struct VQBuffer) {
+        .Address = packet_phys,
+        .Flags = VQBufferFlagsNotLast,//next is valid, read only (for the device)
+        .Next = 1,
+        .Length = 16
+    };
+    md.buffers_arr[1] = (struct VQBuffer) {
+        .Address = packet_phys + 16,
+        .Flags = VQBufferFlagsNotLast,//next is valid, read only
+        .Next = 2,
+        .Length = sizeof(struct BlockDevicePacket) - 16 - 1
+    };
+    md.buffers_arr[2] = (struct VQBuffer) {
+        .Address = packet_phys + sizeof(struct BlockDevicePacket) - 1,
+        .Flags = VQBufferFlagsWrite,//write only
+        .Next = 0,
+        .Length = 1,
+    };
+
+    uint16_t ring_slot = *md.available_index % md.queue_size;
+    md.available_ring_arr[ring_slot] = 0;//index into buffers_arr
+    (*md.available_index)++;
+
+    out32(block_device.bar_port + QUEUE_NOTIFY_OFF, 0);//write the buffer select number
+    
+    while (packet_hhdm->Status == PLACEHOLDER_STATUS) {
+        spin_wait();
+    }
+
+    if(packet_hhdm->Status != 0) HCF
+
+    //free the page again
+    free4k_phys(packet_phys);
 }
 
 void initialise_virtio(struct PciConfigurationHeader header, void* header_buffer, struct BarInfo bar_list[6]) {
@@ -85,38 +228,47 @@ void initialise_virtio(struct PciConfigurationHeader header, void* header_buffer
     if(header.revision_id != 0) HCF
 
     if(!bar_list[0].is_io_bar) HCF;
-    uint64_t bar_port = bar_list[0].address;
 
-    //find a slot for the new device
-    struct VirtioDevice* new_device = NULL;
-    for(uint64_t i=0; i<VIRTIO_MAX_DEVICES; i++) {
-        if(installed_devices[i].dev_type == VIRTIO_NO_DEV) {
-            new_device = installed_devices + i;
-            break;
-        }
-    }
-    if(new_device == NULL) HCF
+    //check whether a drive has already been set up
+    if(block_device.queue.queue_size != 0) HCF
+
+    const uint16_t bar_port = bar_list[0].address;
 
     //reset the device
     out8(bar_port + DEVICE_STATUS_OFF, 0);
     spin_wait();
     uint8_t status = in8(bar_port + DEVICE_STATUS_OFF);
-    kprintf("after resetting virtio, status: 0x%X\n", status);
     out8(bar_port + DEVICE_STATUS_OFF, DEVICE_STATUS_ACKNOWLEDGE | DEVICE_STATUS_DRIVER);
     spin_wait();
     status = in8(bar_port + DEVICE_STATUS_OFF);
-    kprintf("after acknowledging, status: 0x%X\n", status);
 
 
     switch(header.subsystem_id) {
         case 2:
-        //block device
+        block_device.bar_port = bar_port;
 
         //load first queue
         struct VirtioQueueMetadata queue = initialise_queue(bar_port, 0);
         if(queue.queue_size == 0) HCF//queue is invalid
 
+        spin_wait();
+        status = in8(bar_port + DEVICE_STATUS_OFF);
+
+        block_device.queue = queue;
+
+        break;
+
         default:
         return;
     }
+
+    out8(bar_port + DEVICE_STATUS_OFF, DEVICE_STATUS_ACKNOWLEDGE | DEVICE_STATUS_DRIVER | DEVICE_STATUS_DRIVER_OK);
+    spin_wait();
+
+    // char data[512] = "this was written";
+    // virtio_block_write(0, (uint8_t*)data);
+    // char data2[512];
+    // virtio_block_read(0, (uint8_t*) data2);
+    // kprintf(data2);
+
 }

@@ -10,6 +10,10 @@ static uint64_t physical_memory_pages;
 /// HHDM address of a list of booleans marking whether a page is free (at index n, the n'th page of valid_physical_memory)
 static bool* slab_flags_base;
 
+uint64_t round_up_pages(uint64_t num_bytes) {
+    return (num_bytes + PAGE_SIZE-1)/PAGE_SIZE;
+}
+
 uint64_t ram_size_bytes() {
     return physical_memory_pages * PAGE_SIZE;
 }
@@ -69,7 +73,7 @@ void free4k_phys(uint64_t phys_addr) {
 
 void init_physical_memory(uint64_t base_phys, void* base_virt_hhdm, uint64_t mem_size_bytes) {
     uint64_t total_page_count = mem_size_bytes / PAGE_SIZE;
-    uint64_t pages_required_for_slab_flag_data = (total_page_count+PAGE_SIZE-1) / PAGE_SIZE;//1 byte of data for each 4k page (round up)
+    uint64_t pages_required_for_slab_flag_data = round_up_pages(total_page_count);//1 byte of data for each 4k page (round up)
 
     slab_flags_base = (bool*)base_virt_hhdm;//start of RAM is used for tracking which pages are used
     physical_memory_base = base_phys + pages_required_for_slab_flag_data * PAGE_SIZE;//start valid memory after all the memory used for slab flags

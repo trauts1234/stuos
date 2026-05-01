@@ -6,6 +6,8 @@
 static const size_t PAGE_SIZE = 4096;
 static const uint64_t PAGE_MASK = PAGE_SIZE-1;
 
+uint64_t round_up_pages(uint64_t num_bytes);
+
 /// Sets up pages by reserving memory to store whether physical pages are used
 void init_physical_memory(uint64_t base_phys, void* base_virt_hhdm, uint64_t mem_size_bytes);
 
