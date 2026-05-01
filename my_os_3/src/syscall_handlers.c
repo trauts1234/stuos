@@ -52,7 +52,7 @@ void syscall_request_page(struct RequsetPageData* data) {
         //higher half
         return;
     }
-    allocate_page(data->page_virt_addr);
+    allocate_ram_page(data->page_virt_addr);
 }
 
 void syscall_get_heap_start(struct GetHeapStartData* data) {
@@ -122,7 +122,7 @@ void syscall_close_fd(struct CloseFDData* data) {
 void syscall_fork(struct ForkData* data, struct ProcessorState* parent_state) {
     if(DEBUG_SYSCALLS) kprintf("%s: \n", __func__);
     uint64_t parent_page_table = get_pml4_phys();
-    uint64_t child_page_table = clone_memory(parent_page_table);
+    uint64_t child_page_table = clone_virtual_addressing(parent_page_table);
 
     struct LoadedProgram child = {
         .heap_start = get_current_heap_start(),

@@ -92,7 +92,7 @@ static void allocate_virtual_range(struct VirtualMemoryRegion* virtual_memory_tr
 
     //allocate the physical memory and make the virtual addresses that I just marked as free point to the memory
     for(void* page_ptr = page_start; page_ptr < page_end; page_ptr += PAGE_SIZE) {
-        allocate_page(page_ptr);//also zeroes the page
+        allocate_ram_page(page_ptr);//also zeroes the page
     }
 }
 

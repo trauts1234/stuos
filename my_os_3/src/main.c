@@ -98,7 +98,6 @@ void kmain(void) {
     display_init(framebuffer);
     initialise_ps2();
     memory_init(memmap_response, hhdm_offset);
-    setup_gdt_tss();
     setup_pic_pit_idt();
     ramfs_init();
     tarfs_init(file_response->address);

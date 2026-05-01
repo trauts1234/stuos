@@ -63,29 +63,29 @@ static void setup_pic() {
     const uint8_t CASCADE_IRQ = 2;
 
     // starts the initialization sequence (in cascade mode)
-    out_byte(PIC1_COMMAND, ICW1_INIT | ICW1_ICW4);
+    out8(PIC1_COMMAND, ICW1_INIT | ICW1_ICW4);
 	io_wait();
-	out_byte(PIC2_COMMAND, ICW1_INIT | ICW1_ICW4);
+	out8(PIC2_COMMAND, ICW1_INIT | ICW1_ICW4);
 	io_wait();
 
     //add an offset to all the PIC interrupt numbers, to make room for error interrupts (0 to 32)
-	out_byte(PIC1_DATA, PIC1_OFFSET);
+	out8(PIC1_DATA, PIC1_OFFSET);
 	io_wait();
-	out_byte(PIC2_DATA, PIC2_OFFSET);
+	out8(PIC2_DATA, PIC2_OFFSET);
 	io_wait();
-	out_byte(PIC1_DATA, 1 << CASCADE_IRQ);        // ICW3: tell Master PIC that there is a slave PIC at IRQ2
+	out8(PIC1_DATA, 1 << CASCADE_IRQ);        // ICW3: tell Master PIC that there is a slave PIC at IRQ2
 	io_wait();
-	out_byte(PIC2_DATA, 2);                       // ICW3: tell Slave PIC its cascade identity (0000 0010)
+	out8(PIC2_DATA, 2);                       // ICW3: tell Slave PIC its cascade identity (0000 0010)
 	io_wait();
 	
-	out_byte(PIC1_DATA, ICW4_8086);               // ICW4: have the PICs use 8086 mode (and not 8080 mode)
+	out8(PIC1_DATA, ICW4_8086);               // ICW4: have the PICs use 8086 mode (and not 8080 mode)
 	io_wait();
-	out_byte(PIC2_DATA, ICW4_8086);
+	out8(PIC2_DATA, ICW4_8086);
 	io_wait();
 
 	// Unmask both PICs.
-	out_byte(PIC1_DATA, 0);
-	out_byte(PIC2_DATA, 0);
+	out8(PIC1_DATA, 0);
+	out8(PIC2_DATA, 0);
 }
 
 static void setup_pit() {
@@ -94,10 +94,10 @@ static void setup_pit() {
 
     const uint16_t PIT_CMD = 0x43;
     const uint16_t PIT_CHANNEL0 = 0x40;
-    out_byte(PIT_CMD, 0x36); /* channel 0, access: lobyte/hibyte, mode 3 (square wave) */
+    out8(PIT_CMD, 0x36); /* channel 0, access: lobyte/hibyte, mode 3 (square wave) */
     io_wait();
-    out_byte(PIT_CHANNEL0, divisor & 0xFF);       /* low byte */
-    out_byte(PIT_CHANNEL0, (divisor >> 8) & 0xFF);/* high byte */
+    out8(PIT_CHANNEL0, divisor & 0xFF);       /* low byte */
+    out8(PIT_CHANNEL0, (divisor >> 8) & 0xFF);/* high byte */
 }
 
 static void setup_idt() {
@@ -118,10 +118,10 @@ void acknowledge_interrupt(uint8_t irq) {
     const uint8_t PIC_EOI = 0x20;//end of interrupt command
     if(irq >= 8) {
         //IRQ came from second chip
-        out_byte(PIC2_COMMAND, PIC_EOI);
+        out8(PIC2_COMMAND, PIC_EOI);
     }
     //need to send to master PIC either way
-    out_byte(PIC1_COMMAND, PIC_EOI);
+    out8(PIC1_COMMAND, PIC_EOI);
 }
 
 /// Handles interrupt 14
