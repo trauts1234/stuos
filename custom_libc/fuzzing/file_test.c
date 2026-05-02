@@ -7,12 +7,13 @@
 #include "tools.h"
 
 void file_test() {
-    char* rw_files[] = {"/ramfs/data.txt"};
+    char* rw_files[] = {"/ramfs/data.txt", "/dev/disk"};
     const uint64_t num_rw_files = 1;
     //these files should start with their data being equal to the filename
     char* r_files[] = {"/tarfs/data.txt"};
     const uint64_t num_r_files = 1;
 
+    printf("testing R\n");
     for(uint64_t i = 0; i<num_r_files; i++) {
         char* curr_f = r_files[i];
         uint64_t filename_len = strlen(curr_f);
@@ -23,7 +24,6 @@ void file_test() {
             uint64_t size = rand64() % filename_len;
             uint64_t expected_size = size > filename_len - off ? filename_len - off : size;
 
-            printf("total size: %ld, offset: %ld, size: %ld\n", filename_len, off, size);
 
             //jump to a random location
             fseek(fd, off, SEEK_SET);
@@ -33,7 +33,7 @@ void file_test() {
             uint64_t actual_size = fread(buf, sizeof(char), size, fd);
 
             if(actual_size != expected_size) {
-                printf("expected %ld bytes, read %ld", expected_size, actual_size);
+                printf("expected %lld bytes, read %lld", expected_size, actual_size);
                 abort();
             }
 
@@ -53,6 +53,7 @@ void file_test() {
     for(int i=0; i<4096; i++) {counting[i] = i;}
     uint16_t counting_output[4096];
 
+    printf("testing R/W\n");
     for(uint64_t i = 0; i<num_rw_files; i++) {
         char* curr_f = rw_files[i];
         FILE* fd = fopen(curr_f, "w");
@@ -60,7 +61,7 @@ void file_test() {
         uint8_t buf[2];
         uint64_t count = fread(buf, 1, 2, fd);
         if(count != 0) {
-            printf("read %ld bytes from an empty file", count);
+            printf("read %lld bytes from an empty file", count);
             abort();
         }
 

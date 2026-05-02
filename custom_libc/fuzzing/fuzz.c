@@ -20,7 +20,7 @@
 void sleep_uptime_test(uint64_t loops) {
     uint64_t prev = 0;
     for(uint64_t i=0; i<loops; i++) {
-        printf("on loop %llu\n", i);
+        // printf("on loop %llu\n", i);
         uint64_t delay = rand8();
         uint64_t start = get_uptime_ms();
         if(start < prev) {abort();}
@@ -50,7 +50,7 @@ void malloc_free_test(uint64_t loops) {
     size_t alloc_bytes = 0;
 
     for(uint64_t i=0;i<loops; i++) {
-        printf("on loop %llu, total allocated:%lu\n", i, alloc_bytes);
+        // printf("on loop %llu, total allocated:%lu\n", i, alloc_bytes);
         bool should_alloc = (rand64() & 0x7) == 0 && alloc_count < max_alloc_count;
         bool should_free = (rand64() & 0xf) == 0 && alloc_count > 0;
         bool should_free_zero = (rand64() & 0xff) == 0;

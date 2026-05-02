@@ -14,6 +14,7 @@
 #include "scheduling.h"
 #include "tty.h"
 #include "pci.h"
+#include "fs_dev.h"
 
 //assembly functions
 extern void loop_hlt();
@@ -101,6 +102,7 @@ void kmain(void) {
     setup_pic_pit_idt();
     ramfs_init();
     tarfs_init(file_response->address);
+    devfs_init();
     syscall_init();
     initialise_tty();
     initialise_pci();
