@@ -127,7 +127,7 @@ void virtio_block_read(uint64_t sector_number, uint8_t output[BLOCK_DEVICE_READ_
     *packet_hhdm = (struct BlockDevicePacket) {
         .Type = VQTypeRead,
         .Reserved = 0,
-        .Sector = 0,
+        .Sector = sector_number,
         .Data = {},
         .Status = PLACEHOLDER_STATUS
     };
@@ -180,7 +180,7 @@ void virtio_block_write(uint64_t sector_number, uint8_t input[BLOCK_DEVICE_READ_
     *packet_hhdm = (struct BlockDevicePacket) {
         .Type = VQTypeWrite,//write
         .Reserved = 0,
-        .Sector = 0,
+        .Sector = sector_number,
         .Data = {},
         .Status = PLACEHOLDER_STATUS
     };

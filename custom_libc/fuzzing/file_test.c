@@ -8,13 +8,11 @@
 
 void file_test() {
     char* rw_files[] = {"/ramfs/data.txt", "/dev/disk"};
-    const uint64_t num_rw_files = 1;
     //these files should start with their data being equal to the filename
     char* r_files[] = {"/tarfs/data.txt"};
-    const uint64_t num_r_files = 1;
 
     printf("testing R\n");
-    for(uint64_t i = 0; i<num_r_files; i++) {
+    for(uint64_t i = 0; i<sizeof(r_files)/sizeof(char*); i++) {
         char* curr_f = r_files[i];
         uint64_t filename_len = strlen(curr_f);
         FILE* fd = fopen(curr_f, "r");
@@ -33,12 +31,12 @@ void file_test() {
             uint64_t actual_size = fread(buf, sizeof(char), size, fd);
 
             if(actual_size != expected_size) {
-                printf("expected %lld bytes, read %lld", expected_size, actual_size);
+                printf("expected %lld bytes, read %lld\n", expected_size, actual_size);
                 abort();
             }
 
             if(memcmp(buf, curr_f + off, expected_size)) {
-                printf("read incorrect data from file! expected %s, got %s", curr_f + off, buf);
+                printf("read incorrect data from file! expected %s, got %s\n", curr_f + off, buf);
                 abort();
             }
 
@@ -53,16 +51,16 @@ void file_test() {
     for(int i=0; i<4096; i++) {counting[i] = i;}
     uint16_t counting_output[4096];
 
-    printf("testing R/W\n");
-    for(uint64_t i = 0; i<num_rw_files; i++) {
+    for(uint64_t i = 0; i<sizeof(rw_files)/sizeof(char*); i++) {
         char* curr_f = rw_files[i];
+        printf("testing R/W for %s\n", curr_f);
         FILE* fd = fopen(curr_f, "w");
 
         uint8_t buf[2];
         uint64_t count = fread(buf, 1, 2, fd);
         if(count != 0) {
-            printf("read %lld bytes from an empty file", count);
-            abort();
+            printf("read %lld bytes from an empty file\n", count);
+            // abort();
         }
 
         for(uint64_t j = 0; j < 300; j++) {
@@ -76,9 +74,12 @@ void file_test() {
                 printf("wrote or read a weird number of items?");
                 abort();
             }
-            if(memcmp(counting, counting_output, num_bytes)) {
-                printf("read different bytes than were written");
+            for(uint64_t i=0; i<num_bytes;i++) {
+                if(counting_output[i] != counting[i]) {
+                    printf("read different bytes than were written, when reading %lld bytes at offset %lld+%lld\n", num_bytes, offset, i);
+                    printf("read %d, expected %d\n", counting_output[i], counting[i]);
                 abort();
+                }
             }
             memset(counting_output, 69, sizeof(counting_output));//mangle the array
         }

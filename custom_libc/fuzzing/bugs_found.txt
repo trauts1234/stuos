@@ -11,3 +11,4 @@ When creating a new page table entry, I only cleared the first item, not all of 
 Forgot to add child of fork() operation to the queue to be executed
 Forgot to add syscall to syscall table
 PS2 keyboards fire an interrupt that wasn't being masked
+the offset in a virtio block device was set to 0, so all reads and writes overwrote the first 512 bytes of the disk
