@@ -127,12 +127,12 @@ static struct FopReadResult stdin_read(void* special_data, uint8_t* output_buf, 
 }
 static uint64_t file_write(void* special_data, const uint8_t* input_buf, uint64_t num) {
     struct OpenVnodeSpecialData* data = special_data;
-    return data->file.write_file(data->file.inode_number, data->offset, input_buf, num);
+    return data->file.write_file(data->file.id, data->offset, input_buf, num);
 }
 
 static struct FopReadResult file_read(void* special_data, uint8_t* output_buf, uint64_t num) {
     struct OpenVnodeSpecialData* data = special_data;
-    uint64_t bytes_read = data->file.read_file(data->file.inode_number, data->offset, output_buf, num);
+    uint64_t bytes_read = data->file.read_file(data->file.id, data->offset, output_buf, num);
 
     return (struct FopReadResult) {
         .read_something = true,

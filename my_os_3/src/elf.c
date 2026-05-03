@@ -157,7 +157,7 @@ struct LoadedProgram instantiate_ELF(struct VNode exe, char*const *argv) {
 
     //read the header from the file
     struct ElfFile header;
-    if(exe.read_file(exe.inode_number, 0, (uint8_t*)&header, sizeof(header)) != sizeof(header)) {HCF};
+    if(exe.read_file(exe.id, 0, (uint8_t*)&header, sizeof(header)) != sizeof(header)) {HCF};
 
     const uint8_t expected_magic[4] = {0x7f, 'E', 'L', 'F'};
     if(memcmp(header.file_header, expected_magic, 4)) {
@@ -215,7 +215,7 @@ struct LoadedProgram instantiate_ELF(struct VNode exe, char*const *argv) {
     //read the program headers from disk
     uint64_t headers_num_bytes = header.program_header_table_num_entries * header.program_header_table_entry_size;
     struct ElfProgramHeader* prog_headers = kmalloc(headers_num_bytes);
-    if(exe.read_file(exe.inode_number, header.program_header_table_offset, (uint8_t*)prog_headers, headers_num_bytes) != headers_num_bytes) {HCF}
+    if(exe.read_file(exe.id, header.program_header_table_offset, (uint8_t*)prog_headers, headers_num_bytes) != headers_num_bytes) {HCF}
 
     for(size_t i=0; i<header.program_header_table_num_entries; i++) {
         const struct ElfProgramHeader curr_header = prog_headers[i];//get the i'th program header
@@ -236,7 +236,7 @@ struct LoadedProgram instantiate_ELF(struct VNode exe, char*const *argv) {
         void* page_alloc_end = (void*)((curr_header.p_vaddr + curr_header.p_memsz + PAGE_SIZE-1) & ~PAGE_MASK);//round page up to find which is the first free page after the allocated region
         allocate_virtual_range(virtual_memory_tracker_head, page_alloc_start, page_alloc_end);
 
-        exe.read_file(exe.inode_number, curr_header.p_offset, (uint8_t*)curr_header.p_vaddr, curr_header.p_filesz);//copy data from file
+        exe.read_file(exe.id, curr_header.p_offset, (uint8_t*)curr_header.p_vaddr, curr_header.p_filesz);//copy data from file
     }
     kfree(prog_headers);
 

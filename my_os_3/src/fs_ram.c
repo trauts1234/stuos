@@ -34,14 +34,17 @@ struct RamFsInode {
 }; 
 
 //declare functions so that I can use them when generating vnodes
-int ramfs_directory_lookup(uint64_t directory, const char* name, struct VNode* out);
-uint64_t ramfs_write_file(uint64_t file, uint64_t offset, const uint8_t* in, uint64_t num_bytes);
-uint64_t ramfs_read_file(uint64_t file, uint64_t offset, uint8_t* out, uint64_t num_bytes);
-int ramfs_create_inode(uint64_t parent, enum VNodeType new_inode_type, const char* name, struct VNode* out);
+int ramfs_directory_lookup(struct VNodeId directory, const char* name, struct VNode* out);
+uint64_t ramfs_write_file(struct VNodeId file, uint64_t offset, const uint8_t* in, uint64_t num_bytes);
+uint64_t ramfs_read_file(struct VNodeId file, uint64_t offset, uint8_t* out, uint64_t num_bytes);
+int ramfs_create_inode(struct VNodeId parent, enum VNodeType new_inode_type, const char* name, struct VNode* out);
 
 static struct VNode ramfs_generate_vnode(uint64_t inode_number, enum VNodeType inode_type) {
     return (struct VNode) {
-        .inode_number=inode_number,
+        .id = {
+            .inode_number=inode_number,
+            .mount_id = 0,
+        },
         .inode_type=inode_type,
         .directory_lookup=ramfs_directory_lookup,
         .write_file=ramfs_write_file,
@@ -99,8 +102,8 @@ void ramfs_init() {
 // and setup pipes_and_files to handle this IO for a userland process (syscall for setting up fd and writing etc.)
 /// maybe port my compiler to my OS?
 
-int ramfs_directory_lookup(uint64_t directory, const char* name, struct VNode* out){
-    const struct RamFsDir* directory_inode = get_directory_from_vnode(directory);
+int ramfs_directory_lookup(struct VNodeId directory, const char* name, struct VNode* out){
+    const struct RamFsDir* directory_inode = get_directory_from_vnode(directory.inode_number);
 
     for(uint64_t child_num = 0; child_num < directory_inode->num_children; child_num++) {
         uint64_t curr_child_inode_number = directory_inode->children_inode_numbers[child_num];
@@ -117,8 +120,8 @@ int ramfs_directory_lookup(uint64_t directory, const char* name, struct VNode* o
     return -1;
 }
 
-uint64_t ramfs_write_file(uint64_t file, uint64_t offset, const uint8_t* in, uint64_t num_bytes) {
-    struct RamFsFile* file_ptr = get_file_from_vnode(file);
+uint64_t ramfs_write_file(struct VNodeId file, uint64_t offset, const uint8_t* in, uint64_t num_bytes) {
+    struct RamFsFile* file_ptr = get_file_from_vnode(file.inode_number);
 
     if(offset + num_bytes > file_ptr->file_size_bytes) {
         //writing past the end of the file, so reallocate
@@ -141,8 +144,8 @@ uint64_t ramfs_write_file(uint64_t file, uint64_t offset, const uint8_t* in, uin
     return num_bytes;
 }
 
-uint64_t ramfs_read_file(uint64_t file, uint64_t offset, uint8_t* out, uint64_t num_bytes) {
-    const struct RamFsFile* file_ptr = get_file_from_vnode(file);
+uint64_t ramfs_read_file(struct VNodeId file, uint64_t offset, uint8_t* out, uint64_t num_bytes) {
+    const struct RamFsFile* file_ptr = get_file_from_vnode(file.inode_number);
     //return early if offset is bad
     if(offset >= file_ptr->file_size_bytes) {return 0;}
     //cap at the end of the file
@@ -152,8 +155,8 @@ uint64_t ramfs_read_file(uint64_t file, uint64_t offset, uint8_t* out, uint64_t 
     return num_bytes;
 }
 
-int ramfs_create_inode(uint64_t parent, enum VNodeType new_inode_type, const char* name, struct VNode* out) {
-    struct RamFsDir* parent_dir = get_directory_from_vnode(parent);
+int ramfs_create_inode(struct VNodeId parent, enum VNodeType new_inode_type, const char* name, struct VNode* out) {
+    struct RamFsDir* parent_dir = get_directory_from_vnode(parent.inode_number);
 
     uint64_t new_parent_children_count = parent_dir->num_children + 1;
     uint64_t* new_parent_array = kmalloc(8 * new_parent_children_count);
@@ -171,7 +174,7 @@ int ramfs_create_inode(uint64_t parent, enum VNodeType new_inode_type, const cha
     *new_inode = (struct RamFsInode) {
         .name=cloned_name,
         .inode_number=inode_number,
-        .parent_inode_number=parent,
+        .parent_inode_number=parent.inode_number,
         .type=new_inode_type
     };
     new_parent_array[parent_dir->num_children] = inode_number;

@@ -4,8 +4,10 @@
 #include "kern_libc.h"
 #include "virtio_driver.h"
 
-uint64_t write_file(uint64_t inode_num, uint64_t offset, const uint8_t* input_buf, uint64_t num_bytes) {
-    switch (inode_num) {
+uint64_t write_file(struct VNodeId inode_num, uint64_t offset, const uint8_t* input_buf, uint64_t num_bytes) {
+    if(inode_num.inode_number != 0) HCF
+
+    switch (inode_num.mount_id) {
     case 0:
     const uint64_t offset_in_first_sector = offset % BLOCK_DEVICE_READ_SIZE;
     const uint64_t first_sector_number = offset / BLOCK_DEVICE_READ_SIZE;
@@ -35,8 +37,10 @@ uint64_t write_file(uint64_t inode_num, uint64_t offset, const uint8_t* input_bu
     }
 }
 
-uint64_t read_file(uint64_t inode_num, uint64_t offset, uint8_t* output_buf, uint64_t num_bytes) {
-    switch (inode_num) {
+uint64_t read_file(struct VNodeId inode_num, uint64_t offset, uint8_t* output_buf, uint64_t num_bytes) {
+    if(inode_num.inode_number != 0) HCF
+
+    switch (inode_num.mount_id) {
     case 0:
     const uint64_t offset_in_first_sector = offset % BLOCK_DEVICE_READ_SIZE;
     const uint64_t first_sector_number = offset / BLOCK_DEVICE_READ_SIZE;
@@ -68,7 +72,10 @@ static const char* device_names[] = {"disk"};
 
 static const struct VNode device_vnodes[] = {
     (struct VNode){
-        .inode_number=0,
+        .id = {
+            .inode_number=0,
+            .mount_id=0,
+        },
         .inode_type=VNODE_FILE,
         .directory_lookup = 0,
         .write_file = write_file,
@@ -79,8 +86,8 @@ static const struct VNode device_vnodes[] = {
 
 #define DEV_ROOT_DIR_INODE_NUM 10000
 
-static int directory_lookup(uint64_t dir_inode_num, const char* name, struct VNode* out) {
-    if(dir_inode_num != DEV_ROOT_DIR_INODE_NUM) HCF
+static int directory_lookup(struct VNodeId dir_inode_num, const char* name, struct VNode* out) {
+    if(dir_inode_num.inode_number != 0 || dir_inode_num.mount_id != 0) HCF
     for(uint64_t i=0; i<sizeof(device_names)/sizeof(char*); i++) {
         if(strcmp(name, device_names[i])) continue;
         *out = device_vnodes[i];
@@ -93,7 +100,10 @@ void devfs_init() {
     vfs_add_mount(
         "dev",
         (struct VNode) {
-            .inode_number = DEV_ROOT_DIR_INODE_NUM,
+            .id = {
+                .inode_number = 0,
+                .mount_id = 0,
+            },
             .inode_type = VNODE_DIR,
             .directory_lookup = directory_lookup,
             .write_file = 0,

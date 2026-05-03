@@ -116,13 +116,15 @@ static uint64_t find_free_inode_number() {
 }
 
 //forward declare the fs functions
-int tarfs_directory_lookup(uint64_t directory, const char* name, struct VNode* out);
-uint64_t tarfs_read_file(uint64_t file, uint64_t offset, uint8_t* out, uint64_t num_bytes);
-int tarfs_create_inode(uint64_t parent, enum VNodeType new_inode_type, const char* name, struct VNode* out);
+int tarfs_directory_lookup(struct VNodeId directory, const char* name, struct VNode* out);
+uint64_t tarfs_read_file(struct VNodeId file, uint64_t offset, uint8_t* out, uint64_t num_bytes);
+int tarfs_create_inode(struct VNodeId parent, enum VNodeType new_inode_type, const char* name, struct VNode* out);
 
 static struct VNode tarfs_generate_vnode(uint64_t inode_number, enum VNodeType inode_type) {
     return (struct VNode) {
-        .inode_number = inode_number,
+        .id = {
+            .inode_number = inode_number,
+        },
         .inode_type = inode_type,
         .directory_lookup = tarfs_directory_lookup,
         .write_file = NULL,//can't do this
@@ -131,8 +133,8 @@ static struct VNode tarfs_generate_vnode(uint64_t inode_number, enum VNodeType i
     };
 }
 
-int tarfs_directory_lookup(uint64_t directory, const char* name, struct VNode* out) {
-    struct TarFsDir* dir = get_directory_from_vnode(directory);
+int tarfs_directory_lookup(struct VNodeId directory, const char* name, struct VNode* out) {
+    struct TarFsDir* dir = get_directory_from_vnode(directory.inode_number);
     for(uint64_t index = 0; index < dir->num_children; index++) {
         uint64_t inode_number = dir->children_inode_numbers[index];
         if(inode_number > TARFS_MAX_FILES) {HCF}
@@ -144,8 +146,8 @@ int tarfs_directory_lookup(uint64_t directory, const char* name, struct VNode* o
     }
     return -1;
 }
-uint64_t tarfs_read_file(uint64_t file, uint64_t offset, uint8_t* out, uint64_t num_bytes) {
-    const struct TarFsFile* file_ptr = get_file_from_vnode(file);
+uint64_t tarfs_read_file(struct VNodeId file, uint64_t offset, uint8_t* out, uint64_t num_bytes) {
+    const struct TarFsFile* file_ptr = get_file_from_vnode(file.inode_number);
     //return early if offset is bad
     if(offset >= file_ptr->file_size_bytes) {return 0;}
     //cap at the end of the file
@@ -154,8 +156,8 @@ uint64_t tarfs_read_file(uint64_t file, uint64_t offset, uint8_t* out, uint64_t 
     memcpy(out, file_ptr->file_bytes + offset, num_bytes);
     return num_bytes;
 }
-int tarfs_create_inode(uint64_t parent, enum VNodeType new_inode_type, const char* name, struct VNode* out) {
-    struct TarFsDir* parent_dir = get_directory_from_vnode(parent);
+int tarfs_create_inode(struct VNodeId parent, enum VNodeType new_inode_type, const char* name, struct VNode* out) {
+    struct TarFsDir* parent_dir = get_directory_from_vnode(parent.inode_number);
 
     uint64_t new_parent_children_count = parent_dir->num_children + 1;
     uint64_t* new_parent_array = kmalloc(8 * new_parent_children_count);
@@ -174,7 +176,7 @@ int tarfs_create_inode(uint64_t parent, enum VNodeType new_inode_type, const cha
     inode_lookup_table[inode_number] = (struct TarFsInode) {
         .name=cloned_name,
         .inode_number=inode_number,
-        .parent_inode_number=parent,
+        .parent_inode_number=parent.inode_number,
         .type=new_inode_type
     };
     *out = tarfs_generate_vnode(inode_number, new_inode_type);
@@ -202,8 +204,8 @@ static void create_path_and_file(char* path, void* data_location, uint64_t data_
             if(*next_segment == '\0') {
                 next_segment = NULL;
                 struct VNode result;
-                tarfs_create_inode(curr_inode.inode_number, VNODE_FILE, curr_segment, &result);
-                inode_lookup_table[result.inode_number].file_info = (struct TarFsFile) {.file_bytes = data_location, .file_size_bytes=data_size};
+                tarfs_create_inode(curr_inode.id, VNODE_FILE, curr_segment, &result);
+                inode_lookup_table[result.id.inode_number].file_info = (struct TarFsFile) {.file_bytes = data_location, .file_size_bytes=data_size};
                 kfree(path_copy);
                 return;//found end
             }
@@ -213,9 +215,9 @@ static void create_path_and_file(char* path, void* data_location, uint64_t data_
         *next_segment++ = '\0';//mark end of curr, and step to start of next segment
 
         struct VNode result;
-        if(tarfs_directory_lookup(curr_inode.inode_number, curr_segment, &result) == -1) {
+        if(tarfs_directory_lookup(curr_inode.id, curr_segment, &result) == -1) {
             //folder not found, create
-            tarfs_create_inode(curr_inode.inode_number, VNODE_DIR, curr_segment, &result);
+            tarfs_create_inode(curr_inode.id, VNODE_DIR, curr_segment, &result);
         }
 
         curr_inode = result;//walk to the child that was created

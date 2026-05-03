@@ -29,8 +29,8 @@ static uint64_t path_segment_len(const char* path) {
 }
 
 //scan for mount points that match a directory name
-static int vfs_root_dir_lookup(uint64_t dir_inode_num, const char* name, struct VNode* out) {
-    if(dir_inode_num != ROOT_INODE_NUM) HCF
+static int vfs_root_dir_lookup(struct VNodeId dir_inode_num, const char* name, struct VNode* out) {
+    if(dir_inode_num.inode_number != ROOT_INODE_NUM || dir_inode_num.mount_id != 0) HCF
 
     for (uint64_t mount_idx = 0; mount_idx < MAX_MOUNTS && filesystem_mount_points[mount_idx].mount_name;mount_idx++) {
         if(strcmp(name, filesystem_mount_points[mount_idx].mount_name) == 0) {
@@ -42,13 +42,16 @@ static int vfs_root_dir_lookup(uint64_t dir_inode_num, const char* name, struct 
     return -1;
 }
 //fail to do the following as I can only handle mount points
-static uint64_t fail_write_file(uint64_t, uint64_t, const uint8_t*, uint64_t) { HCF }
-static uint64_t fail_read_file(uint64_t, uint64_t, uint8_t*, uint64_t) { HCF }
-int fail_create_inode(uint64_t, enum VNodeType, const char*, struct VNode*) { HCF }
+static uint64_t fail_write_file(struct VNodeId, uint64_t, const uint8_t*, uint64_t) { HCF }
+static uint64_t fail_read_file(struct VNodeId, uint64_t, uint8_t*, uint64_t) { HCF }
+int fail_create_inode(struct VNodeId, enum VNodeType, const char*, struct VNode*) { HCF }
 
 struct VNode vfs_get_root() {
     return (struct VNode) {
-        .inode_number = ROOT_INODE_NUM,
+        .id = {
+            .inode_number = ROOT_INODE_NUM,
+            .mount_id = 0
+        },
         .inode_type = VNODE_DIR,
         .directory_lookup = vfs_root_dir_lookup,
         .write_file = fail_write_file,
@@ -88,7 +91,7 @@ static enum StepPathResult step_path2(struct VNode* current, const char** path_s
     segment_cpy[segment_len] = '\0';
 
     struct VNode result;
-    int status = current->directory_lookup(current->inode_number, segment_cpy, &result);
+    int status = current->directory_lookup(current->id, segment_cpy, &result);
     kfree(segment_cpy);
 
     bool must_be_folder;
@@ -162,7 +165,7 @@ struct VNode vfs_get(const char* cwd_path, const char* path, int open_flags) {
             if(open_flags & O_CREAT) {
                 if (open_flags & O_DIRECTORY) HCF
                 //since not a dir, the last bit of the `path` is a valid string that I can pass
-                location.create_inode(location.inode_number, VNODE_FILE, path, &location);
+                location.create_inode(location.id, VNODE_FILE, path, &location);
                 path = NULL;//to quit loop
                 break;
             }
@@ -186,10 +189,4 @@ struct VNode vfs_get(const char* cwd_path, const char* path, int open_flags) {
     }
 
     return location;
-}
-
-struct VNode make_null_vnode() {
-    return (struct VNode) {
-        .inode_number = (uint64_t)-1
-    };
 }
