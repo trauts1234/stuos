@@ -15,6 +15,7 @@
 #include "tty.h"
 #include "pci.h"
 #include "fs_dev.h"
+#include "fat.h"
 
 //assembly functions
 extern void loop_hlt();
@@ -106,6 +107,7 @@ void kmain(void) {
     syscall_init();
     initialise_tty();
     initialise_pci();
+    mount_fat16(vfs_get("/", "/dev/disk", 0), "fat");
 
     struct VNode fuzz = vfs_get("/", "/tarfs/shell.out", 0);
     const struct LoadedProgram elf = instantiate_ELF(fuzz, (char*[]){"shell.out", NULL});
