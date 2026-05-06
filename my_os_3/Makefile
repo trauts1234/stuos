@@ -18,9 +18,6 @@ OBJ_DIR := $(BUILD_DIR)/obj
 OBJS := $(C_SRCS:$(SRC_DIR)/%.c=$(OBJ_DIR)/%.o)  $(ASM_SRCS:$(SRC_DIR)/%.asm=$(OBJ_DIR)/%.o)
 MALLOC_ARCHIVE := ../malloc_my_os_3/target/x86_64-unknown-none/debug/libmalloc_my_os_3.a
 
-INCLUDED_BINARIES_PATH := ./included_binaries
-INCL_BINS := $(shell find $(INCLUDED_BINARIES_PATH) -type f)#find all binaries to be bundled with the OS
-
 LIMINE_FOLDER = ./limine
 OUTPUT = ../stuos_image.iso
 
@@ -42,16 +39,12 @@ $(OUTPUT): $(OS_ROOTDIR)/built.stamp
 
 # making the filesystem requires the project to have been compiled and limine to be installed
 #use a .stamp file as directory timestamps are useless in linux
-$(OS_ROOTDIR)/built.stamp: $(OS_BINARY) $(OS_ROOTDIR)/boot/binaries.tar
-	touch $(OS_ROOTDIR)/built.stamp
+$(OS_ROOTDIR)/built.stamp: $(OS_BINARY) 
 	mkdir -p $(OS_ROOTDIR)/boot/limine $(OS_ROOTDIR)/EFI/BOOT
+	touch $(OS_ROOTDIR)/built.stamp
 	cp $(LIMINE_CONFIG) $(LIMINE_FOLDER)/limine-bios.sys $(LIMINE_FOLDER)/limine-bios-cd.bin $(LIMINE_FOLDER)/limine-uefi-cd.bin $(OS_ROOTDIR)/boot/limine/
 	cp $(LIMINE_FOLDER)/BOOTX64.EFI $(LIMINE_FOLDER)/BOOTIA32.EFI $(OS_ROOTDIR)/EFI/BOOT
 	cp $< $(OS_ROOTDIR)/boot
-
-$(OS_ROOTDIR)/boot/binaries.tar: $(INCL_BINS)
-	@mkdir -p $(dir $@)
-	tar --format=ustar --owner=0 --group=0 -C $(INCLUDED_BINARIES_PATH) -cf $@ $(patsubst $(INCLUDED_BINARIES_PATH)/%,%,$(INCL_BINS))
 
 # linking the os requires the .o files and the malloc library
 $(OS_BINARY): $(OBJS) $(MALLOC_ARCHIVE)

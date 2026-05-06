@@ -43,12 +43,6 @@ static volatile struct limine_framebuffer_request framebuffer_request = {
 };
 
 __attribute__((used, section(".limine_requests")))
-static volatile struct limine_module_request filesystem_request = {
-    .id = LIMINE_MODULE_REQUEST,
-    .revision = LIMINE_API_REVISION,
-};
-
-__attribute__((used, section(".limine_requests")))
 static volatile struct limine_memmap_request memmap_request =  {
     .id = LIMINE_MEMMAP_REQUEST,
     .revision = LIMINE_API_REVISION,
@@ -78,7 +72,6 @@ void kmain(void) {
     // Ensure we got a framebuffer and a filesystem
     if (framebuffer_request.response == NULL
      || framebuffer_request.response->framebuffer_count < 1
-     || filesystem_request.response == NULL
      || memmap_request.response == NULL
      || hhdm_request.response == NULL) {
         HCF
@@ -86,7 +79,6 @@ void kmain(void) {
 
     // Fetch the first framebuffer.
     volatile struct limine_framebuffer *framebuffer = framebuffer_request.response->framebuffers[0];
-    volatile struct limine_file *file_response = filesystem_request.response->modules[0];
     volatile struct limine_memmap_response *memmap_response = memmap_request.response;
     uint64_t hhdm_offset = hhdm_request.response->offset;
     
@@ -103,19 +95,13 @@ void kmain(void) {
     memory_init(memmap_response, hhdm_offset);
     setup_pic_pit_idt();
     ramfs_init();
-    tarfs_init(file_response->address);
     devfs_init();
     syscall_init();
     initialise_tty();
     initialise_pci();
     mount_fat16(vfs_get("/", "/dev/disk", 0), "fat");
 
-    struct VNode test = vfs_get("/", "/fat/.test", 0);
-    char buf[100] = {};
-    test.read_file(test.id, 0, (uint8_t*)buf, 99);
-    kprintf("%s", buf);
-
-    struct VNode fuzz = vfs_get("/", "/tarfs/shell.out", 0);
+    struct VNode fuzz = vfs_get("/", "/fat/shell.out", 0);
     const struct LoadedProgram elf = instantiate_ELF(fuzz, (char*[]){"shell.out", NULL});
 
     add_new_process(elf);

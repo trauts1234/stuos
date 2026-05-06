@@ -20,7 +20,7 @@ $(OTHER_OUT): other.c
 	$(CC) $(CFLAGS) $(LDFLAGS) $< $(LIBC) -o $@
 
 $(TESTING_OUT): $(OBJS)
-	@ mountpoint -q filesystem_mnt/
+	@ mountpoint -q $(OUTPUT_DIR)
 	$(LD) $(LDFLAGS) -o $@ $^ $(LIBC)
 
 %.o: %.c
