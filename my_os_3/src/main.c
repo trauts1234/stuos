@@ -1,3 +1,4 @@
+#include "kern_libc.h"
 #include "uapi/stdint.h"
 #include <stddef.h>
 #include <stdbool.h>
@@ -108,6 +109,11 @@ void kmain(void) {
     initialise_tty();
     initialise_pci();
     mount_fat16(vfs_get("/", "/dev/disk", 0), "fat");
+
+    struct VNode test = vfs_get("/", "/fat/.test", 0);
+    char buf[100] = {};
+    test.read_file(test.id, 0, (uint8_t*)buf, 99);
+    kprintf("%s", buf);
 
     struct VNode fuzz = vfs_get("/", "/tarfs/shell.out", 0);
     const struct LoadedProgram elf = instantiate_ELF(fuzz, (char*[]){"shell.out", NULL});

@@ -10,7 +10,7 @@ LDFLAGS = -nostdlib
 SRCS = fuzz.c $(wildcard *_test.c)
 OBJS := $(SRCS:.c=.o)
 
-OUTPUT_DIR = ../../my_os_3/included_binaries
+OUTPUT_DIR = ../../filesystem_mnt
 TESTING_OUT = $(OUTPUT_DIR)/testing.out
 OTHER_OUT = $(OUTPUT_DIR)/other.out
 
@@ -20,6 +20,7 @@ $(OTHER_OUT): other.c
 	$(CC) $(CFLAGS) $(LDFLAGS) $< $(LIBC) -o $@
 
 $(TESTING_OUT): $(OBJS)
+	@ mountpoint -q filesystem_mnt/
 	$(LD) $(LDFLAGS) -o $@ $^ $(LIBC)
 
 %.o: %.c

@@ -7,9 +7,9 @@
 #include "tools.h"
 
 void file_test() {
-    char* rw_files[] = {"/ramfs/data.txt", "/dev/disk"};
+    char* rw_files[] = {"/ramfs/data.txt"};
     //these files should start with their data being equal to the filename
-    char* r_files[] = {"/tarfs/data.txt"};
+    char* r_files[] = {"/fat/data.txt"};
 
     printf("testing R\n");
     for(uint64_t i = 0; i<sizeof(r_files)/sizeof(char*); i++) {
@@ -88,14 +88,14 @@ void file_test() {
     }
 
     char buf[100];
-    chdir("/tarfs");
+    chdir("/fat");
     getcwd(buf, 100);
-    assert(strcmp(buf, "/tarfs") == 0);
+    assert(strcmp(buf, "/fat") == 0);
 
     FILE* with_cwd = fopen("data.txt", "");
     if(with_cwd == NULL) printf("file is null");
     fread(buf, sizeof(char), 100, with_cwd);
-    if(strcmp(buf, "/tarfs/data.txt")) {
+    if(strcmp(buf, "/fat/data.txt")) {
         printf("read incorrect data: %s", buf);
         abort();
     }

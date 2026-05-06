@@ -2,7 +2,6 @@
 #include "fs.h"
 #include "uapi/stdint.h"
 #include "kern_libc.h"
-#include <string.h>
 
 struct __attribute__((packed)) Fat16Header {
     //The first three bytes EB 3C 90 disassemble to JMP SHORT 3C NOP. (The 3C value may be different.)
@@ -136,41 +135,51 @@ struct Fat16Volume {
 } all_fat_mounts[MAX_FAT_MOUNTS] = {};
 
 //finds the byte offset of the start of the data section
-//TODO is this right?
-static uint16_t calculate_data_section_start(struct Fat16Volume *vol) {
+static uint64_t calculate_data_section_start(struct Fat16Volume *vol) {
     uint16_t sector = vol->fats_start_sector + vol->number_of_fats*vol->number_of_sectors_per_fat + vol->number_of_sectors_root_directory;
     return sector * vol->bytes_per_sector;
 }
 
-//todo does this actually work?
-//if so, I can use this to read a folder or file's data
+//offset and num_bytes must be sanitised first, as this will crash or cause UB on reading past the end of file
 static void read_cluster_chain(struct Fat16Volume *vol, uint16_t cluster_number, uint64_t requested_offset, void* output_buf, uint64_t num_bytes) {
     const uint64_t bytes_per_cluster = vol->bytes_per_sector * vol->sectors_per_cluster;
     const uint64_t required_cluster_number = requested_offset / bytes_per_cluster;
-    const uint64_t required_offset_in_cluster = requested_offset % bytes_per_cluster;
+    const uint64_t required_offset_in_first_cluster = requested_offset % bytes_per_cluster;
     const uint64_t required_number_of_clusters = (num_bytes + bytes_per_cluster-1) / bytes_per_cluster;
+
 
     //skip the required number of clusters
     for(uint64_t i=0; i<required_cluster_number + required_number_of_clusters; i++) {
+
+        //out of sectors
+        if(cluster_number >= 0xFFF8) HCF
+
         uint64_t fat_offset = vol->fats_start_sector*vol->bytes_per_sector + 2*cluster_number;
         uint16_t fat_data = 0;
         vol->block_device.read_file(vol->block_device.id, fat_offset, (uint8_t*)&fat_data, 2);
+        // kprintf("current cluster number: %d\nfat offset: %lu\n", cluster_number, fat_offset);
 
         //bad sector
         if(fat_data == 0xFFF7) HCF
-        //out of sectors
-        if(fat_data >= 0xFFF8) HCF
+
         //if I have skipped enough clusters, start reading
         if(i >= required_cluster_number) {
             uint64_t num_bytes_to_read = num_bytes;
             if(num_bytes_to_read > bytes_per_cluster) num_bytes_to_read = bytes_per_cluster;
 
             uint64_t src_addr = calculate_data_section_start(vol) + bytes_per_cluster * (cluster_number-2);//-2 as the first two fat entries are reserved
+            if(i == required_cluster_number) {
+                //first cluster - read at an offset
+                src_addr += required_offset_in_first_cluster;
+            }
+
+            // kprintf("reading %d bytes from 0x%lX\n", num_bytes_to_read, src_addr);
 
             vol->block_device.read_file(vol->block_device.id, src_addr, output_buf, num_bytes_to_read);
             output_buf += num_bytes_to_read;
             num_bytes -= num_bytes_to_read;
         }
+        
         //skip to the next entry
         cluster_number = fat_data;
     }
@@ -178,14 +187,15 @@ static void read_cluster_chain(struct Fat16Volume *vol, uint16_t cluster_number,
 
 static uint64_t read_file(struct VNodeId inode_num, uint64_t offset, uint8_t* output_buf, uint64_t num_bytes) {
     struct Fat16Volume vol = all_fat_mounts[inode_num.mount_id];
-    kprintf("reading mount %d, inode %d\n", inode_num.mount_id, inode_num.inode_number * vol.bytes_per_sector);
+    kprintf("read in mount %d, inode %d\n", inode_num.mount_id, inode_num.inode_number * vol.bytes_per_sector);
 
+    read_cluster_chain(&vol, inode_num.inode_number, offset, output_buf, num_bytes);
 
+    return num_bytes;
 }
 
 static int directory_lookup(struct VNodeId directory_entry, const char* name, struct VNode* out) {
     struct Fat16Volume vol = all_fat_mounts[directory_entry.mount_id];
-    kprintf("reading mount %d, inode %d\n", directory_entry.mount_id, directory_entry.inode_number * vol.bytes_per_sector);
 
     //microsoft spec limits file names to 255 chars
     char long_file_name[256] = {};
@@ -198,8 +208,8 @@ static int directory_lookup(struct VNodeId directory_entry, const char* name, st
             //is root directory
             addr = (vol.fats_start_sector + vol.number_of_sectors_per_fat*vol.number_of_fats) * vol.bytes_per_sector;
         } else {
-            //inode number is a sector number
-            addr = directory_entry.inode_number*vol.bytes_per_sector;
+            //inode number is a cluster number
+            HCF
         }
         addr += directory_i*sizeof(struct Fat16DirectoryEntry);
 
@@ -264,20 +274,21 @@ static int directory_lookup(struct VNodeId directory_entry, const char* name, st
             }
 
             if(long_file_name_next_free != long_file_name) {
+                kprintf("long file name: %s, expected %s\n", long_file_name, name);
                 if(strcmp(long_file_name, name) == 0) {
                     *out = (struct VNode) {
                         .id = {
-                            .inode_number = ent.cluster_number * vol.sectors_per_cluster,
+                            .inode_number = ent.cluster_number,
                             .mount_id = directory_entry.mount_id
                         },
                         .inode_type = node_type,
                         .directory_lookup = directory_lookup,
                         .write_file = NULL,
-                        .read_file = NULL,
+                        .read_file = read_file,
                         .create_inode = NULL,
                     };
+                    return 0;
                 }
-                kprintf("long file name for above: %s\n", long_file_name);
             } else {
                 //short file name
                 HCF
@@ -305,8 +316,6 @@ void mount_fat16(struct VNode block_device, const char* mount_name) {
     struct Fat16Volume result;
     result.block_device = block_device;
 
-    uint16_t root_dir_num_sectors = (hdr.number_of_root_directory_entries * sizeof(struct Fat16DirectoryEntry) + hdr.bytes_per_sector-1) / hdr.bytes_per_sector;
-    
     uint64_t mount_id=0;
     while(all_fat_mounts[mount_id].number_of_fats) {
         mount_id++;
@@ -321,6 +330,7 @@ void mount_fat16(struct VNode block_device, const char* mount_name) {
         .number_of_sectors_per_fat = hdr.number_of_sectors_per_fat,
         .bytes_per_sector = hdr.bytes_per_sector,
         .sectors_per_cluster=hdr.sectors_per_cluster,
+        .number_of_sectors_root_directory = (hdr.number_of_root_directory_entries * sizeof(struct Fat16DirectoryEntry) + hdr.bytes_per_sector-1) / hdr.bytes_per_sector,
     };
     kprintf("fats start sector: %d\nnumber of sectors per fat: %d\nbytes per sector: %d\n", new_vol.fats_start_sector, new_vol.number_of_sectors_per_fat, new_vol.bytes_per_sector);
     all_fat_mounts[mount_id] = new_vol;
@@ -330,11 +340,9 @@ void mount_fat16(struct VNode block_device, const char* mount_name) {
             .inode_number = UINT64_MAX,
             .mount_id = mount_id
         },
-        .directory_lookup=directory_lookup
+        .directory_lookup=directory_lookup,
+        .read_file = read_file,
     };
-
-    directory_lookup(mount_vnode.id, "", NULL);
-    
 
     vfs_add_mount(mount_name, mount_vnode);
 }
