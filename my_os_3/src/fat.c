@@ -157,21 +157,23 @@ static void read_cluster_chain(struct Fat16Volume *vol, uint16_t cluster_number,
         uint64_t fat_offset = vol->fats_start_sector*vol->bytes_per_sector + 2*cluster_number;
         uint16_t fat_data = 0;
         vol->block_device.read_file(vol->block_device.id, fat_offset, (uint8_t*)&fat_data, 2);
-        // kprintf("current cluster number: %d\nfat offset: %lu\n", cluster_number, fat_offset);
 
         //bad sector
         if(fat_data == 0xFFF7) HCF
 
         //if I have skipped enough clusters, start reading
         if(i >= required_cluster_number) {
-            uint64_t num_bytes_to_read = num_bytes;
-            if(num_bytes_to_read > bytes_per_cluster) num_bytes_to_read = bytes_per_cluster;
-
             uint64_t src_addr = calculate_data_section_start(vol) + bytes_per_cluster * (cluster_number-2);//-2 as the first two fat entries are reserved
+            uint64_t available_bytes_in_cluster = bytes_per_cluster;
+
             if(i == required_cluster_number) {
                 //first cluster - read at an offset
                 src_addr += required_offset_in_first_cluster;
+                available_bytes_in_cluster -= required_offset_in_first_cluster;
             }
+
+            uint64_t num_bytes_to_read = num_bytes;
+            if(num_bytes_to_read > available_bytes_in_cluster) num_bytes_to_read = available_bytes_in_cluster;
 
             // kprintf("reading %d bytes from 0x%lX\n", num_bytes_to_read, src_addr);
 

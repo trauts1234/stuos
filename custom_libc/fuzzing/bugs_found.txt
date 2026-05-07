@@ -12,3 +12,4 @@ Forgot to add child of fork() operation to the queue to be executed
 Forgot to add syscall to syscall table
 PS2 keyboards fire an interrupt that wasn't being masked
 the offset in a virtio block device was set to 0, so all reads and writes overwrote the first 512 bytes of the disk
+When reading at a 10 byte offset in a 512 byte sector, there are only 502 bytes available to read... duh. solved with claude :)
