@@ -2,19 +2,23 @@
 #define FS_H
 
 #include "uapi/stdint.h"
+#include "uapi/types.h"
+#include "uapi/stat.h"
 
-enum VNodeType { VNODE_FILE, VNODE_DIR};
+struct VNodeId {
+    /// Unique ID per file under a mount
+    uint64_t inode_number;
+    // Unique per filesystem, and can be used to differentiate between inode 69 in one mount versus inode 69 in another mount
+    uint64_t mount_id;
+};
 
 /// Represents an abstract node in the filesystem, which can be a file or directory
 struct VNode {
-    struct VNodeId {
-        /// Unique ID per file under a mount
-        uint64_t inode_number;
-        // Unique per filesystem, and can be used to differentiate between inode 69 in one mount versus inode 69 in another mount
-        uint64_t mount_id;
+    struct VNodeData {
+        struct VNodeId self, parent;
     } id;
-    /// Whether the inode is a file or directory
-    enum VNodeType inode_type;
+
+    struct stat (*stat_file)(struct VNodeData id);
 
     /// This function should check that `directory` is a directory node, then try to find a node with name `name`
     ///
@@ -41,7 +45,7 @@ struct VNode {
     ///
     /// Returns:
     /// 0 on success
-    int (*create_inode)(struct VNodeId parent_inode_num, enum VNodeType new_inode_type, const char* name, struct VNode* out);
+    int (*create_inode)(struct VNodeId parent_inode_num, mode_t new_inode_type, const char* name, struct VNode* out);
 };
 
 /// mount_name's data must live forever, as the pointer is copied, as must filesystem_root

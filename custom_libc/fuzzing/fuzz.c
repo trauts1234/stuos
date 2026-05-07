@@ -142,7 +142,7 @@ int main(int argc, char *argv[]) {
     stdlib_test();
     printf("running execve test\n");
     if(fork() == 0) {
-        execve("/tarfs/other.out", (char*const []) {"/tarfs/other.out", NULL}, NULL);
+        execve("/fat/other.out", (char*const []) {"/fat/other.out", NULL}, NULL);
     }
     printf("running pipe test\n");
     pipe_test();

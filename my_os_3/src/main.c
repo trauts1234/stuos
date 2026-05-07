@@ -8,7 +8,6 @@
 #include "interrupts.h"
 #include "limine.h"
 #include "ps2.h"
-#include "fs_tar.h"
 #include "memory.h"
 #include "elf.h"
 #include "debugging.h"
