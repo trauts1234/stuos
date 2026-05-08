@@ -1,8 +1,10 @@
 #include "fs.h"
 #include "debugging.h"
 #include "kern_libc.h"
+#include "uapi/stat.h"
 #include "uapi/stdint.h"
 #include "uapi/fcntl.h"
+#include "uapi/types.h"
 
 #define ROOT_INODE_NUM 69
 #define MAX_MOUNTS 10
@@ -29,8 +31,8 @@ static uint64_t path_segment_len(const char* path) {
 }
 
 //scan for mount points that match a directory name
-static int vfs_root_dir_lookup(struct VNodeId dir_inode_num, const char* name, struct VNode* out) {
-    if(dir_inode_num.inode_number != ROOT_INODE_NUM || dir_inode_num.mount_id != 0) HCF
+static int vfs_root_dir_lookup(struct VNodeData dir_inode_num, const char* name, struct VNode* out) {
+    if(dir_inode_num.self_inode != ROOT_INODE_NUM || dir_inode_num.mount_id != 0) HCF
 
     for (uint64_t mount_idx = 0; mount_idx < MAX_MOUNTS && filesystem_mount_points[mount_idx].mount_name;mount_idx++) {
         if(strcmp(name, filesystem_mount_points[mount_idx].mount_name) == 0) {
@@ -42,21 +44,23 @@ static int vfs_root_dir_lookup(struct VNodeId dir_inode_num, const char* name, s
     return -1;
 }
 //fail to do the following as I can only handle mount points
-static uint64_t fail_write_file(struct VNodeId, uint64_t, const uint8_t*, uint64_t) { HCF }
-static uint64_t fail_read_file(struct VNodeId, uint64_t, uint8_t*, uint64_t) { HCF }
-int fail_create_inode(struct VNodeId, enum VNodeType, const char*, struct VNode*) { HCF }
+static uint64_t fail_write_file(struct VNodeData, uint64_t, const uint8_t*, uint64_t) { HCF }
+static uint64_t fail_read_file(struct VNodeData, uint64_t, uint8_t*, uint64_t) { HCF }
+int fail_create_inode(struct VNodeData, mode_t, const char*, struct VNode*) { HCF }
+struct stat fail_stat(struct VNodeData) { HCF }
 
 struct VNode vfs_get_root() {
     return (struct VNode) {
         .id = {
-            .inode_number = ROOT_INODE_NUM,
+            .parent_inode = UINT64_MAX,
+            .self_inode = ROOT_INODE_NUM,
             .mount_id = 0
         },
-        .inode_type = VNODE_DIR,
         .directory_lookup = vfs_root_dir_lookup,
         .write_file = fail_write_file,
         .read_file = fail_read_file,
         .create_inode = fail_create_inode,
+        .stat_file = fail_stat,
     };
 }
 
@@ -115,7 +119,7 @@ static enum StepPathResult step_path2(struct VNode* current, const char** path_s
         }
     }
 
-    if(must_be_folder && result.inode_type != VNODE_DIR) HCF
+    if(must_be_folder && !S_ISDIR(result.stat_file(result.id).st_mode)) HCF
 
     *current = result;
 
@@ -165,7 +169,7 @@ struct VNode vfs_get(const char* cwd_path, const char* path, int open_flags) {
             if(open_flags & O_CREAT) {
                 if (open_flags & O_DIRECTORY) HCF
                 //since not a dir, the last bit of the `path` is a valid string that I can pass
-                location.create_inode(location.id, VNODE_FILE, path, &location);
+                location.create_inode(location.id, S_IFREG, path, &location);
                 path = NULL;//to quit loop
                 break;
             }
@@ -179,9 +183,10 @@ struct VNode vfs_get(const char* cwd_path, const char* path, int open_flags) {
         }
     }
 
-    if(location.inode_type != VNODE_DIR && open_flags & O_DIRECTORY) HCF //tried to open a directory and it wasn't
+    mode_t location_mode = location.stat_file(location.id).st_mode;
+    if(!S_ISDIR(location_mode) && open_flags & O_DIRECTORY) HCF //tried to open a directory and it wasn't
     if(open_flags & O_TRUNC) {
-        if(location.inode_type != VNODE_FILE) HCF//tried to open_clear a non-file
+        if(!S_ISREG(location_mode)) HCF//tried to open_clear a non-file
         debug_print("TODO clear file\n");
     }
     if(open_flags & O_APPEND) {

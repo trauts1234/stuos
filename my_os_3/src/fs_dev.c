@@ -4,10 +4,12 @@
 #include "kern_libc.h"
 #include "virtio_driver.h"
 
-uint64_t write_file(struct VNodeId inode_num, uint64_t offset, const uint8_t* input_buf, uint64_t num_bytes) {
-    if(inode_num.inode_number != 0) HCF
+#define DEV_ROOT_DIR_INODE_NUM 10000
 
-    switch (inode_num.mount_id) {
+uint64_t write_file(struct VNodeData inode_num, uint64_t offset, const uint8_t* input_buf, uint64_t num_bytes) {
+    if(inode_num.mount_id != 0 || inode_num.parent_inode != DEV_ROOT_DIR_INODE_NUM) HCF
+
+    switch (inode_num.self_inode) {
     case 0:
     const uint64_t offset_in_first_sector = offset % BLOCK_DEVICE_READ_SIZE;
     const uint64_t first_sector_number = offset / BLOCK_DEVICE_READ_SIZE;
@@ -37,10 +39,10 @@ uint64_t write_file(struct VNodeId inode_num, uint64_t offset, const uint8_t* in
     }
 }
 
-uint64_t read_file(struct VNodeId inode_num, uint64_t offset, uint8_t* output_buf, uint64_t num_bytes) {
-    if(inode_num.inode_number != 0) HCF
+uint64_t read_file(struct VNodeData inode_num, uint64_t offset, uint8_t* output_buf, uint64_t num_bytes) {
+    if(inode_num.mount_id != 0 || inode_num.parent_inode != DEV_ROOT_DIR_INODE_NUM) HCF
 
-    switch (inode_num.mount_id) {
+    switch (inode_num.self_inode) {
     case 0:
     const uint64_t offset_in_first_sector = offset % BLOCK_DEVICE_READ_SIZE;
     const uint64_t first_sector_number = offset / BLOCK_DEVICE_READ_SIZE;
@@ -68,26 +70,48 @@ uint64_t read_file(struct VNodeId inode_num, uint64_t offset, uint8_t* output_bu
     }
 }
 
+struct stat devfs_stat(struct VNodeData inode_num) {
+    if(inode_num.mount_id != 0 || inode_num.parent_inode != DEV_ROOT_DIR_INODE_NUM) HCF
+
+    mode_t mode;
+    switch (inode_num.self_inode) {
+        case 0:
+        mode = S_IFBLK;break;
+        case DEV_ROOT_DIR_INODE_NUM:
+        mode = S_IFDIR;break;
+        default:
+        HCF
+    }
+
+    return (struct stat) {
+        .st_ino = inode_num.self_inode,
+        .st_mode = mode,
+        .st_uid = 0,
+        .st_gid = 0,
+        .st_size = 0,//TODO
+    };
+}
+
 static const char* device_names[] = {"disk"};
 
 static const struct VNode device_vnodes[] = {
     (struct VNode){
         .id = {
-            .inode_number=0,
+            .parent_inode = DEV_ROOT_DIR_INODE_NUM,
+            //is index in device_vnodes
+            .self_inode=0,
             .mount_id=0,
         },
-        .inode_type=VNODE_FILE,
         .directory_lookup = 0,
         .write_file = write_file,
         .read_file = read_file,
         .create_inode = 0,
+        .stat_file = devfs_stat,
     },
 };
 
-#define DEV_ROOT_DIR_INODE_NUM 10000
-
-static int directory_lookup(struct VNodeId dir_inode_num, const char* name, struct VNode* out) {
-    if(dir_inode_num.inode_number != 0 || dir_inode_num.mount_id != 0) HCF
+static int directory_lookup(struct VNodeData dir_inode_num, const char* name, struct VNode* out) {
+    if(dir_inode_num.self_inode != DEV_ROOT_DIR_INODE_NUM || dir_inode_num.mount_id != 0) HCF
     for(uint64_t i=0; i<sizeof(device_names)/sizeof(char*); i++) {
         if(strcmp(name, device_names[i])) continue;
         *out = device_vnodes[i];
@@ -101,13 +125,14 @@ void devfs_init() {
         "dev",
         (struct VNode) {
             .id = {
-                .inode_number = 0,
+                .parent_inode = UINT64_MAX,
+                .self_inode = DEV_ROOT_DIR_INODE_NUM,
                 .mount_id = 0,
             },
-            .inode_type = VNODE_DIR,
             .directory_lookup = directory_lookup,
             .write_file = 0,
             .read_file = 0,
+            .stat_file = 0,
             .create_inode = 0,
         }
     );

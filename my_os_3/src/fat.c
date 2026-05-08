@@ -1,7 +1,9 @@
 #include "debugging.h"
 #include "fs.h"
+#include "uapi/stat.h"
 #include "uapi/stdint.h"
 #include "kern_libc.h"
+#include "uapi/types.h"
 
 struct __attribute__((packed)) Fat16Header {
     //The first three bytes EB 3C 90 disassemble to JMP SHORT 3C NOP. (The 3C value may be different.)
@@ -81,6 +83,7 @@ struct __attribute__((packed)) Fat16DirectoryEntry {
     //8.3 file name. The first 8 characters are the name and the last 3 are the extension.
     char filename[8];
     char extension[3];
+    //see FILE_ATTRIBUTES_XYZ
     uint8_t attributes;
     uint8_t reserved;
     uint8_t creation_time_hundredths;
@@ -114,6 +117,21 @@ struct __attribute__((packed)) Fat16LFNEntry {
     uint16_t unicode_name_3[2];
 };
 
+//use a reserved cluster number for the root directory
+#define ROOT_DIR_CLUSTER_NUMBER 0
+union InodeNumberData {
+    uint64_t data;
+    struct {
+        //can also be ROOT_DIR_CLUSTER_NUMBER
+        uint16_t cluster_number;
+        //only valid if I am the parent inode of an inode, representing the directory entry number that represents the child
+        //
+        //reserved otherwise
+        uint16_t parent_directory_entry_number;
+        uint32_t reserved;
+    };
+};
+
 #define MAX_FAT_MOUNTS 10
 struct Fat16Volume {
     //Which underlying block device am I mounting
@@ -140,19 +158,36 @@ static uint64_t calculate_data_section_start(struct Fat16Volume *vol) {
     return sector * vol->bytes_per_sector;
 }
 
-//offset and num_bytes must be sanitised first, as this will crash or cause UB on reading past the end of file
-static void read_cluster_chain(struct Fat16Volume *vol, uint16_t cluster_number, uint64_t requested_offset, void* output_buf, uint64_t num_bytes) {
+// offset and num_bytes must be sanitised first, as this will crash or cause UB on reading past the end of file
+//
+// if cluster number = ROOT_DIR_CLUSTER_NUMBER, will read from the root directory entry
+static void raw_read(struct Fat16Volume *vol, uint16_t cluster_number, uint64_t requested_offset, void* output_buf, uint64_t num_bytes) {
     const uint64_t bytes_per_cluster = vol->bytes_per_sector * vol->sectors_per_cluster;
     const uint64_t required_cluster_number = requested_offset / bytes_per_cluster;
     const uint64_t required_offset_in_first_cluster = requested_offset % bytes_per_cluster;
     const uint64_t required_number_of_clusters = (num_bytes + bytes_per_cluster-1) / bytes_per_cluster;
 
+    if(cluster_number == ROOT_DIR_CLUSTER_NUMBER) {
+        //offset should be n directory entries in
+        if(requested_offset % sizeof(struct Fat16DirectoryEntry)) HCF
+        //num bytes should be n directory entries
+        if(num_bytes % sizeof(struct Fat16DirectoryEntry)) HCF
+
+        uint64_t addr = (vol->fats_start_sector + vol->number_of_sectors_per_fat*vol->number_of_fats) * vol->bytes_per_sector;
+        //read must be in range
+        if(requested_offset + num_bytes >= vol->number_of_sectors_root_directory*vol->bytes_per_sector) HCF
+
+        vol->block_device.read_file(vol->block_device.id, requested_offset, output_buf, num_bytes);
+        return;
+    }
 
     //skip the required number of clusters
     for(uint64_t i=0; i<required_cluster_number + required_number_of_clusters; i++) {
 
         //out of sectors
         if(cluster_number >= 0xFFF8) HCF
+        //out of range
+        if(cluster_number < 2) HCF
 
         uint64_t fat_offset = vol->fats_start_sector*vol->bytes_per_sector + 2*cluster_number;
         uint16_t fat_data = 0;
@@ -185,16 +220,75 @@ static void read_cluster_chain(struct Fat16Volume *vol, uint16_t cluster_number,
     }
 }
 
-static uint64_t read_file(struct VNodeId inode_num, uint64_t offset, uint8_t* output_buf, uint64_t num_bytes) {
+static uint64_t read_file(struct VNodeData inode_num, uint64_t offset, uint8_t* output_buf, uint64_t num_bytes) {
     struct Fat16Volume vol = all_fat_mounts[inode_num.mount_id];
 
-    read_cluster_chain(&vol, inode_num.inode_number, offset, output_buf, num_bytes);
+    union InodeNumberData inode = {.data = inode_num.self_inode};
+    if(inode.reserved) HCF
 
+    if(inode.cluster_number != ROOT_DIR_CLUSTER_NUMBER) {
+        //only check file size if not using the root directory, as that is a fixed size and doesn't have a parent
+        union InodeNumberData parent_inode = {.data = inode_num.parent_inode};
+        if(parent_inode.reserved) HCF
+        
+        struct Fat16DirectoryEntry entry_in_parent;
+        raw_read(&vol, parent_inode.cluster_number, parent_inode.parent_directory_entry_number*sizeof(struct Fat16DirectoryEntry), &entry_in_parent, sizeof(struct Fat16DirectoryEntry));
+        
+        //don't read past the end of the file
+        if(offset + num_bytes > entry_in_parent.file_size_bytes) num_bytes = entry_in_parent.file_size_bytes - offset;
+    }
+
+    //read the data
+    raw_read(&vol, inode.cluster_number, offset, output_buf, num_bytes);
     return num_bytes;
 }
 
-static int directory_lookup(struct VNodeId directory_entry, const char* name, struct VNode* out) {
+static struct stat stat_file(struct VNodeData inode_num) {
+    struct Fat16Volume vol = all_fat_mounts[inode_num.mount_id];
+
+    union InodeNumberData inode = {.data = inode_num.self_inode};
+    if(inode.reserved) HCF
+
+    if(inode.cluster_number != ROOT_DIR_CLUSTER_NUMBER) {
+        //only check file size if not using the root directory, as that is a fixed size and doesn't have a parent
+        union InodeNumberData parent_inode = {.data = inode_num.parent_inode};
+        if(parent_inode.reserved) HCF
+        
+        struct Fat16DirectoryEntry entry_in_parent;
+        raw_read(&vol, parent_inode.cluster_number, parent_inode.parent_directory_entry_number*sizeof(struct Fat16DirectoryEntry), &entry_in_parent, sizeof(struct Fat16DirectoryEntry));
+        
+        mode_t mode;
+        switch (entry_in_parent.attributes) {
+            case FILE_ATTRIBUTES_DIRECTORY:
+            mode = S_IFDIR;break;
+            case 0:
+            mode = S_IFREG;break;
+            default:
+            HCF
+        }
+        
+        return (struct stat) {
+            .st_ino = inode_num.self_inode,
+            .st_mode = entry_in_parent.attributes,
+            .st_uid = 0,
+            .st_gid = 0,
+            .st_size = entry_in_parent.file_size_bytes,
+        };
+    }
+
+    return (struct stat) {
+        .st_ino = inode_num.self_inode,
+        .st_mode = S_IFDIR,
+        .st_uid = 0,
+        .st_gid = 0,
+        .st_size = vol.number_of_sectors_root_directory * vol.bytes_per_sector
+    };
+}
+
+static int directory_lookup(struct VNodeData directory_entry, const char* name, struct VNode* out) {
     struct Fat16Volume vol = all_fat_mounts[directory_entry.mount_id];
+    union InodeNumberData inode = {.data = directory_entry.self_inode};
+    if(inode.reserved) HCF
 
     //microsoft spec limits file names to 255 chars
     char long_file_name[256] = {};
@@ -202,18 +296,10 @@ static int directory_lookup(struct VNodeId directory_entry, const char* name, st
     
     for(uint64_t directory_i=0;;directory_i++) {
         struct Fat16DirectoryEntry ent;
-        uint64_t addr;
-        if(directory_entry.inode_number == UINT64_MAX) {
-            //is root directory
-            addr = (vol.fats_start_sector + vol.number_of_sectors_per_fat*vol.number_of_fats) * vol.bytes_per_sector;
-        } else {
-            //inode number is a cluster number
-            HCF
-        }
-        addr += directory_i*sizeof(struct Fat16DirectoryEntry);
+        raw_read(&vol, inode.cluster_number, directory_i*sizeof(struct Fat16DirectoryEntry), &ent, sizeof(struct Fat16DirectoryEntry));
 
-        vol.block_device.read_file(vol.block_device.id, addr, (uint8_t*)&ent, sizeof(struct Fat16DirectoryEntry));
         if(ent.attributes & 0b11000000) HCF
+        if(ent.cluster_number < 2) HCF
         
         //reached end of dir
         if(ent.filename[0] == 0) return -1;
@@ -257,33 +343,34 @@ static int directory_lookup(struct VNodeId directory_entry, const char* name, st
             char short_file_name[12] = {0};
             char* short_file_name_next_free = short_file_name;
             //copy file name
-            for(int i=0; i<sizeof(ent.filename)/sizeof(char) && ent.filename[i] != ' '; i++) {
+            for(uint64_t i=0; i<sizeof(ent.filename)/sizeof(char) && ent.filename[i] != ' '; i++) {
                 *short_file_name_next_free++ = ent.filename[i];
             }
             if(ent.extension[0] != ' ') *short_file_name_next_free++ = '.';
-            for(int i=0; i<sizeof(ent.extension)/sizeof(char) && ent.extension[i] != ' '; i++) {
+            for(uint64_t i=0; i<sizeof(ent.extension)/sizeof(char) && ent.extension[i] != ' '; i++) {
                 *short_file_name_next_free++ = ent.extension[i];
             }
 
-            enum VNodeType node_type;
+            mode_t node_type = 0;
             if(ent.attributes & FILE_ATTRIBUTES_DIRECTORY) {
-                node_type = VNODE_DIR;
+                node_type |= S_IFDIR;
             } else {
-                node_type = VNODE_FILE;
+                node_type |= S_IFREG;
             }
 
             if(long_file_name_next_free != long_file_name) {
                 if(strcmp(long_file_name, name) == 0) {
                     *out = (struct VNode) {
                         .id = {
-                            .inode_number = ent.cluster_number,
-                            .mount_id = directory_entry.mount_id
+                            .mount_id = directory_entry.mount_id,
+                            .parent_inode = directory_entry.self_inode,
+                            .self_inode = ent.cluster_number,
                         },
-                        .inode_type = node_type,
                         .directory_lookup = directory_lookup,
                         .write_file = NULL,
                         .read_file = read_file,
                         .create_inode = NULL,
+                        .stat_file = stat_file,
                     };
                     return 0;
                 }
@@ -311,9 +398,6 @@ void mount_fat16(struct VNode block_device, const char* mount_name) {
     if(hdr.signature != 0x28 && hdr.signature != 0x29) HCF
     if(hdr.bootable_partition_signature != 0xAA55) HCF
 
-    struct Fat16Volume result;
-    result.block_device = block_device;
-
     uint64_t mount_id=0;
     while(all_fat_mounts[mount_id].number_of_fats) {
         mount_id++;
@@ -334,8 +418,9 @@ void mount_fat16(struct VNode block_device, const char* mount_name) {
 
     struct VNode mount_vnode = {
         .id = {
-            .inode_number = UINT64_MAX,
-            .mount_id = mount_id
+            .mount_id = mount_id,
+            .self_inode = 0,
+            .parent_inode = UINT64_MAX
         },
         .directory_lookup=directory_lookup,
         .read_file = read_file,
