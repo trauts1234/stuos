@@ -61,7 +61,9 @@ struct __attribute__((packed)) Fat16Header {
 enum {
     FILE_ATTRIBUTES_RO = 0x1, FILE_ATTRIBUTES_HIDDEN = 0x2,
     FILE_ATTRIBUTES_SYSTEM = 0x4, FILE_ATTRIBUTES_VOLUMEID = 0x8,
-    FILE_ATTRIBUTES_DIRECTORY = 0x10, FILE_ATTRIBUTES_ARCHIVE = 0x20,
+    FILE_ATTRIBUTES_DIRECTORY = 0x10,
+    //ignore this flag
+    FILE_ATTRIBUTES_ARCHIVE = 0x20,
     //long file name
     FILE_ATTRIBUTES_LFN = FILE_ATTRIBUTES_RO | FILE_ATTRIBUTES_HIDDEN | FILE_ATTRIBUTES_SYSTEM | FILE_ATTRIBUTES_VOLUMEID
 };
@@ -173,11 +175,11 @@ static void raw_read(struct Fat16Volume *vol, uint16_t cluster_number, uint64_t 
         //num bytes should be n directory entries
         if(num_bytes % sizeof(struct Fat16DirectoryEntry)) HCF
 
-        uint64_t addr = (vol->fats_start_sector + vol->number_of_sectors_per_fat*vol->number_of_fats) * vol->bytes_per_sector;
+        uint64_t root_dir_start_byte = (vol->fats_start_sector + vol->number_of_sectors_per_fat*vol->number_of_fats) * vol->bytes_per_sector;
         //read must be in range
         if(requested_offset + num_bytes >= vol->number_of_sectors_root_directory*vol->bytes_per_sector) HCF
 
-        vol->block_device.read_file(vol->block_device.id, requested_offset, output_buf, num_bytes);
+        vol->block_device.read_file(vol->block_device.id, root_dir_start_byte + requested_offset, output_buf, num_bytes);
         return;
     }
 
@@ -258,12 +260,13 @@ static struct stat stat_file(struct VNodeData inode_num) {
         raw_read(&vol, parent_inode.cluster_number, parent_inode.parent_directory_entry_number*sizeof(struct Fat16DirectoryEntry), &entry_in_parent, sizeof(struct Fat16DirectoryEntry));
         
         mode_t mode;
-        switch (entry_in_parent.attributes) {
+        switch (entry_in_parent.attributes & ~FILE_ATTRIBUTES_ARCHIVE) {
             case FILE_ATTRIBUTES_DIRECTORY:
             mode = S_IFDIR;break;
             case 0:
             mode = S_IFREG;break;
             default:
+            kprintf("%d (%x)", entry_in_parent.attributes, entry_in_parent.attributes);
             HCF
         }
         
@@ -287,8 +290,11 @@ static struct stat stat_file(struct VNodeData inode_num) {
 
 static int directory_lookup(struct VNodeData directory_entry, const char* name, struct VNode* out) {
     struct Fat16Volume vol = all_fat_mounts[directory_entry.mount_id];
+
     union InodeNumberData inode = {.data = directory_entry.self_inode};
     if(inode.reserved) HCF
+    // union InodeNumberData parent_inode = {.data = directory_entry.parent_inode};
+    // if(parent_inode.reserved) HCF
 
     //microsoft spec limits file names to 255 chars
     char long_file_name[256] = {};
@@ -299,7 +305,6 @@ static int directory_lookup(struct VNodeData directory_entry, const char* name, 
         raw_read(&vol, inode.cluster_number, directory_i*sizeof(struct Fat16DirectoryEntry), &ent, sizeof(struct Fat16DirectoryEntry));
 
         if(ent.attributes & 0b11000000) HCF
-        if(ent.cluster_number < 2) HCF
         
         //reached end of dir
         if(ent.filename[0] == 0) return -1;
@@ -338,6 +343,7 @@ static int directory_lookup(struct VNodeData directory_entry, const char* name, 
 
             if(!done) HCF
         } else {
+            if(ent.cluster_number < 2) HCF
             if(ent.zero) HCF
 
             char short_file_name[12] = {0};
@@ -359,11 +365,14 @@ static int directory_lookup(struct VNodeData directory_entry, const char* name, 
             }
 
             if(long_file_name_next_free != long_file_name) {
+                //update my local copy of the now-parent id to point at my specific directory entry number
+                inode.parent_directory_entry_number = directory_i;
+
                 if(strcmp(long_file_name, name) == 0) {
                     *out = (struct VNode) {
                         .id = {
                             .mount_id = directory_entry.mount_id,
-                            .parent_inode = directory_entry.self_inode,
+                            .parent_inode = inode.data,
                             .self_inode = ent.cluster_number,
                         },
                         .directory_lookup = directory_lookup,
