@@ -13,3 +13,7 @@ Forgot to add syscall to syscall table
 PS2 keyboards fire an interrupt that wasn't being masked
 the offset in a virtio block device was set to 0, so all reads and writes overwrote the first 512 bytes of the disk
 When reading at a 10 byte offset in a 512 byte sector, there are only 502 bytes available to read... duh. solved with claude :)
+Found multiple very difficult bugs such as:
+1. accidentally checking to see if cluster numbers 0 and 1 were free, even though they are reserved
+2. reading (cluster size + 2) bytes could span 2 or 3 clusters
+3. I was returning the FAT permissions enum from stat(), which expected a POSIX mode_t value

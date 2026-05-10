@@ -7,7 +7,7 @@
 #include "tools.h"
 
 void file_test() {
-    char* rw_files[] = {"/ramfs/data.txt", "/fat/.test"};
+    char* rw_files[] = {"/fat/.test"};
     //these files should start with their data being equal to the filename
     char* r_files[] = {"/fat/data.txt"};
 
@@ -76,7 +76,7 @@ void file_test() {
             }
             for(uint64_t i=0; i<num_bytes;i++) {
                 if(counting_output[i] != counting[i]) {
-                    printf("read different bytes than were written, when reading %lld bytes at offset %lld+%lld\n", num_bytes, offset, i);
+                    printf("read different bytes than were written, when reading %lld bytes at offset %lld+%lld\n", num_bytes, offset, i*2);
                     printf("read %d, expected %d\n", counting_output[i], counting[i]);
                 abort();
                 }

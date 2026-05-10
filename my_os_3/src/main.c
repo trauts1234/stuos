@@ -4,7 +4,6 @@
 #include <stdbool.h>
 #include "display.h"
 #include "fs.h"
-#include "fs_ram.h"
 #include "interrupts.h"
 #include "limine.h"
 #include "ps2.h"
@@ -93,7 +92,6 @@ void kmain(void) {
     initialise_ps2();
     memory_init(memmap_response, hhdm_offset);
     setup_pic_pit_idt();
-    ramfs_init();
     devfs_init();
     syscall_init();
     initialise_tty();
