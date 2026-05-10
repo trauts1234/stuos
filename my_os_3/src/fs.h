@@ -9,7 +9,7 @@
 struct VNode {
     struct VNodeData {
         /// Unique ID per file under a mount
-        uint64_t self_inode, parent_inode;
+        uint64_t inode;
         // Unique per filesystem, and can be used to differentiate between inode 69 in one mount versus inode 69 in another mount
         uint64_t mount_id;
     } id;

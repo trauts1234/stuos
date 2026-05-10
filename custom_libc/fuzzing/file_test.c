@@ -7,7 +7,7 @@
 #include "tools.h"
 
 void file_test() {
-    char* rw_files[] = {"/ramfs/data.txt"};
+    char* rw_files[] = {"/ramfs/data.txt", "/fat/.test"};
     //these files should start with their data being equal to the filename
     char* r_files[] = {"/fat/data.txt"};
 

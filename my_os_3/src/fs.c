@@ -32,7 +32,7 @@ static uint64_t path_segment_len(const char* path) {
 
 //scan for mount points that match a directory name
 static int vfs_root_dir_lookup(struct VNodeData dir_inode_num, const char* name, struct VNode* out) {
-    if(dir_inode_num.self_inode != ROOT_INODE_NUM || dir_inode_num.mount_id != 0) HCF
+    if(dir_inode_num.inode != ROOT_INODE_NUM || dir_inode_num.mount_id != 0) HCF
 
     for (uint64_t mount_idx = 0; mount_idx < MAX_MOUNTS && filesystem_mount_points[mount_idx].mount_name;mount_idx++) {
         if(strcmp(name, filesystem_mount_points[mount_idx].mount_name) == 0) {
@@ -52,8 +52,7 @@ struct stat fail_stat(struct VNodeData) { HCF }
 struct VNode vfs_get_root() {
     return (struct VNode) {
         .id = {
-            .parent_inode = UINT64_MAX,
-            .self_inode = ROOT_INODE_NUM,
+            .inode = ROOT_INODE_NUM,
             .mount_id = 0
         },
         .directory_lookup = vfs_root_dir_lookup,
