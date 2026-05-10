@@ -160,10 +160,54 @@ static uint64_t calculate_data_section_start(struct Fat16Volume *vol) {
     return sector * vol->bytes_per_sector;
 }
 
+// returns true if n isn't pointing to a real cluster (either free sentinel or NULL sentinel)
+bool is_invalid_cluster_num(uint16_t n){
+    return n < 2 || n >= 0xFFF7;
+}
+bool is_free_cluster_num(uint16_t n) {
+    return n < 2;
+}
+// if a FAT entry contains n, where is_bad_cluster_num(n), then the entry is corrupted and mustn't be used
+bool is_bad_cluster_num(uint16_t n) {
+    return n == 0xFFF7;
+}
+
+//Read a file allocation table entry
+//
+//The returned value is the cluster number of the next item (<2 for FREE, >=0xFFF8 for end of linked list)
+static uint16_t read_fat(struct Fat16Volume *vol, uint16_t cluster_number) {
+    if(is_invalid_cluster_num(cluster_number)) HCF
+    uint16_t fat_data = 0;
+    vol->block_device.read_file(vol->block_device.id, vol->fats_start_sector*vol->bytes_per_sector + 2*cluster_number, (uint8_t*)&fat_data, 2);
+    return fat_data;
+}
+//Write a file allocation table entry
+static void write_fat(struct Fat16Volume *vol, uint16_t cluster_number, uint16_t value) {
+    if(is_invalid_cluster_num(cluster_number)) HCF
+    vol->block_device.write_file(vol->block_device.id, vol->fats_start_sector*vol->bytes_per_sector + 2*cluster_number, (uint8_t*)&value, 2);
+}
+
+static uint16_t find_free_cluster_number(struct Fat16Volume *vol) {
+    uint16_t num_clusters = vol->number_of_sectors_per_fat*vol->bytes_per_sector / 2;
+    for(uint16_t i=0; i < num_clusters; i++) {
+        if(is_free_cluster_num(read_fat(vol, i))) {
+            return i;
+        }
+    }
+    HCF//out of clusters
+}
+
+//write to a file or directory
+// static void raw_write(struct Fat16Volume *vol, uint16_t cluster_number, uint64_t requested_offset, void* input_buf, uint64_t num_bytes) {
+//     //TODO
+// }
+
+
 // offset and num_bytes must be sanitised first, as this will crash or cause UB on reading past the end of file
 //
-// if cluster number = ROOT_DIR_CLUSTER_NUMBER, will read from the root directory entry
-static void raw_read(struct Fat16Volume *vol, uint16_t cluster_number, uint64_t requested_offset, void* output_buf, uint64_t num_bytes) {
+// - if cluster number = ROOT_DIR_CLUSTER_NUMBER, will read from the root directory entry
+// - if cluster number is invalid, will crash
+static void read_from_cluster_chain(struct Fat16Volume *vol, uint16_t cluster_number, uint64_t requested_offset, void* output_buf, uint64_t num_bytes) {
     const uint64_t bytes_per_cluster = vol->bytes_per_sector * vol->sectors_per_cluster;
     const uint64_t required_cluster_number = requested_offset / bytes_per_cluster;
     const uint64_t required_offset_in_first_cluster = requested_offset % bytes_per_cluster;
@@ -185,19 +229,6 @@ static void raw_read(struct Fat16Volume *vol, uint16_t cluster_number, uint64_t 
 
     //skip the required number of clusters
     for(uint64_t i=0; i<required_cluster_number + required_number_of_clusters; i++) {
-
-        //out of sectors
-        if(cluster_number >= 0xFFF8) HCF
-        //out of range
-        if(cluster_number < 2) HCF
-
-        uint64_t fat_offset = vol->fats_start_sector*vol->bytes_per_sector + 2*cluster_number;
-        uint16_t fat_data = 0;
-        vol->block_device.read_file(vol->block_device.id, fat_offset, (uint8_t*)&fat_data, 2);
-
-        //bad sector
-        if(fat_data == 0xFFF7) HCF
-
         //if I have skipped enough clusters, start reading
         if(i >= required_cluster_number) {
             uint64_t src_addr = calculate_data_section_start(vol) + bytes_per_cluster * (cluster_number-2);//-2 as the first two fat entries are reserved
@@ -218,8 +249,49 @@ static void raw_read(struct Fat16Volume *vol, uint16_t cluster_number, uint64_t 
         }
         
         //skip to the next entry
-        cluster_number = fat_data;
+        cluster_number = read_fat(vol, cluster_number);
     }
+}
+
+static struct stat stat_file(struct VNodeData inode_num) {
+    struct Fat16Volume vol = all_fat_mounts[inode_num.mount_id];
+
+    union InodeNumberData inode = {.data = inode_num.self_inode};
+    if(inode.reserved) HCF
+
+    //special case for root directory
+    if(inode.cluster_number == ROOT_DIR_CLUSTER_NUMBER) return (struct stat) {
+        .st_ino = inode_num.self_inode,
+        .st_mode = S_IFDIR,
+        .st_uid = 0,
+        .st_gid = 0,
+        .st_size = vol.number_of_sectors_root_directory * vol.bytes_per_sector
+    };
+
+    // check file size
+    union InodeNumberData parent_inode = {.data = inode_num.parent_inode};
+    if(parent_inode.reserved) HCF
+    
+    struct Fat16DirectoryEntry entry_in_parent;
+    read_from_cluster_chain(&vol, parent_inode.cluster_number, parent_inode.parent_directory_entry_number*sizeof(struct Fat16DirectoryEntry), &entry_in_parent, sizeof(struct Fat16DirectoryEntry));
+    
+    mode_t mode;
+    switch (entry_in_parent.attributes & ~FILE_ATTRIBUTES_ARCHIVE) {
+        case FILE_ATTRIBUTES_DIRECTORY:
+        mode = S_IFDIR;break;
+        case 0:
+        mode = S_IFREG;break;
+        default:
+        HCF
+    }
+    
+    return (struct stat) {
+        .st_ino = inode_num.self_inode,
+        .st_mode = entry_in_parent.attributes,
+        .st_uid = 0,
+        .st_gid = 0,
+        .st_size = entry_in_parent.file_size_bytes,
+    };
 }
 
 static uint64_t read_file(struct VNodeData inode_num, uint64_t offset, uint8_t* output_buf, uint64_t num_bytes) {
@@ -234,58 +306,43 @@ static uint64_t read_file(struct VNodeData inode_num, uint64_t offset, uint8_t* 
         if(parent_inode.reserved) HCF
         
         struct Fat16DirectoryEntry entry_in_parent;
-        raw_read(&vol, parent_inode.cluster_number, parent_inode.parent_directory_entry_number*sizeof(struct Fat16DirectoryEntry), &entry_in_parent, sizeof(struct Fat16DirectoryEntry));
+        read_from_cluster_chain(&vol, parent_inode.cluster_number, parent_inode.parent_directory_entry_number*sizeof(struct Fat16DirectoryEntry), &entry_in_parent, sizeof(struct Fat16DirectoryEntry));
         
         //don't read past the end of the file
         if(offset + num_bytes > entry_in_parent.file_size_bytes) num_bytes = entry_in_parent.file_size_bytes - offset;
     }
 
     //read the data
-    raw_read(&vol, inode.cluster_number, offset, output_buf, num_bytes);
+    read_from_cluster_chain(&vol, inode.cluster_number, offset, output_buf, num_bytes);
     return num_bytes;
 }
 
-static struct stat stat_file(struct VNodeData inode_num) {
-    struct Fat16Volume vol = all_fat_mounts[inode_num.mount_id];
+static uint64_t write_file(struct VNodeData inode_num, uint64_t offset, const uint8_t *input_buf, uint64_t num_bytes) {
+    // struct Fat16Volume vol = all_fat_mounts[inode_num.mount_id];
 
-    union InodeNumberData inode = {.data = inode_num.self_inode};
-    if(inode.reserved) HCF
+    // union InodeNumberData inode = {.data = inode_num.self_inode};
+    // if(inode.reserved) HCF
 
-    if(inode.cluster_number != ROOT_DIR_CLUSTER_NUMBER) {
-        //only check file size if not using the root directory, as that is a fixed size and doesn't have a parent
-        union InodeNumberData parent_inode = {.data = inode_num.parent_inode};
-        if(parent_inode.reserved) HCF
-        
-        struct Fat16DirectoryEntry entry_in_parent;
-        raw_read(&vol, parent_inode.cluster_number, parent_inode.parent_directory_entry_number*sizeof(struct Fat16DirectoryEntry), &entry_in_parent, sizeof(struct Fat16DirectoryEntry));
-        
-        mode_t mode;
-        switch (entry_in_parent.attributes & ~FILE_ATTRIBUTES_ARCHIVE) {
-            case FILE_ATTRIBUTES_DIRECTORY:
-            mode = S_IFDIR;break;
-            case 0:
-            mode = S_IFREG;break;
-            default:
-            kprintf("%d (%x)", entry_in_parent.attributes, entry_in_parent.attributes);
-            HCF
-        }
-        
-        return (struct stat) {
-            .st_ino = inode_num.self_inode,
-            .st_mode = entry_in_parent.attributes,
-            .st_uid = 0,
-            .st_gid = 0,
-            .st_size = entry_in_parent.file_size_bytes,
-        };
-    }
+    // if(S_ISDIR(stat_file(inode_num).st_mode)) {
+    //     //directories and root dir aren't writeable
+    //     HCF
+    // }
 
-    return (struct stat) {
-        .st_ino = inode_num.self_inode,
-        .st_mode = S_IFDIR,
-        .st_uid = 0,
-        .st_gid = 0,
-        .st_size = vol.number_of_sectors_root_directory * vol.bytes_per_sector
-    };
+    // union InodeNumberData parent_inode = {.data = inode_num.parent_inode};
+    // if(parent_inode.reserved) HCF
+    
+    // struct Fat16DirectoryEntry entry_in_parent;
+    // read_from_cluster_chain(&vol, parent_inode.cluster_number, parent_inode.parent_directory_entry_number*sizeof(struct Fat16DirectoryEntry), &entry_in_parent, sizeof(struct Fat16DirectoryEntry));
+    
+    // //read the data
+    // read_from_cluster_chain(&vol, inode.cluster_number, offset, input_buf, num_bytes);
+    // return num_bytes;
+    HCF
+}
+
+static int create_inode(struct VNodeData parent_inode_num, mode_t new_inode_type, const char *name, struct VNode *out) {
+    //TODO
+    HCF
 }
 
 static int directory_lookup(struct VNodeData directory_entry, const char* name, struct VNode* out) {
@@ -302,7 +359,7 @@ static int directory_lookup(struct VNodeData directory_entry, const char* name, 
     
     for(uint64_t directory_i=0;;directory_i++) {
         struct Fat16DirectoryEntry ent;
-        raw_read(&vol, inode.cluster_number, directory_i*sizeof(struct Fat16DirectoryEntry), &ent, sizeof(struct Fat16DirectoryEntry));
+        read_from_cluster_chain(&vol, inode.cluster_number, directory_i*sizeof(struct Fat16DirectoryEntry), &ent, sizeof(struct Fat16DirectoryEntry));
 
         if(ent.attributes & 0b11000000) HCF
         
@@ -376,9 +433,9 @@ static int directory_lookup(struct VNodeData directory_entry, const char* name, 
                             .self_inode = ent.cluster_number,
                         },
                         .directory_lookup = directory_lookup,
-                        .write_file = NULL,
+                        .write_file = write_file,
                         .read_file = read_file,
-                        .create_inode = NULL,
+                        .create_inode = create_inode,
                         .stat_file = stat_file,
                     };
                     return 0;
@@ -433,6 +490,9 @@ void mount_fat16(struct VNode block_device, const char* mount_name) {
         },
         .directory_lookup=directory_lookup,
         .read_file = read_file,
+        .write_file = write_file,
+        .stat_file = stat_file,
+        .create_inode = 0
     };
 
     vfs_add_mount(mount_name, mount_vnode);
