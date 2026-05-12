@@ -169,8 +169,7 @@ struct VNode vfs_get(const char* cwd_path, const char* path, int open_flags) {
                 if (open_flags & O_DIRECTORY) HCF
                 //since not a dir, the last bit of the `path` is a valid string that I can pass
                 location.create_inode(location.id, S_IFREG, path, &location);
-                path = NULL;//to quit loop
-                break;
+                continue;//try and read the file now I have created it
             }
             /* FALLTHROUGH, since I have doesn't exist and no OPEN_CREATE */
             [[ fallthrough ]];
@@ -184,6 +183,7 @@ struct VNode vfs_get(const char* cwd_path, const char* path, int open_flags) {
 
     mode_t location_mode = location.stat_file(location.id).st_mode;
     if(!S_ISDIR(location_mode) && open_flags & O_DIRECTORY) HCF //tried to open a directory and it wasn't
+    if(S_ISDIR(location_mode) && !(open_flags & O_DIRECTORY)) HCF //tried to open a non directory and it was
     if(open_flags & O_TRUNC) {
         if(!S_ISREG(location_mode)) HCF//tried to open_clear a non-file
         debug_print("TODO clear file\n");

@@ -69,16 +69,16 @@ enum {
 };
 //TODO are the bits reversed?
 struct __attribute__((packed)) FatTime {
-    uint8_t hour:5;
-    uint8_t minute:6;
     //double this
     uint8_t seconds:5;
+    uint8_t minute:6;
+    uint8_t hour:5;
 };
 //TODO are the bits reversed?
 struct __attribute__((packed)) FatDate {
-    uint8_t year: 7;
-    uint8_t month: 4;
     uint8_t day: 5;
+    uint8_t month: 4;
+    uint8_t year: 7;
 };
 
 struct __attribute__((packed)) Fat16DirectoryEntry {
@@ -118,6 +118,39 @@ struct __attribute__((packed)) Fat16LFNEntry {
     uint16_t zero_b;
     uint16_t unicode_name_3[2];
 };
+
+static mode_t read_fat_mode(uint8_t attributes) {
+    if(attributes & FILE_ATTRIBUTES_RO
+        || attributes & FILE_ATTRIBUTES_HIDDEN
+        || attributes & FILE_ATTRIBUTES_SYSTEM
+        || attributes & FILE_ATTRIBUTES_VOLUMEID
+    ) HCF
+
+    if(attributes & FILE_ATTRIBUTES_DIRECTORY) {
+        return S_IFDIR;
+    } else {
+        return S_IFREG;
+    }
+
+}
+static uint8_t create_fat_mode(mode_t mode) {
+    if(S_ISDIR(mode)) {
+        return FILE_ATTRIBUTES_DIRECTORY;
+    }
+    if(S_ISREG(mode)) {
+        return 0;
+    }
+    HCF
+}
+
+static uint8_t checksum(char data[11]) {
+    uint8_t val = 0;
+    for(uint64_t i=0; i<11; i++) {
+        //circular shift + next item
+        val = ((val & 1) ? 0x80 : 0) + (val >> 1) + data[i];
+    }
+    return val;
+}
 
 //use a reserved cluster numbers for the root directory
 #define PARENT_IS_ROOT_DIR 0
@@ -368,20 +401,11 @@ static struct stat stat_file(struct VNodeData inode_num) {
     };
 
     struct Fat16DirectoryEntry entry_in_parent = read_parent_dirent(&vol, inode_num.inode);
-    
-    mode_t mode;
-    switch (entry_in_parent.attributes & ~FILE_ATTRIBUTES_ARCHIVE) {
-        case FILE_ATTRIBUTES_DIRECTORY:
-        mode = S_IFDIR;break;
-        case 0:
-        mode = S_IFREG;break;
-        default:
-        HCF
-    }
+
     
     return (struct stat) {
         .st_ino = inode_num.inode,
-        .st_mode = mode,
+        .st_mode = read_fat_mode(entry_in_parent.attributes),
         .st_uid = 0,
         .st_gid = 0,
         .st_size = entry_in_parent.file_size_bytes,
@@ -437,8 +461,107 @@ static uint64_t write_file(struct VNodeData inode_num, uint64_t offset, const ui
 }
 
 static int create_inode(struct VNodeData parent_inode_num, mode_t new_inode_type, const char *name, struct VNode *out) {
-    //TODO
-    HCF
+    struct Fat16Volume vol = all_fat_mounts[parent_inode_num.mount_id];
+
+    if(!S_ISDIR(stat_file(parent_inode_num).st_mode)) {
+        //can only create child of directory
+        HCF
+    }
+
+    //31 LFN values, 1 entry, and a 0 entry
+    struct Fat16DirectoryEntry entries_to_insert[33];
+    uint64_t next_free_entry_idx = 0;
+
+    //TODO bodge
+    static int create_idx = 0;
+
+    // char short_file_name[11];
+    // memset(short_file_name, ' ', 11);
+    // for(int i=0; i<8; i++) {
+    //     short_file_name[i] = 'a' + ()
+    // }
+
+    //create LFN entries
+    bool name_is_done = false;
+
+    const uint8_t LFN_STORE_CHARS = (5+6+2);
+    if(strlen(name) > LFN_STORE_CHARS*31) HCF//filename too long
+    uint8_t sequence_number = (strlen(name) + LFN_STORE_CHARS-1) / LFN_STORE_CHARS;
+
+    while(!name_is_done) {
+        struct Fat16LFNEntry *lfn = (struct Fat16LFNEntry*)(entries_to_insert + next_free_entry_idx++);
+        *lfn = (struct Fat16LFNEntry) {
+            .sequence_number = sequence_number,
+            .is_last_in_sequence = sequence_number == 1,
+            .unicode_name_1 = {0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF},
+            .attributes = FILE_ATTRIBUTES_LFN,
+            .checksum = checksum((char[11]){'R','E','A','D','A'+create_idx,'L','F','N', 'I','D','K'}),
+            .unicode_name_2 = {0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF},
+            .unicode_name_3 = {0xFFFF, 0xFFFF},
+        };
+        sequence_number--;
+        for(int i=0; i<5 && !name_is_done; i++) {
+            if(*name == '\0') name_is_done = true;
+            lfn->unicode_name_1[i] = *name++;
+        }
+        for(int i=0; i<6 && !name_is_done; i++) {
+            if(*name == '\0') name_is_done = true;
+            lfn->unicode_name_2[i] = *name++;
+        }
+        for(int i=0; i<2 && !name_is_done; i++) {
+            if(*name == '\0') name_is_done = true;
+            lfn->unicode_name_3[i] = *name++;
+        }
+    }
+    uint16_t cluster_number = 0;
+    uint32_t file_size_bytes = 0;
+
+    if(S_ISDIR(new_inode_type)) {
+        //allocate and zero sector to store end of directory sentinel
+        cluster_number = find_free_cluster_number(&vol);
+        write_fat(&vol, cluster_number, 0xFFF8);//mark as last cluster
+        file_size_bytes = sizeof(struct Fat16DirectoryEntry);
+        write_to_cluster_chain(&vol, cluster_number, 0, &(struct Fat16DirectoryEntry){}, file_size_bytes);
+    }
+
+    entries_to_insert[next_free_entry_idx++] = (struct Fat16DirectoryEntry) {
+        .filename = {'R','E','A','D','A'+create_idx,'L','F','N'},
+        .extension = {'I','D','K'},
+        .attributes = create_fat_mode(new_inode_type),
+        .reserved = 0,
+        .creation_time_hundredths = 0,
+        //TODO creation and modification date/time
+        .zero = 0,
+        .cluster_number = cluster_number,
+        .file_size_bytes = file_size_bytes,
+    };
+    entries_to_insert[next_free_entry_idx++] = (struct Fat16DirectoryEntry) {};
+
+    if(parent_inode_num.inode == I_AM_ROOT_DIR) {
+        // find location of end sentinel
+        uint64_t offset = 0;
+        while(1) {
+            struct Fat16DirectoryEntry ent;
+            read_from_root_dir(&vol, offset, &ent, sizeof(struct Fat16DirectoryEntry));
+            if(ent.filename[0] == 0) break;
+            offset += sizeof(struct Fat16DirectoryEntry);
+        }
+        //overwrite with my data
+        write_to_root_dir(&vol, offset, entries_to_insert, sizeof(struct Fat16DirectoryEntry) * next_free_entry_idx);
+    } else {
+
+        struct Fat16DirectoryEntry entry_in_parent = read_parent_dirent(&vol, parent_inode_num.inode);
+        uint32_t offset = entry_in_parent.file_size_bytes - sizeof(struct Fat16DirectoryEntry);//subtract the zero entry at the end that I will overwrite
+        entry_in_parent.file_size_bytes += sizeof(struct Fat16DirectoryEntry)*(next_free_entry_idx-1);//add number of new entries (excluding the already-existing zero entry)
+        
+        //update directory entry in parent's parent
+        write_parent_dirent(&vol, parent_inode_num.inode, entry_in_parent);
+        
+        //write the new directory entries
+        write_to_cluster_chain(&vol, entry_in_parent.cluster_number, offset, entries_to_insert, sizeof(struct Fat16DirectoryEntry)*next_free_entry_idx);
+    }
+    create_idx++;
+    return 0;
 }
 
 static int directory_lookup(struct VNodeData directory_entry, const char* name, struct VNode* out) {
@@ -514,12 +637,7 @@ static int directory_lookup(struct VNodeData directory_entry, const char* name, 
                 *short_file_name_next_free++ = ent.extension[i];
             }
 
-            mode_t node_type = 0;
-            if(ent.attributes & FILE_ATTRIBUTES_DIRECTORY) {
-                node_type |= S_IFDIR;
-            } else {
-                node_type |= S_IFREG;
-            }
+            mode_t node_type = read_fat_mode(ent.attributes);
 
             if(long_file_name_next_free != long_file_name) {
                 if(strcmp(long_file_name, name) == 0) {
@@ -587,7 +705,7 @@ void mount_fat16(struct VNode block_device, const char* mount_name) {
         .read_file = read_file,
         .write_file = write_file,
         .stat_file = stat_file,
-        .create_inode = 0
+        .create_inode = create_inode
     };
 
     vfs_add_mount(mount_name, mount_vnode);

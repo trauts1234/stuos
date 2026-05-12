@@ -17,3 +17,5 @@ Found multiple very difficult bugs such as:
 1. accidentally checking to see if cluster numbers 0 and 1 were free, even though they are reserved
 2. reading (cluster size + 2) bytes could span 2 or 3 clusters
 3. I was returning the FAT permissions enum from stat(), which expected a POSIX mode_t value
+create() on the root directory was set to null pointer
+When creating a file with open(..., "w"), I would create a file, then try and open the parent directory
