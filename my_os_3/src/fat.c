@@ -83,8 +83,7 @@ struct __attribute__((packed)) FatDate {
 
 struct __attribute__((packed)) Fat16DirectoryEntry {
     //8.3 file name. The first 8 characters are the name and the last 3 are the extension.
-    char filename[8];
-    char extension[3];
+    char filename[11];
     //see FILE_ATTRIBUTES_XYZ
     uint8_t attributes;
     uint8_t reserved;
@@ -102,7 +101,7 @@ struct __attribute__((packed)) Fat16DirectoryEntry {
 
 struct __attribute__((packed)) Fat16LFNEntry {
     //one based index (there are sequence_number-1 LFN entries after me)
-    uint8_t sequence_number:5;
+    uint8_t sequence_number:6;
 
     uint8_t is_last_in_sequence: 1;
 
@@ -468,24 +467,26 @@ static int create_inode(struct VNodeData parent_inode_num, mode_t new_inode_type
         HCF
     }
 
-    //31 LFN values, 1 entry, and a 0 entry
-    struct Fat16DirectoryEntry entries_to_insert[33];
+    //63 LFN values, 1 entry, and a 0 entry
+    struct Fat16DirectoryEntry entries_to_insert[65];
     uint64_t next_free_entry_idx = 0;
 
-    //TODO bodge
-    static int create_idx = 0;
+    //used to create a unique short filename 
+    static uint32_t create_idx = 0;
 
-    // char short_file_name[11];
-    // memset(short_file_name, ' ', 11);
-    // for(int i=0; i<8; i++) {
-    //     short_file_name[i] = 'a' + ()
-    // }
+    char short_file_name[11] = {
+        'R','E','A','D','_','L','F','N',
+        'A' + (create_idx%26),
+        'A' + (create_idx/26)%26,
+        'A' + ((create_idx/26)/26)%26
+    };
+    create_idx++;
 
     //create LFN entries
     bool name_is_done = false;
 
     const uint8_t LFN_STORE_CHARS = (5+6+2);
-    if(strlen(name) > LFN_STORE_CHARS*31) HCF//filename too long
+    if(strlen(name) >= LFN_STORE_CHARS*65) HCF//filename too long
     uint8_t sequence_number = (strlen(name) + LFN_STORE_CHARS-1) / LFN_STORE_CHARS;
 
     while(!name_is_done) {
@@ -495,7 +496,7 @@ static int create_inode(struct VNodeData parent_inode_num, mode_t new_inode_type
             .is_last_in_sequence = sequence_number == 1,
             .unicode_name_1 = {0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF},
             .attributes = FILE_ATTRIBUTES_LFN,
-            .checksum = checksum((char[11]){'R','E','A','D','A'+create_idx,'L','F','N', 'I','D','K'}),
+            .checksum = checksum(short_file_name),
             .unicode_name_2 = {0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF},
             .unicode_name_3 = {0xFFFF, 0xFFFF},
         };
@@ -524,9 +525,7 @@ static int create_inode(struct VNodeData parent_inode_num, mode_t new_inode_type
         write_to_cluster_chain(&vol, cluster_number, 0, &(struct Fat16DirectoryEntry){}, file_size_bytes);
     }
 
-    entries_to_insert[next_free_entry_idx++] = (struct Fat16DirectoryEntry) {
-        .filename = {'R','E','A','D','A'+create_idx,'L','F','N'},
-        .extension = {'I','D','K'},
+    struct Fat16DirectoryEntry dirent = {
         .attributes = create_fat_mode(new_inode_type),
         .reserved = 0,
         .creation_time_hundredths = 0,
@@ -535,6 +534,9 @@ static int create_inode(struct VNodeData parent_inode_num, mode_t new_inode_type
         .cluster_number = cluster_number,
         .file_size_bytes = file_size_bytes,
     };
+    memcpy(dirent.filename, short_file_name, 11);
+
+    entries_to_insert[next_free_entry_idx++] = dirent;
     entries_to_insert[next_free_entry_idx++] = (struct Fat16DirectoryEntry) {};
 
     if(parent_inode_num.inode == I_AM_ROOT_DIR) {
@@ -560,7 +562,7 @@ static int create_inode(struct VNodeData parent_inode_num, mode_t new_inode_type
         //write the new directory entries
         write_to_cluster_chain(&vol, entry_in_parent.cluster_number, offset, entries_to_insert, sizeof(struct Fat16DirectoryEntry)*next_free_entry_idx);
     }
-    create_idx++;
+
     return 0;
 }
 
@@ -626,16 +628,7 @@ static int directory_lookup(struct VNodeData directory_entry, const char* name, 
             // if(ent.cluster_number < 2) HCF
             if(ent.zero) HCF
 
-            char short_file_name[12] = {0};
-            char* short_file_name_next_free = short_file_name;
-            //copy file name
-            for(uint64_t i=0; i<sizeof(ent.filename)/sizeof(char) && ent.filename[i] != ' '; i++) {
-                *short_file_name_next_free++ = ent.filename[i];
-            }
-            if(ent.extension[0] != ' ') *short_file_name_next_free++ = '.';
-            for(uint64_t i=0; i<sizeof(ent.extension)/sizeof(char) && ent.extension[i] != ' '; i++) {
-                *short_file_name_next_free++ = ent.extension[i];
-            }
+            //ignore short filename
 
             mode_t node_type = read_fat_mode(ent.attributes);
 

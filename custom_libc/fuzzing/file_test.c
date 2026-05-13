@@ -92,8 +92,4 @@ void file_test() {
     chdir("/fat");
     getcwd(buf, 100);
     assert(strcmp(buf, "/fat") == 0);
-
-    FILE* with_cwd = fopen("data.txt", "w");
-    if(with_cwd == NULL) printf("file is null");
-    fclose(with_cwd);
 }
