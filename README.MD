@@ -16,17 +16,11 @@ git clone https://github.com/limine-bootloader/limine.git --branch=v9.x-binary -
 make -C my_os_3/limine
 ```
 
-5. compile the OS: 
+5. mount a data drive and compile the OS: 
 ```bash
-./build_all.sh
+./reset.sh
 ```
 6. run the OS:
 ```bash
 ./run.sh
 ```
-
-## Installing via Docker/Podman
-- Install Docker or Podman
-- Install QEMU on the host system
-- Make the image, for example `podman build -t stuos_compiler .`
-- Start the container, for example `podman run -v .:/home/root stuos_compiler`
