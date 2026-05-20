@@ -169,18 +169,18 @@ static void handle_bar(struct PciDevice device, struct PciConfigurationHeader he
     }
 }
 
-void read_bar(struct BarInfo bar, void* dest, uint64_t offset, uint64_t count) {
-    if(bar.is_io_bar) {
-        uint8_t* dest_u8 = dest;
-        for(uint64_t i=0; i<count; i++) {
-            if(bar.address + i > 0xFFFF) HCF
-            uint8_t val = in8(bar.address + i);
-            *dest_u8++ = val;
-        }
-    } else {
-        memcpy(dest, (const void*)bar.virtual_address + offset, count);//cast away volatile as it is a read?
-    }
-}
+// void read_bar(struct BarInfo bar, void* dest, uint64_t offset, uint64_t count) {
+//     if(bar.is_io_bar) {
+//         uint8_t* dest_u8 = dest;
+//         for(uint64_t i=0; i<count; i++) {
+//             if(bar.address + i > 0xFFFF) HCF
+//             uint8_t val = in8(bar.address + i);
+//             *dest_u8++ = val;
+//         }
+//     } else {
+//         memcpy(dest, (const void*)bar.virtual_address + offset, count);//cast away volatile as it is a read?
+//     }
+// }
 
 void initialise_pci() {
     void* next_free_mmio = mmio_start;

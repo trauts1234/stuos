@@ -118,6 +118,18 @@ size_t strlen(const char* str) {
     return result;
 }
 
+int strncmp(const char *s1, const char *s2, size_t n) {
+    while (n-- > 0) {
+        //check for string incorrect
+        if (*s1 != *s2)return *s1 - *s2;
+        //check if strings have ended
+        if (*s1 == '\0') break;
+
+        ++s1; ++s2;
+    }
+    return 0;
+}
+
 int toupper(int c) {
     if(c >= 'a' && c <= 'z') {
         return c + ('A' - 'a');

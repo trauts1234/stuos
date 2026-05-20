@@ -34,6 +34,6 @@ struct BarInfo {
 
 void initialise_pci();
 
-void read_bar(struct BarInfo bar, void* dest, uint64_t offset, uint64_t count);
+// void read_bar(struct BarInfo bar, void* dest, uint64_t offset, uint64_t count);
 
 #endif
