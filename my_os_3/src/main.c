@@ -96,8 +96,6 @@ void kmain(void) {
     syscall_init();
     initialise_tty();
     initialise_pci();
-    
-    ls_blockdevs();
     mount_fat16(vfs_get("/", "/dev/blkAp0", 0), "fat");
 
     struct VNode fuzz = vfs_get("/", "/fat/testing.out", 0);

@@ -27,17 +27,6 @@ struct BlockDevice {
 static uint64_t next_free_block_device = 0;
 static struct BlockDevice block_devices[MAX_BLOCK_DEVICES];
 
-void ls_blockdevs() {
-    for(int i=0; i<next_free_block_device; i++) {
-        struct BlockDevice* bd = block_devices + i;
-        kprintf("block device %d\n", i);
-
-        for(int j=0; j<bd->num_partitions; j++) {
-            kprintf("- partition at offset %lld\n", bd->partitions[j].byte_offset);
-        }
-    }
-}
-
 void fs_dev_add_block_device(
     void* driver_private,
     void (*block_read)(void* driver_private, uint64_t sector_number, uint8_t output[BLOCK_DEVICE_READ_SIZE]),
@@ -134,7 +123,7 @@ static uint64_t blockdev_write_file(struct VNodeData inode_num, uint64_t offset,
         offset_in_sector = 0;//write from the start of the next sector
 
         //write back modified data
-        dev->block_read(dev->driver_private, sector, data);
+        dev->block_write(dev->driver_private, sector, data);
     }
     return num_bytes;
 }

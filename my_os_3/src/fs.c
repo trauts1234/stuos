@@ -157,6 +157,7 @@ struct VNode vfs_get(const char* cwd_path, const char* path, int open_flags) {
         }
     }
     //walk the path to generate the actual locaiton (this destroys the pointer path)
+    bool dbg_have_created_inode = false;
     while(path) {
         switch (step_path2(&location, &path)) {
 
@@ -167,8 +168,10 @@ struct VNode vfs_get(const char* cwd_path, const char* path, int open_flags) {
         case STEPPATH_NOTEXIST_LAST:
             if(open_flags & O_CREAT) {
                 if (open_flags & O_DIRECTORY) HCF
+                if(dbg_have_created_inode) HCF
                 //since not a dir, the last bit of the `path` is a valid string that I can pass
                 location.create_inode(location.id, S_IFREG, path, &location);
+                dbg_have_created_inode = true;
                 continue;//try and read the file now I have created it
             }
             /* FALLTHROUGH, since I have doesn't exist and no OPEN_CREATE */

@@ -19,3 +19,4 @@ Found multiple very difficult bugs such as:
 3. I was returning the FAT permissions enum from stat(), which expected a POSIX mode_t value
 create() on the root directory was set to null pointer
 When creating a file with open(..., "w"), I would create a file, then try and open the parent directory
+I turned a write() into a read(), which messed up creating files in the root directory specifically

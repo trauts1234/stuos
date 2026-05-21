@@ -18,6 +18,4 @@ void fs_dev_add_block_device(
 //mounts /dev - you can add devices before running this if you want
 void devfs_init();
 
-void ls_blockdevs();
-
 #endif

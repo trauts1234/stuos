@@ -575,8 +575,8 @@ static int directory_lookup(struct VNodeData directory_entry, const char* name, 
         read_parent_dirent(&vol, directory_entry.inode).cluster_number;
 
     //microsoft spec limits file names to 255 chars
-    char long_file_name[256] = {};
-    char* long_file_name_next_free = long_file_name;
+    char file_name[256] = {};
+    char* file_name_next_free = file_name;
     
     for(uint64_t directory_i=0;;directory_i++) {
         struct Fat16DirectoryEntry ent;
@@ -605,21 +605,21 @@ static int directory_lookup(struct VNodeData directory_entry, const char* name, 
                 uint16_t c = lfn.unicode_name_1[i];
                 if(c & 0xFF00) HCF//unicode... weird.
 
-                *long_file_name_next_free++ = (char)c;
+                *file_name_next_free++ = (char)c;
                 if(c == 0) done = true;
             }
             for(int i=0; i<6 && !done; i++) {
                 uint16_t c = lfn.unicode_name_2[i];
                 if(c & 0xFF00) HCF//unicode... weird.
 
-                *long_file_name_next_free++ = (char)c;
+                *file_name_next_free++ = (char)c;
                 if(c == 0) done = true;
             }
             for(int i=0; i<2 && !done; i++) {
                 uint16_t c = lfn.unicode_name_3[i];
                 if(c & 0xFF00) HCF//unicode... weird.
 
-                *long_file_name_next_free++ = (char)c;
+                *file_name_next_free++ = (char)c;
                 if(c == 0) done = true;
             }
 
@@ -628,33 +628,39 @@ static int directory_lookup(struct VNodeData directory_entry, const char* name, 
             // if(ent.cluster_number < 2) HCF
             if(ent.zero) HCF
 
-            //ignore short filename
-
             mode_t node_type = read_fat_mode(ent.attributes);
 
-            if(long_file_name_next_free != long_file_name) {
-                if(strcmp(long_file_name, name) == 0) {
-                    *out = (struct VNode) {
-                        .id = {
-                            .mount_id = directory_entry.mount_id,
-                            .inode = make_inode(cluster_number, directory_i),
-                        },
-                        .directory_lookup = directory_lookup,
-                        .write_file = write_file,
-                        .read_file = read_file,
-                        .create_inode = create_inode,
-                        .stat_file = stat_file,
-                    };
-                    return 0;
-                }
-            } else {
+            //no long file name, so read short filename
+            if(file_name_next_free == file_name) {
                 //short file name
-                HCF
+                for(int i=0; i < 8 && ent.filename[i] != ' '; i++) {
+                    *file_name_next_free++ = ent.filename[i];
+                }
+                if(ent.filename[8] != ' ') *file_name_next_free++ = '.';
+                for(int i=8; i<11 && ent.filename[i] != ' '; i++) {
+                    *file_name_next_free++ = ent.filename[i];
+                }
+                *file_name_next_free = '\0';
+            }
+            
+            if(strcmp(file_name, name) == 0) {
+                *out = (struct VNode) {
+                    .id = {
+                        .mount_id = directory_entry.mount_id,
+                        .inode = make_inode(cluster_number, directory_i),
+                    },
+                    .directory_lookup = directory_lookup,
+                    .write_file = write_file,
+                    .read_file = read_file,
+                    .create_inode = create_inode,
+                    .stat_file = stat_file,
+                };
+                return 0;
             }
 
             //reset LFN
-            memset(long_file_name, 0, sizeof(long_file_name));
-            long_file_name_next_free = long_file_name;
+            memset(file_name, 0, sizeof(file_name));
+            file_name_next_free = file_name;
         }
     }
 }
@@ -667,7 +673,7 @@ void mount_fat16(struct VNode block_device, const char* mount_name) {
     if(hdr.number_of_root_directory_entries < 1) HCF
     if(hdr.number_of_sectors == 0 && hdr.large_sector_count == 0) HCF
     if(hdr.number_of_sectors_per_fat < 1) HCF
-    if(hdr.number_of_hidden_sectors != 0) HCF
+    // if(hdr.number_of_hidden_sectors != 0) HCF
     if(hdr.signature != 0x28 && hdr.signature != 0x29) HCF
     if(hdr.bootable_partition_signature != 0xAA55) HCF
 
