@@ -1,6 +1,7 @@
 #include "fs_dev.h"
 #include "debugging.h"
 #include "fs.h"
+#include "uapi/fcntl.h"
 #include "uapi/stat.h"
 #include "uapi/stdint.h"
 #include "kern_libc.h"
@@ -216,7 +217,7 @@ struct stat devroot_stat(struct VNodeData inode_num) {
 
 void devfs_init() {
     vfs_add_mount(
-        "dev",
+        vfs_get("/", "/dev", O_DIRECTORY),
         (struct VNode) {
             .id = {
                 .inode = DEV_ROOT_DIR_INODE_NUM,

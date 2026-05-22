@@ -98,7 +98,7 @@ void kmain(void) {
     initialise_pci();
     mount_fat16(vfs_get("/", "/dev/blkAp0", 0), "fat");
 
-    struct VNode fuzz = vfs_get("/", "/fat/testing.out", 0);
+    struct VNode fuzz = vfs_get("/", "testing.out", 0);
     const struct LoadedProgram elf = instantiate_ELF(fuzz, (char*[]){"testing.out", "helloworld", NULL});
 
     add_new_process(elf);

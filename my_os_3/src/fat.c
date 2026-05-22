@@ -1,5 +1,6 @@
 #include "debugging.h"
 #include "fs.h"
+#include "uapi/fcntl.h"
 #include "uapi/stat.h"
 #include "uapi/stdint.h"
 #include "kern_libc.h"
@@ -707,5 +708,5 @@ void mount_fat16(struct VNode block_device, const char* mount_name) {
         .create_inode = create_inode
     };
 
-    vfs_add_mount(mount_name, mount_vnode);
+    vfs_add_mount(vfs_get("/", "/", O_DIRECTORY), mount_vnode);
 }

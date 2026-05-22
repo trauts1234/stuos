@@ -31,7 +31,7 @@ $(OUTPUT_DISK): $(BUILD_DIR)/built.stamp
 # making the filesystem requires the project to have been compiled and limine to be installed
 #use a .stamp file as directory timestamps are useless in linux
 $(BUILD_DIR)/built.stamp: $(OS_BINARY) 
-	mkdir -p $(OUTPUT_DIR)/boot/limine $(OUTPUT_DIR)/EFI/BOOT
+	mkdir -p $(OUTPUT_DIR)/boot/limine $(OUTPUT_DIR)/EFI/BOOT $(OUTPUT_DIR)/dev
 	cp $(LIMINE_CONFIG) $(LIMINE_FOLDER)/limine-bios.sys $(LIMINE_FOLDER)/limine-bios-cd.bin $(LIMINE_FOLDER)/limine-uefi-cd.bin $(OUTPUT_DIR)/boot/limine/
 	cp $(LIMINE_FOLDER)/BOOTX64.EFI $(LIMINE_FOLDER)/BOOTIA32.EFI $(OUTPUT_DIR)/EFI/BOOT
 	cp $< $(OUTPUT_DIR)/boot

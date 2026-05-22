@@ -44,8 +44,8 @@ struct VNode {
     int (*create_inode)(struct VNodeData parent_inode_num, mode_t new_inode_type, const char* name, struct VNode* out);
 };
 
-/// mount_name's data must live forever, as the pointer is copied, as must filesystem_root
-void vfs_add_mount(const char* mount_name, struct VNode filesystem_root);
+/// mounts filesystem_root on top of mount_against
+void vfs_add_mount(struct VNode mount_against, struct VNode filesystem_root);
 
 //gets the VNode at `path`
 struct VNode vfs_get(const char* cwd_path, const char* path, int open_flags);

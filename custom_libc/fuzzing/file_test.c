@@ -8,7 +8,7 @@
 
 void file_test() {
     //TODO remove tocreate here if it exists
-    char* rw_files[] = {"/fat/.test", "/fat/tocreate"};
+    char* rw_files[] = {".test", "tocreate"};
     //these files should start with their data being equal to the filename
     // char* r_files[] = {};
 
@@ -89,7 +89,8 @@ void file_test() {
     }
 
     char buf[100];
-    chdir("/fat");
+    chdir("/dev");
     getcwd(buf, 100);
-    assert(strcmp(buf, "/fat") == 0);
+    assert(strcmp(buf, "/dev") == 0);
+    chdir("/");
 }

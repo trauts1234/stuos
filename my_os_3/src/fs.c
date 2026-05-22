@@ -7,19 +7,13 @@
 #include "uapi/types.h"
 
 #define ROOT_INODE_NUM 69
+#define TMPFS_DEV 70
 #define MAX_MOUNTS 10
 
-/// You can only mount against the root directory i.e /mountpoint is OK, but /a/b/mountpoint is not OK
-struct MountPoint {
-    /// the filesystem will be mounted at /{mount_name}
-    ///
-    /// NULL pointer represents a NULL mountpoint
-    const char* mount_name;
-    /// Root of the filesystem that is mounted, represents /{mount_name}/
-    ///
-    /// Must be a directory, and includes function pointers for how to use the vnode
-    struct VNode mount_root;
-} filesystem_mount_points[MAX_MOUNTS] = {};
+struct MountPoint2 {
+    struct VNode parent;
+    struct VNode replacement;
+} mounts[MAX_MOUNTS] = {};
 
 static uint64_t path_segment_len(const char* path) {
     uint64_t size = 0;
@@ -30,24 +24,62 @@ static uint64_t path_segment_len(const char* path) {
     return size;
 }
 
-//scan for mount points that match a directory name
-static int vfs_root_dir_lookup(struct VNodeData dir_inode_num, const char* name, struct VNode* out) {
-    if(dir_inode_num.inode != ROOT_INODE_NUM || dir_inode_num.mount_id != 0) HCF
+bool is_eq_vnode(struct VNode l, struct VNode r) {
+    return 1 &&
+        l.id.inode == r.id.inode &&
+        l.id.mount_id == r.id.mount_id &&
+        l.directory_lookup == r.directory_lookup &&
+        l.write_file == r.write_file &&
+        l.read_file == r.read_file &&
+        l.create_inode == r.create_inode &&
+        l.stat_file == r.stat_file;
+}
 
-    for (uint64_t mount_idx = 0; mount_idx < MAX_MOUNTS && filesystem_mount_points[mount_idx].mount_name;mount_idx++) {
-        if(strcmp(name, filesystem_mount_points[mount_idx].mount_name) == 0) {
-            *out = filesystem_mount_points[mount_idx].mount_root;//start at the filesystem's root
-            return 0;
-        }
+bool is_null_vnode(struct VNode v) {
+    return 1 &&
+        v.id.inode == 0 &&
+        v.id.mount_id == 0 &&
+        v.directory_lookup == 0 &&
+        v.write_file == 0 &&
+        v.read_file == 0 &&
+        v.create_inode == 0 &&
+        v.stat_file == 0;
+}
+
+static struct stat tmpfs_stat_file(struct VNodeData id) {
+    if(id.mount_id != 0) HCF
+
+    switch(id.inode) {
+        case ROOT_INODE_NUM:
+        case TMPFS_DEV:
+        return (struct stat) {
+            .st_ino = id.inode,
+            .st_mode = S_IFDIR,
+            .st_size = 0,//TODO
+        };
     }
 
-    return -1;
+    HCF
 }
-//fail to do the following as I can only handle mount points
-static uint64_t fail_write_file(struct VNodeData, uint64_t, const uint8_t*, uint64_t) { HCF }
-static uint64_t fail_read_file(struct VNodeData, uint64_t, uint8_t*, uint64_t) { HCF }
-int fail_create_inode(struct VNodeData, mode_t, const char*, struct VNode*) { HCF }
-struct stat fail_stat(struct VNodeData) { HCF }
+
+//until a proper root fs is mounted, this contains a fake directory
+static int tmpfs_directory_lookup(struct VNodeData id, const char *name, struct VNode *out) {
+    if(id.mount_id != 0 || id.inode != ROOT_INODE_NUM) HCF
+
+    if(strcmp(name, "dev") == 0) {
+        //devfs
+        *out = (struct VNode) {
+            .id = {
+                .inode = TMPFS_DEV,
+                .mount_id = 0
+            },
+            .stat_file = tmpfs_stat_file
+        };
+        return 0;
+    }
+
+    HCF
+}
 
 struct VNode vfs_get_root() {
     return (struct VNode) {
@@ -55,11 +87,8 @@ struct VNode vfs_get_root() {
             .inode = ROOT_INODE_NUM,
             .mount_id = 0
         },
-        .directory_lookup = vfs_root_dir_lookup,
-        .write_file = fail_write_file,
-        .read_file = fail_read_file,
-        .create_inode = fail_create_inode,
-        .stat_file = fail_stat,
+        .directory_lookup = tmpfs_directory_lookup,
+        .stat_file = tmpfs_stat_file,
     };
 }
 
@@ -74,12 +103,21 @@ enum StepPathResult {
     STEPPATH_NOTEXIST
 };
 
+//if current is the host for a mount, current is also replaced with the root of the mounted directory
 static enum StepPathResult step_path2(struct VNode* current, const char** path_start) {
     //if starts with root, return root node
     if(**path_start == '/') {
         (*path_start)++;
         *current = vfs_get_root();
         return STEPPATH_INPROGRESS;
+    }
+
+    //if a mountpoint, replace with the mounted root dir
+    for(int i=0; i<MAX_MOUNTS; i++) {
+        if(is_eq_vnode(mounts[i].parent, *current)) {
+            *current = mounts[i].replacement;
+            return STEPPATH_INPROGRESS;
+        }
     }
 
     //path is invalid or empty, so return
@@ -131,14 +169,17 @@ static enum StepPathResult step_path2(struct VNode* current, const char** path_s
     }
 }
 
-void vfs_add_mount(const char* mount_name, struct VNode filesystem_root) {
-    uint64_t mount_idx = 0;
-    while (filesystem_mount_points[mount_idx].mount_name) {
-        mount_idx++;
-        if(mount_idx == MAX_MOUNTS) {HCF}/// out of mount points
+void vfs_add_mount(struct VNode mount_against, struct VNode filesystem_root) {
+    struct MountPoint2* curr = mounts;
+    for(; !is_null_vnode(curr->replacement); curr++) {
+        if(is_eq_vnode(curr->parent, mount_against)) HCF//already mounted
+        if(mounts-curr == MAX_MOUNTS) {HCF}/// out of mount points
     }
 
-    filesystem_mount_points[mount_idx] = (struct MountPoint) {.mount_name = mount_name, .mount_root=filesystem_root};
+    *curr = (struct MountPoint2) {
+        .parent = mount_against,
+        .replacement = filesystem_root
+    };
 }
 
 struct VNode vfs_get(const char* cwd_path, const char* path, int open_flags) {
