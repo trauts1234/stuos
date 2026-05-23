@@ -6,6 +6,7 @@
 #include "memory.h"
 #include "pipes_and_files.h"
 #include "scheduling.h"
+#include "uapi/stddef.h"
 
 struct __attribute__((__packed__)) ElfFile {
     uint8_t file_header[4];//should be 0x7f, E, L, F

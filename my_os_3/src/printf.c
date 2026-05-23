@@ -37,7 +37,9 @@
  * THE SOFTWARE.
  */
 
+//TODO tcc stdarg implementation?
 # include "stdarg.h"
+//huh? uapi/
 # include "stddef.h"
 #include "debugging.h"
 

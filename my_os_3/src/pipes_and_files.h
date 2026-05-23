@@ -3,6 +3,7 @@
 
 
 #include "uapi/stdint.h"
+#include "uapi/stdbool.h"
 
 struct FopReadResult {
     // Set as true if the operation has completed

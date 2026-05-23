@@ -1,5 +1,4 @@
 #include "uapi/stdint.h"
-#include <stddef.h>
 #include "limine.h"
 
 #ifndef MEMORY_H

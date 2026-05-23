@@ -1,7 +1,5 @@
 #include "kern_libc.h"
 #include "uapi/stdint.h"
-#include <stddef.h>
-#include <stdbool.h>
 #include "display.h"
 #include "fs.h"
 #include "interrupts.h"

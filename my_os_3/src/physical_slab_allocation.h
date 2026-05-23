@@ -1,10 +1,9 @@
 #ifndef PHYSICAL_SLAB_ALLOCATION_H
 #define PHYSICAL_SLAB_ALLOCATION_H
 
-#include <stddef.h>
 #include "uapi/stdint.h"
-static const size_t PAGE_SIZE = 4096;
-static const uint64_t PAGE_MASK = PAGE_SIZE-1;
+#define PAGE_SIZE 4096
+#define PAGE_MASK (PAGE_SIZE-1)
 
 uint64_t round_up_pages(uint64_t num_bytes);
 

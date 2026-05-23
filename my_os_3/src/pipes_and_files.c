@@ -1,4 +1,3 @@
-#include <stddef.h>
 #include "pipes_and_files.h"
 #include "fs.h"
 #include "kern_libc.h"
@@ -23,11 +22,11 @@ struct PipeSpecialData {
 };
 
 /// This is put as a fake read when reading is impossible
-static struct FopReadResult invalid_read(void*, uint8_t*, uint64_t) {HCF}
+static struct FopReadResult invalid_read(void* _, uint8_t* _1, uint64_t _2) {HCF}
 /// This is put as a fake seek when seeking is impossible
-static uint64_t invalid_lseek(void*, int64_t, int) {HCF}
+static uint64_t invalid_lseek(void* _, int64_t _1, int _2) {HCF}
 /// This is put as a fake write when writing is impossible
-static uint64_t invalid_write(void*, const uint8_t*, uint64_t) {HCF}
+static uint64_t invalid_write(void* _, const uint8_t* _1, uint64_t _2) {HCF}
 /// When nothing is required to close the special data, run this
 static void do_nothing_close(void* special_data) {
     if(special_data != NULL) {HCF}

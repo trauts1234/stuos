@@ -1,4 +1,4 @@
-CC = x86_64-elf-gcc
+CC = /home/stuart/Programming/C/stuos_core/tcc/tcc
 LD = x86_64-elf-ld
 
 SRC_DIR := ./src
@@ -21,7 +21,8 @@ LIMINE_FOLDER = ./limine
 OUTPUT_DISK = ../filesystem
 OUTPUT_DIR = ../filesystem_mnt
 
-all: $(OUTPUT_DISK)
+# all: $(OUTPUT_DISK)
+all: $(OS_BINARY)
 
 $(OUTPUT_DISK): $(BUILD_DIR)/built.stamp
 	@ mountpoint -q $(OUTPUT_DIR)

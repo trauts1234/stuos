@@ -1,6 +1,8 @@
 #ifndef PS2_H
 #define PS2_H
 
+#include "uapi/stdbool.h"
+
 struct KeyEvent {
     enum {
         KE_NULL,//nothing happened - take this as a NULL value

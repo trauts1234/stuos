@@ -89,7 +89,7 @@ static void setup_pic() {
 }
 
 static void setup_pit() {
-    const uint32_t PIT_BASE = 1'193'182;
+    const uint32_t PIT_BASE = 1193182;
     const uint16_t divisor = (uint16_t)(PIT_BASE / FREQ);
 
     const uint16_t PIT_CMD = 0x43;
