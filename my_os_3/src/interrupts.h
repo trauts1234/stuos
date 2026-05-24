@@ -1,7 +1,7 @@
 #ifndef INTERRUPTS_H
 #define INTERRUPTS_H
 
-#include "uapi/stdint.h"
+#include <uapi/stdint.h>
 
 /// Where RSP should be set when using the interrupt stack, so the highest address
 extern uint8_t *const interrupt_stack_top;

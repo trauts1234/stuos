@@ -1,5 +1,5 @@
-#include "uapi/stdint.h"
-#include "uapi/stdbool.h"
+#include <uapi/stdint.h>
+#include <uapi/stdbool.h>
 #include "interrupts.h"
 #include "kern_libc.h"
 #include "memory.h"

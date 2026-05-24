@@ -4,7 +4,7 @@
 #include "pci.h"
 #include "physical_slab_allocation.h"
 #include "virtio_driver.h"
-#include "uapi/stdint.h"
+#include <uapi/stdint.h>
 #include "memory.h"
 
 #define CONFIG_ADDRESS 0xCF8

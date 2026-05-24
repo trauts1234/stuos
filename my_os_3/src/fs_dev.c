@@ -1,9 +1,9 @@
 #include "fs_dev.h"
 #include "debugging.h"
 #include "fs.h"
-#include "uapi/fcntl.h"
-#include "uapi/stat.h"
-#include "uapi/stdint.h"
+#include <uapi/fcntl.h>
+#include <uapi/stat.h>
+#include <uapi/stdint.h>
 #include "kern_libc.h"
 
 #define DEV_ROOT_DIR_INODE_NUM UINT64_MAX

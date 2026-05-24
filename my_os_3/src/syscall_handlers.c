@@ -1,5 +1,5 @@
-#include <stddef.h>
-#include <stdbool.h>
+#include <uapi/stddef.h>
+#include <uapi/stdbool.h>
 #include "elf.h"
 #include "fs.h"
 #include "interrupts.h"
@@ -7,7 +7,7 @@
 #include "display.h"
 #include "debugging.h"
 #include "interrupts.h"
-#include "uapi/syscalls.h"
+#include <uapi/syscalls.h>
 #include "pipes_and_files.h"
 #include "scheduling.h"
 #include "kern_libc.h"
@@ -18,7 +18,7 @@ static uint8_t syscall_stack[4096 * 4] __attribute__ ((__aligned__(16)));
 // used in assembly
 uint8_t *const syscall_stack_top = syscall_stack + sizeof(syscall_stack);
 
-void syscall_crash(void*, struct ProcessorState* processor_state) {
+void syscall_crash(void* _, struct ProcessorState* processor_state) {
     if(DEBUG_SYSCALLS) kprintf("%s: \n", __func__);
     register_as_waiting((struct WaitingData) {
         .status = I_AM_ZOMBIE,

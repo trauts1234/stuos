@@ -3,7 +3,7 @@
 #include "kern_libc.h"
 #include "debugging.h"
 #include "tty.h"
-#include "uapi/fcntl.h"
+#include <uapi/fcntl.h>
 
 struct OpenVnodeSpecialData {
     struct VNode file;

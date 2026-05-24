@@ -2,7 +2,7 @@
 #define TTY_H
 
 #include "ps2.h"
-#include "uapi/stdint.h"
+#include <uapi/stdint.h>
 
 //display must be initialised first
 void initialise_tty();

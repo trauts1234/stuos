@@ -1,11 +1,11 @@
 #include "fs.h"
 #include "debugging.h"
 #include "kern_libc.h"
-#include "uapi/stat.h"
-#include "uapi/stdint.h"
-#include "uapi/stdbool.h"
-#include "uapi/fcntl.h"
-#include "uapi/types.h"
+#include <uapi/stat.h>
+#include <uapi/stdint.h>
+#include <uapi/stdbool.h>
+#include <uapi/fcntl.h>
+#include <uapi/types.h>
 
 #define ROOT_INODE_NUM 69
 #define TMPFS_DEV 70

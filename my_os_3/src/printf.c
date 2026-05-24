@@ -37,10 +37,9 @@
  * THE SOFTWARE.
  */
 
-//TODO tcc stdarg implementation?
-# include "stdarg.h"
-//huh? uapi/
-# include "stddef.h"
+# include <uapi/stdarg.h>
+# include <uapi/stddef.h>
+#include <uapi/stdbool.h>
 #include "debugging.h"
 
 #ifdef __GNUC__
@@ -200,7 +199,7 @@ typedef unsigned int printf_size_t;
 #define SIGN(_negative,_x) ( (_negative) ? -(_x) : (_x))
 
 #if (PRINTF_SUPPORT_DECIMAL_SPECIFIERS || PRINTF_SUPPORT_EXPONENTIAL_SPECIFIERS)
-#include <float.h>
+#include <uapi/float.h>
 
 /**
  * This library supports taking float-point arguments up to and including

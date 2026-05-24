@@ -1,16 +1,16 @@
 #include "debugging.h"
-#include "uapi/stdint.h"
+#include <uapi/stdint.h>
 #include "display.h"
 #include "kern_libc.h"
 #include "font8x8_basic.h"
 #include "ps2.h"
 
 // 8x8 bitmap chars
-static const uint64_t char_memorysize = 8;
+#define CHAR_MEMORY_SIZE 8
 // x2 size
-static const uint64_t char_scalefactor = 2;
+#define CHAR_SCALE_FACTOR 2
 // => 16x16 pixels
-static const uint64_t char_screensize = char_memorysize * char_scalefactor;
+#define CHAR_SCREEN_SIZE (CHAR_MEMORY_SIZE * CHAR_SCALE_FACTOR)
 
 //width and height in chars, not pixels
 static uint64_t chars_width, chars_height;
@@ -58,10 +58,10 @@ static uint64_t index_buffer(uint64_t x, uint64_t y) {
 static void blit_char(char c, uint64_t start_pixel_x, uint64_t start_pixel_y) {
     char* bitmap_start = font8x8_basic[(uint64_t)c];
 
-    for (unsigned int y_offset = 0; y_offset < char_screensize; y_offset++) {
-        char current_row = bitmap_start[y_offset / char_scalefactor];
-        for (unsigned int x_offset = 0; x_offset < char_screensize; x_offset++) {
-            bool is_foreground_pixel = (current_row >> (x_offset / char_scalefactor)) & 1;
+    for (unsigned int y_offset = 0; y_offset < CHAR_SCREEN_SIZE; y_offset++) {
+        char current_row = bitmap_start[y_offset / CHAR_SCALE_FACTOR];
+        for (unsigned int x_offset = 0; x_offset < CHAR_SCREEN_SIZE; x_offset++) {
+            bool is_foreground_pixel = (current_row >> (x_offset / CHAR_SCALE_FACTOR)) & 1;
             display_write_pixel(
                 start_pixel_x + x_offset,
                 start_pixel_y + y_offset,
@@ -80,7 +80,7 @@ static void blit_row(char* chars, uint64_t char_y) {
 
         if(row_has_seen_newline) curr = ' ';//print blank if a newline has been entered, to clear the rest of the line
 
-        blit_char(curr, char_x * char_screensize, char_y * char_screensize);
+        blit_char(curr, char_x * CHAR_SCREEN_SIZE, char_y * CHAR_SCREEN_SIZE);
     }
 }
 
@@ -89,7 +89,7 @@ static void blit() {
     switch (current_buffer_dirty_status) {
 
     case ONLY_PREV_CHAR_AFFECTED:
-        blit_char(buffer[index_buffer(cursor_x-1, cursor_y)], (cursor_x-1) * char_screensize, (chars_height-1) * char_screensize);
+        blit_char(buffer[index_buffer(cursor_x-1, cursor_y)], (cursor_x-1) * CHAR_SCREEN_SIZE, (chars_height-1) * CHAR_SCREEN_SIZE);
         return;
 
     // case ONLY_ROW_AFFECTED:
@@ -106,8 +106,8 @@ static void blit() {
 }
 
 void initialise_tty() {
-    chars_width = display_get_width() / char_screensize;
-    chars_height = display_get_height() / char_screensize;
+    chars_width = display_get_width() / CHAR_SCREEN_SIZE;
+    chars_height = display_get_height() / CHAR_SCREEN_SIZE;
 
     const uint64_t buf_len = chars_width * chars_height;
     buffer = kmalloc(buf_len);

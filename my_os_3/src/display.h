@@ -1,7 +1,7 @@
 #ifndef DISPLAY_H
 #define DISPLAY_H
 
-#include "uapi/stdint.h"
+#include <uapi/stdint.h>
 #include "limine.h"
 
 struct Colour {

@@ -1,5 +1,5 @@
 #include "debugging.h"
-#include "uapi/stdint.h"
+#include <uapi/stdint.h>
 #include "display.h"
 #include "limine.h"
 

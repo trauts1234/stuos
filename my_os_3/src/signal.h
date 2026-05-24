@@ -1,7 +1,8 @@
 #ifndef SIGNALS_H
 #define SIGNALS_H
 
-#include "uapi/stdint.h"
+#include <uapi/stdint.h>
+#include <uapi/stdbool.h>
 
 #define NUM_SIGNALS 32
 

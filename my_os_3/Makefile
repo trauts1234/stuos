@@ -21,8 +21,8 @@ LIMINE_FOLDER = ./limine
 OUTPUT_DISK = ../filesystem
 OUTPUT_DIR = ../filesystem_mnt
 
-# all: $(OUTPUT_DISK)
-all: $(OS_BINARY)
+all: $(OUTPUT_DISK)
+# all: $(OS_BINARY)
 
 $(OUTPUT_DISK): $(BUILD_DIR)/built.stamp
 	@ mountpoint -q $(OUTPUT_DIR)

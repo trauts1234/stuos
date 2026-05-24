@@ -1,11 +1,11 @@
 #include "debugging.h"
 #include "fs.h"
-#include "uapi/fcntl.h"
-#include "uapi/stat.h"
-#include "uapi/stdint.h"
-#include "uapi/stdbool.h"
+#include <uapi/fcntl.h>
+#include <uapi/stat.h>
+#include <uapi/stdint.h>
+#include <uapi/stdbool.h>
 #include "kern_libc.h"
-#include "uapi/types.h"
+#include <uapi/types.h>
 
 struct __attribute__((packed)) Fat16Header {
     //The first three bytes EB 3C 90 disassemble to JMP SHORT 3C NOP. (The 3C value may be different.)

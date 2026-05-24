@@ -5,7 +5,7 @@
 #include "kern_libc.h"
 #include "ps2.h"
 #include "tty.h"
-#include "uapi/stdint.h"
+#include <uapi/stdint.h>
 
 struct InterruptDescriptor
 {

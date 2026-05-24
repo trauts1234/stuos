@@ -1,7 +1,7 @@
 #include "debugging.h"
 #include "io.h"
 #include "tty.h"
-#include "uapi/stdint.h"
+#include <uapi/stdint.h>
 #include "kern_libc.h"
 #include "ps2.h"
 
@@ -174,13 +174,13 @@ static struct KeyEvent parse_full_buffer(union BufferData buffer) {
     static bool capslock = false;
     static bool shift = false;
 
-    if (buffer.data == 0xE1'14'77'E1'F0'14'E0'77) {
+    if (buffer.data == 0xE11477E1F014E077) {
         return (struct KeyEvent) {.event_type=KE_PAUSE};
     }
-    if (buffer.data == 0xE0'12'E0'7C) {
+    if (buffer.data == 0xE012E07C) {
         return (struct KeyEvent) {.event_type=KE_PRINTSCR};
     }
-    if (buffer.data == 0xE0'F0'7C'E0'F0'12) {
+    if (buffer.data == 0xE0F07CE0F012) {
         return (struct KeyEvent) {.event_type=KE_PRINTSCR, .is_break=true};
     }
     

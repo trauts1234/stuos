@@ -21,7 +21,7 @@
 extern "C" {
 #endif
 
-#include "uapi/stdint.h"
+#include <uapi/stdint.h>
 
 /* Misc */
 

@@ -1,9 +1,9 @@
-#include "uapi/stdint.h"
+#include <uapi/stdint.h>
 #include "rust_bindings.h"
 #include "debugging.h"
 #include "memory.h"
 #include "physical_slab_allocation.h"
-#include "uapi/stddef.h"
+#include <uapi/stddef.h>
 
 static struct MemoryAllocator kmalloc_data;
 

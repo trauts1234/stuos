@@ -1,7 +1,7 @@
 #ifndef DEBUGGING_H
 #define DEBUGGING_H
 
-#include "uapi/stdint.h"
+#include <uapi/stdint.h>
 
 /// Sets up debugging structures - call this before calling *any* debugging.h functions
 /// @returns 0 on success, 1 on error

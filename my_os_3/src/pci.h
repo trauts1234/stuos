@@ -1,8 +1,8 @@
 #ifndef PCI_H
 #define PCI_H
 
-#include "uapi/stdint.h"
-#include "uapi/stdbool.h"
+#include <uapi/stdint.h>
+#include <uapi/stdbool.h>
 
 /// This is a dump of:
 /// - the shared header: registers 0..=3, so offsets 0x0 to 0xC

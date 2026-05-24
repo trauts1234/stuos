@@ -1,7 +1,7 @@
 #ifndef SCHEDULING_H
 #define SCHEDULING_H
 
-#include "uapi/stdint.h"
+#include <uapi/stdint.h>
 
 #define MAX_FD_COUNT 10
 

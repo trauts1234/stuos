@@ -1,8 +1,8 @@
 #ifndef MINIMAL_LIBC_H
 #define MINIMAL_LIBC_H
 
-#include "uapi/stdint.h"
-#include "uapi/stddef.h"
+#include <uapi/stdint.h>
+#include <uapi/stddef.h>
 
 void kmalloc_init(void* kernel_heap_base_virt);
 void* kmalloc(uint64_t size);

@@ -1,9 +1,9 @@
 #ifndef FS_H
 #define FS_H
 
-#include "uapi/stdint.h"
-#include "uapi/types.h"
-#include "uapi/stat.h"
+#include <uapi/stdint.h>
+#include <uapi/types.h>
+#include <uapi/stat.h>
 
 /// Represents an abstract node in the filesystem, which can be a file or directory
 struct VNode {
