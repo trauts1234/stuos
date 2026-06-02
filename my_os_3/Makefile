@@ -1,4 +1,4 @@
-CC = /home/stuart/Programming/C/stuos_core/tcc/tcc
+CC = /home/stuart/Programming/C/stuos_core/tcc/linux_to_stuos/bin/x86_64-tcc
 LD = x86_64-elf-ld
 
 SRC_DIR := ./src
@@ -17,24 +17,16 @@ OBJ_DIR := $(BUILD_DIR)/obj
 OBJS := $(C_SRCS:$(SRC_DIR)/%.c=$(OBJ_DIR)/%.o)  $(ASM_SRCS:$(SRC_DIR)/%.asm=$(OBJ_DIR)/%.o)
 MALLOC_ARCHIVE := ../malloc_my_os_3/target/x86_64-unknown-none/debug/libmalloc_my_os_3.a
 
-LIMINE_FOLDER = ./limine
+
 OUTPUT_DISK = ../filesystem
 OUTPUT_DIR = ../filesystem_mnt
 
 all: $(OUTPUT_DISK)
-# all: $(OS_BINARY)
-
-$(OUTPUT_DISK): $(BUILD_DIR)/built.stamp
-	@ mountpoint -q $(OUTPUT_DIR)
-
-	$(LIMINE_FOLDER)/limine bios-install $(OUTPUT_DISK)
 
 # making the filesystem requires the project to have been compiled and limine to be installed
 #use a .stamp file as directory timestamps are useless in linux
-$(BUILD_DIR)/built.stamp: $(OS_BINARY) 
-	mkdir -p $(OUTPUT_DIR)/boot/limine $(OUTPUT_DIR)/EFI/BOOT $(OUTPUT_DIR)/dev
-	cp $(LIMINE_CONFIG) $(LIMINE_FOLDER)/limine-bios.sys $(LIMINE_FOLDER)/limine-bios-cd.bin $(LIMINE_FOLDER)/limine-uefi-cd.bin $(OUTPUT_DIR)/boot/limine/
-	cp $(LIMINE_FOLDER)/BOOTX64.EFI $(LIMINE_FOLDER)/BOOTIA32.EFI $(OUTPUT_DIR)/EFI/BOOT
+$(OUTPUT_DISK)/built.stamp: $(OS_BINARY) 
+	
 	cp $< $(OUTPUT_DIR)/boot
 	touch $(BUILD_DIR)/built.stamp
 

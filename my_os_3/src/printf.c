@@ -40,6 +40,7 @@
 # include <uapi/stdarg.h>
 # include <uapi/stddef.h>
 #include <uapi/stdbool.h>
+#include <uapi/limits.h>
 #include "debugging.h"
 
 #ifdef __GNUC__
@@ -56,8 +57,6 @@ ATTR_PRINTF((one_based_format_index), 0)
 # define ATTR_PRINTF(one_based_format_index, first_arg)
 # define ATTR_VPRINTF(one_based_format_index)
 #endif
-
-#include "limits.h"
 
 
 /*

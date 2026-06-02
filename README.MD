@@ -12,7 +12,7 @@ sudo apt install qemu xorriso git curl build-essential nasm
 3. install [rust](https://doc.rust-lang.org/cargo/getting-started/installation.html)
 4. download and compile the limine bootloader:
 ```bash
-git clone https://github.com/limine-bootloader/limine.git --branch=v9.x-binary --depth=1 my_os_3/limine
+git clone https://github.com/limine-bootloader/limine.git --branch=v9.x-binary --depth=1 ./limine
 make -C my_os_3/limine
 ```
 

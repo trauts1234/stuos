@@ -4,7 +4,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
-#include <ctype.h>
 #include <nonstandard.h>
 
 #include "fork_test.h"
@@ -13,6 +12,7 @@
 #include "stdlib_test.h"
 #include "file_test.h"
 #include "pipe_test.h"
+#include "setjmp_test.h"
 
 #include "tools.h"
 #include "unistd.h"
@@ -108,6 +108,8 @@ void malloc_free_test(uint64_t loops) {
 
 
 int main(int argc, char *argv[]) {
+    printf("running setjmp test\n");
+    setjmp_test();
     if(argc != 2) {
         printf("got %d args: ", argc);
         for(int i=0; i<argc; i++) printf("%s, ", argv[i]);
