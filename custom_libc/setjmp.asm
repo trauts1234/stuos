@@ -25,11 +25,11 @@ setjmp:
     ret
 
 longjmp:
-    ; set esi to 1 if it is zero, as zero is reserved
     cmp esi, 0
-    setz sil
-
-    mov eax, esi; put in return address
+    jne not_zero
+    mov esi, 1; passed 0, so use 1 (as 0 is reserved for setjmp's return value)
+not_zero:
+    mov eax, esi
 
     ;restore simple registers
     mov rsi, [rdi + 0*8]
@@ -45,7 +45,7 @@ longjmp:
     mov rsp, [rdi + 9*8]
 
     ;restore return address
-    mov rax, [rdi + 7*8]
-    mov [rsp], rax
+    mov rcx, [rdi + 7*8]
+    mov [rsp], rcx
     ret
 

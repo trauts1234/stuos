@@ -108,8 +108,6 @@ void malloc_free_test(uint64_t loops) {
 
 
 int main(int argc, char *argv[]) {
-    printf("running setjmp test\n");
-    setjmp_test();
     if(argc != 2) {
         printf("got %d args: ", argc);
         for(int i=0; i<argc; i++) printf("%s, ", argv[i]);
@@ -128,6 +126,8 @@ int main(int argc, char *argv[]) {
         abort();
     }
 
+    printf("running setjmp test\n");
+    setjmp_test();
     printf("running sleep test\n");
     sleep_uptime_test(10);
     printf("running malloc test\n");
