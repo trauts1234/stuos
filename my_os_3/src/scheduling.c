@@ -3,6 +3,7 @@
 #include "kern_libc.h"
 #include "pipes_and_files.h"
 #include "memory.h"
+#include "signal.h"
 
 #define MAX_THREADS_COUNT 1
 
@@ -34,11 +35,20 @@ struct ProcessData {
     /// CR3 value
     uint64_t page_table_root;
 
+    // userspace pointers to signal handler (process wide)
+    // 0 is a valid default
+    void* signal_handlers[NUM_SIGNALS];
+    // What state each signal is (process wide)
+    // 0 is a valid default
+    enum SignalState signal_state[NUM_SIGNALS];
+    //Bit set if the signal should be ignored (1 is masked, 0 is unmasked) (thread specific)
+    // 0 is a valid default
+    bool signal_mask[NUM_SIGNALS];
+
     /// Where relative paths originate from
     /// Must be heap allocated
     const char *cwd;
 
-    //for multithreading, add array here: struct ThreadData workers[MAX_THREADS_COUNT];
     /// Assuming the thread is paused, this is the state
     struct ProcessorState paused_state;
 

@@ -23,8 +23,6 @@
 // #define S_ISLNK(m)   (((m) & S_IFMT) == S_IFLNK)
 // #define S_ISSOCK(m)  (((m) & S_IFMT) == S_IFSOCK)
 
-//TODO S_ISXYZ macros
-
 //TODO commented values
 struct stat {
     // dev_t     st_dev;     /* ID of device containing file */

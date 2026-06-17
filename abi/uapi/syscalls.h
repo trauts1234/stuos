@@ -2,6 +2,7 @@
 #define UAPI_SYSCALLS_H
 //pointers to these passed in RDI to syscalls
 
+#include "stat.h"
 #include "stdint.h"
 #include "fcntl.h"
 
@@ -149,6 +150,12 @@ static const uint64_t PIPE_SYSCALL = 27;
 struct PipeData {
     int fd_a;
     int fd_b;
+};
+
+static const uint64_t STAT_SYSCALL = 28;
+struct StatData {
+    struct stat result;
+    const char *path;
 };
 
 #endif

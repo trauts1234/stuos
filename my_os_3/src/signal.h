@@ -11,20 +11,9 @@ enum SignalDefaultAction {
 };
 
 enum SignalState {
-    STATE_UNSET, STATE_SET, STATE_RUNNING
+    STATE_UNSET=0, STATE_SET, STATE_RUNNING
 };
 
-struct SignalData {
-    enum SignalState state;
-    /// Bit set if the signal should be ignored by the thread (1 is masked, 0 is unmasked)
-    bool masked;
-    /// userspace pointers to signal handler (process wide)
-    void* custom_handler;
-};
-
-struct SignalsData {
-    struct SignalData inner[NUM_SIGNALS];
-};
-
+extern const enum SignalDefaultAction default_actions[NUM_SIGNALS];
 
 #endif

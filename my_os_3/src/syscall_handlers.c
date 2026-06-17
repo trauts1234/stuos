@@ -60,7 +60,7 @@ void syscall_get_heap_start(struct GetHeapStartData* data) {
     data->output = get_current_heap_start();
 }
 
-void syscall_write_fd(struct WriteFDData* data, struct ProcessorState* processor_state) {
+void syscall_write_fd(struct WriteFDData* data) {
     if(DEBUG_SYSCALLS) kprintf("%s: write %lu bytes to fd %d\n", __func__, data->num_bytes, data->file_descriptor_number);
     struct FileOperations* file_operations = get_file_descriptors()[data->file_descriptor_number];
     if(file_operations == NULL) {HCF}
@@ -259,6 +259,12 @@ void syscall_pipe(struct PipeData* data) {
     data->fd_b = fd_b;
 }
 
+void syscall_stat(struct StatData* data) {
+    if(DEBUG_SYSCALLS) kprintf("%s: %s\n", __func__, data->path);
+    struct VNode file = vfs_get(get_current_cwd(), data->path, 0);
+    data->result = file.stat_file(file.id);
+}
+
 void *syscall_table[] = {
     syscall_crash,
     NULL,
@@ -288,4 +294,5 @@ void *syscall_table[] = {
     syscall_wait,
     syscall_isatty,
     syscall_pipe,
+    syscall_stat,
 };

@@ -1,4 +1,5 @@
-CC = /home/stuart/Programming/C/stuos_core/toolchain_output/x86_64-tcc
+CC = x86_64-elf-gcc
+# /home/stuart/Programming/C/stuos_core/toolchain_output/x86_64-tcc
 LD = x86_64-elf-ld
 
 SRC_DIR := ./src

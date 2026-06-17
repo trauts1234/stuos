@@ -1,7 +1,7 @@
 #ifndef UAPI_STDARG_H
 #define UAPI_STDARG_H
 
-// #ifdef __TINYC__
+#ifdef __TINYC__
 //embed tiny c compiler's header
 typedef __builtin_va_list va_list;
 #define va_start __builtin_va_start
@@ -11,10 +11,9 @@ typedef __builtin_va_list va_list;
 
 /* fix a buggy dependency on GCC in libio.h */
 typedef va_list __gnuc_va_list;
-// #else
-// #error
-// //use compiler's own header
-// #include <stdarg.h>
-// #endif
+#else
+//use compiler's own header
+#include <stdarg.h>
+#endif
 
 #endif
