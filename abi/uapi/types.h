@@ -2,6 +2,7 @@
 #define UAPI_TYPES_H
 
 #include "stdint.h"
+#include "stddef.h"
 
 typedef int pid_t;
 typedef unsigned int gid_t;

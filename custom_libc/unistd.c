@@ -170,3 +170,8 @@ unsigned int sleep(unsigned int seconds) {
     mssleep((uint64_t)seconds * 1000ul);
     return 0;
 }
+
+void _exit(int status) {
+    //_exit is supposed to die more violently than exit. oh well.
+    exit(status);
+}

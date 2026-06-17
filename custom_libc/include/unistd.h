@@ -46,4 +46,6 @@ int pipe(int pipefd[2]);
 unsigned int sleep(unsigned int seconds);
 int usleep(useconds_t usec);
 
+void _exit(int status);
+
 #endif
