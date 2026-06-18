@@ -1,7 +1,7 @@
 #ifndef _STDLIB_H
 #define _STDLIB_H
 
-#include <stddef.h>
+#include "stddef.h"
 void* malloc(unsigned long bytes);
 void free(void* ptr);
 

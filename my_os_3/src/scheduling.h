@@ -1,6 +1,7 @@
 #ifndef SCHEDULING_H
 #define SCHEDULING_H
 
+#include <uapi/signal.h>
 #include <uapi/stdint.h>
 
 #define MAX_FD_COUNT 10
@@ -74,6 +75,8 @@ void* get_current_heap_start();
 //This is read-write if you are sensible about it
 struct FileOperations** get_file_descriptors();
 void register_as_waiting(struct WaitingData data);
+//This is read-write
+sigset_t* get_current_sigset();
 
 const char* get_current_cwd();
 void set_current_cwd(const char* new_ptr);

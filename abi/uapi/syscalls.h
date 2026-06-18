@@ -2,6 +2,7 @@
 #define UAPI_SYSCALLS_H
 //pointers to these passed in RDI to syscalls
 
+#include "signal.h"
 #include "stat.h"
 #include "stdint.h"
 #include "fcntl.h"
@@ -156,6 +157,13 @@ static const uint64_t STAT_SYSCALL = 28;
 struct StatData {
     struct stat result;
     const char *path;
+};
+
+static const uint64_t SIGPROCMASK_SYSCALL = 29;
+struct SigProcMaskData {
+    int how;
+    const sigset_t* set;
+    sigset_t oldset;
 };
 
 #endif

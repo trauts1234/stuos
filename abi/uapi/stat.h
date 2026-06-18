@@ -1,7 +1,6 @@
 #ifndef UAPI_STAT_H
 #define UAPI_STAT_H
 
-// #include <sys/stat.h>
 #include "types.h"
 #include "dirent.h"
 

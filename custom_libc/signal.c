@@ -1,7 +1,6 @@
 #include "signal.h"
-#include <stdio.h>
-#include <stdint.h>
-#include <stdlib.h>
+#include "uapi/syscalls.h"
+#include "stdint.h"
 
 int sigfillset(sigset_t *set) {
     *set = UINT32_MAX;
@@ -14,7 +13,11 @@ int sigemptyset(sigset_t *set) {
 }
 
 int sigprocmask(int how, const sigset_t *set, sigset_t *oldset) {
-    //TODO
-    printf("TODO sigprocmask");
-    abort();
+    struct SigProcMaskData data = {
+        .how=how,
+        .set = set,
+    };
+    do_syscall(&data, SIGPROCMASK_SYSCALL);
+    if(oldset) *oldset = data.oldset;
+    return 0;
 }

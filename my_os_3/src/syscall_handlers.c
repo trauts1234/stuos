@@ -265,6 +265,13 @@ void syscall_stat(struct StatData* data) {
     data->result = file.stat_file(file.id);
 }
 
+void syscall_sigprocmask(struct SigProcMaskData* data) {
+    data->oldset = *get_current_sigset();
+    if(data->set) {
+        HCF//TODO set using how
+    }
+}
+
 void *syscall_table[] = {
     syscall_crash,
     NULL,

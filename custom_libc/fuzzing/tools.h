@@ -1,7 +1,7 @@
 #ifndef TOOLS_H
 #define TOOLS_H
 
-#include <stdint.h>
+#include "stdint.h"
 
 static uint64_t state = 2506958121 * 2506958121;
 

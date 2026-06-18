@@ -4,6 +4,7 @@
 #include "pipes_and_files.h"
 #include "memory.h"
 #include "signal.h"
+#include <uapi/signal.h>
 
 #define MAX_THREADS_COUNT 1
 
@@ -43,7 +44,7 @@ struct ProcessData {
     enum SignalState signal_state[NUM_SIGNALS];
     //Bit set if the signal should be ignored (1 is masked, 0 is unmasked) (thread specific)
     // 0 is a valid default
-    bool signal_mask[NUM_SIGNALS];
+    sigset_t signal_mask;
 
     /// Where relative paths originate from
     /// Must be heap allocated
@@ -165,6 +166,9 @@ void* get_current_heap_start() {
 }
 struct FileOperations** get_file_descriptors() {
     return current_process_in_ll->file_descriptors;
+}
+sigset_t* get_current_sigset() {
+    return &current_process_in_ll->signal_mask;
 }
 const char* get_current_cwd() {
     return current_process_in_ll->cwd;
