@@ -6,6 +6,7 @@
 #include "stat.h"
 #include "stdint.h"
 #include "fcntl.h"
+#include "types.h"
 
 extern void do_syscall(void* data, uint64_t syscall_number);
 
@@ -155,7 +156,7 @@ struct PipeData {
 
 static const uint64_t STAT_SYSCALL = 28;
 struct StatData {
-    struct stat result;
+    struct stat64 result;
     const char *path;
 };
 
@@ -164,6 +165,20 @@ struct SigProcMaskData {
     int how;
     const sigset_t* set;
     sigset_t oldset;
+};
+
+static const uint64_t SETSIGNALHANDLER_SYSCALL = 30;
+struct SetSignalHandlerData {
+    int signal_number;
+    // 0 to request the default handler, otherwise a pointer to a handler
+    sighandler_t handler;
+    sighandler_t old_handler;
+};
+
+static const uint64_t KILL_SYSCALL = 31;
+struct KillData {
+    pid_t pid;
+    int sig;
 };
 
 #endif

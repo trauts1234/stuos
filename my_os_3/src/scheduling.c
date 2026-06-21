@@ -3,7 +3,6 @@
 #include "kern_libc.h"
 #include "pipes_and_files.h"
 #include "memory.h"
-#include "signal.h"
 #include <uapi/signal.h>
 
 #define MAX_THREADS_COUNT 1
@@ -20,51 +19,42 @@ int allocate_pid() {
     return next++;
 }
 
-struct ProcessData {
-    /// PAGE_SIZE aligned, represents where the ELF's heap starts - This is only to tell the ELF if they request this information via syscall
-    void* heap_start;
-    /// Indexed by file descriptor number
-    struct FileOperations* file_descriptors[MAX_FD_COUNT];
-    /// Process ID
-    int pid;
-    /// Process group ID
-    int pgrp;
-    /// Parent Process ID
-    int ppid;
-    /// certain operations are prevented after exec* commands
-    // bool have_previously_exec;
-    /// CR3 value
-    uint64_t page_table_root;
-
-    // userspace pointers to signal handler (process wide)
-    // 0 is a valid default
-    void* signal_handlers[NUM_SIGNALS];
-    // What state each signal is (process wide)
-    // 0 is a valid default
-    enum SignalState signal_state[NUM_SIGNALS];
-    //Bit set if the signal should be ignored (1 is masked, 0 is unmasked) (thread specific)
-    // 0 is a valid default
-    sigset_t signal_mask;
-
-    /// Where relative paths originate from
-    /// Must be heap allocated
-    const char *cwd;
-
-    /// Assuming the thread is paused, this is the state
-    struct ProcessorState paused_state;
-
-    struct WaitingData waiting_data;
-
-    struct ProcessData* next_process_to_run;
-};
-
 //current item in the looping process linked list of doom
 struct ProcessData* current_process_in_ll = NULL;
 
 // previous can be null
 // pid can be 0, for current process
-// returns NULL and doesn't change previous if pid not found
-static struct ProcessData* get_process(int pid, struct ProcessData** previous) {
+// returns NULL if pid not found
+struct ProcessData* get_process(int pid) {
+    if(pid == 0 || pid == current_process_in_ll->pid) return current_process_in_ll;
+
+    struct ProcessData* ptr = current_process_in_ll->next_process_to_run;
+    while(ptr->pid != pid) {
+        ptr = ptr->next_process_to_run;
+        if(ptr == current_process_in_ll) {
+            return NULL;
+        }
+    }
+
+    return ptr;
+}
+
+uint64_t get_pids(int output_pids[100], int pgrp) {
+    uint64_t count = 0;
+
+    struct ProcessData* ptr = current_process_in_ll;
+    do {
+        if(ptr->pgrp == pgrp) {
+            output_pids[count++] = ptr->pid;
+            if(count >= 100) HCF
+        }
+        ptr = ptr->next_process_to_run;
+    } while (ptr != current_process_in_ll);
+
+    return count;
+}
+
+struct ProcessData* get_process_and_previous(int pid, struct ProcessData** previous) {
     if(pid == 0) pid = current_process_in_ll->pid;
 
     struct ProcessData* prev_ptr = current_process_in_ll;
@@ -153,23 +143,7 @@ void replace_current_process(struct LoadedProgram program) {
     set_pml4_phys(new.page_table_root);
 }
 
-int get_current_pid() {
-    struct ProcessData* data = get_process(0, NULL);
-    return data->pid;
-}
-int get_pgrp(int pid) {
-    struct ProcessData* data = get_process(pid, NULL);
-    return data->pgrp;
-}
-void* get_current_heap_start() {
-    return current_process_in_ll->heap_start;
-}
-struct FileOperations** get_file_descriptors() {
-    return current_process_in_ll->file_descriptors;
-}
-sigset_t* get_current_sigset() {
-    return &current_process_in_ll->signal_mask;
-}
+
 const char* get_current_cwd() {
     return current_process_in_ll->cwd;
 }
@@ -228,7 +202,7 @@ static bool is_suitable_zombie(struct WaitingChild waiting_data, struct ProcessD
 void reap(int pid) {
     //find the process
     struct ProcessData *prev_ptr = NULL;
-    struct ProcessData *to_reap = get_process(pid, &prev_ptr);
+    struct ProcessData *to_reap = get_process_and_previous(pid, &prev_ptr);
 
     if(prev_ptr == to_reap) {
         //last process has died

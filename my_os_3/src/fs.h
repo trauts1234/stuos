@@ -14,7 +14,7 @@ struct VNode {
         uint64_t mount_id;
     } id;
 
-    struct stat (*stat_file)(struct VNodeData id);
+    struct stat64 (*stat_file)(struct VNodeData id);
 
     /// This function should check that `directory` is a directory node, then try to find a node with name `name`
     ///

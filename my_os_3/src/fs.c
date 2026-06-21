@@ -47,13 +47,13 @@ bool is_null_vnode(struct VNode v) {
         v.stat_file == 0;
 }
 
-static struct stat tmpfs_stat_file(struct VNodeData id) {
+static struct stat64 tmpfs_stat_file(struct VNodeData id) {
     if(id.mount_id != 0) HCF
 
     switch(id.inode) {
         case ROOT_INODE_NUM:
         case TMPFS_DEV:
-        return (struct stat) {
+        return (struct stat64) {
             .st_ino = id.inode,
             .st_mode = S_IFDIR,
             .st_size = 0,//TODO

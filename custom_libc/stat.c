@@ -10,7 +10,7 @@ mode_t umask(mode_t mask) {
     return prev;
 }
 
-int stat(const char *path, struct stat *buf) {
+int stat(const char *path, struct stat64 *buf) {
     struct StatData data = {
         .path = path
     };

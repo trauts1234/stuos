@@ -22,8 +22,8 @@
 // #define S_ISLNK(m)   (((m) & S_IFMT) == S_IFLNK)
 // #define S_ISSOCK(m)  (((m) & S_IFMT) == S_IFSOCK)
 
-//TODO commented values
-struct stat {
+//TODO commented values, and how should stat work
+struct stat64 {
     // dev_t     st_dev;     /* ID of device containing file */
     ino_t     st_ino;     /* inode number */
     mode_t    st_mode;    /* file type? */
@@ -38,5 +38,6 @@ struct stat {
     // time_t    st_mtime;   /* time of last modification */
     // time_t    st_ctime;   /* time of last status change */
 };
+
 
 #endif

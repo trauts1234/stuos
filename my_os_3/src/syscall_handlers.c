@@ -1,3 +1,4 @@
+#include <uapi/signal.h>
 #include <uapi/stddef.h>
 #include <uapi/stdbool.h>
 #include "elf.h"
@@ -8,9 +9,11 @@
 #include "debugging.h"
 #include "interrupts.h"
 #include <uapi/syscalls.h>
+#include <uapi/types.h>
 #include "pipes_and_files.h"
 #include "scheduling.h"
 #include "kern_libc.h"
+#include "signal.h"
 
 #define DEBUG_SYSCALLS false
 
@@ -57,12 +60,12 @@ void syscall_request_page(struct RequsetPageData* data) {
 
 void syscall_get_heap_start(struct GetHeapStartData* data) {
     if(DEBUG_SYSCALLS) kprintf("%s: \n", __func__);
-    data->output = get_current_heap_start();
+    data->output = get_process(0)->heap_start;
 }
 
 void syscall_write_fd(struct WriteFDData* data) {
     if(DEBUG_SYSCALLS) kprintf("%s: write %lu bytes to fd %d\n", __func__, data->num_bytes, data->file_descriptor_number);
-    struct FileOperations* file_operations = get_file_descriptors()[data->file_descriptor_number];
+    struct FileOperations* file_operations = get_process(0)->file_descriptors[data->file_descriptor_number];
     if(file_operations == NULL) {HCF}
     data->num_bytes_actually_written = file_operations->write(file_operations->special_data, data->buffer, data->num_bytes);
 }
@@ -70,7 +73,7 @@ void syscall_write_fd(struct WriteFDData* data) {
 static int find_free_fd() {
     //find a free file descriptor
     int fd_num = 0;
-    while(get_file_descriptors()[fd_num] != 0) {
+    while(get_process(0)->file_descriptors[fd_num] != 0) {
         fd_num++;
         if(fd_num == MAX_FD_COUNT) {HCF}//out of file descriptors
     }
@@ -79,7 +82,7 @@ static int find_free_fd() {
 
 void syscall_open_file(struct OpenFileData* data) {
     if(DEBUG_SYSCALLS) kprintf("%s: path: %s\n", __func__, data->path);
-    struct FileOperations** fd_list = get_file_descriptors();
+    struct FileOperations** fd_list = get_process(0)->file_descriptors;
     struct FileOperations* file = fop_generate_file(get_current_cwd(), data->path, data->open_flags);
     int fd_num = find_free_fd();
     fd_list[fd_num] = file;
@@ -103,7 +106,7 @@ void syscall_read_fd(struct ReadFDData* data, struct ProcessorState* processor_s
 
 void syscall_lseek_fd(struct LseekFDData* data) {
     if(DEBUG_SYSCALLS) kprintf("%s: offset %lu in fd %d. whence: %d\n", __func__, data->offset, data->file_descriptor_number, data->whence);
-    struct FileOperations* file_operations = get_file_descriptors()[data->file_descriptor_number];
+    struct FileOperations* file_operations = get_process(0)->file_descriptors[data->file_descriptor_number];
     if(file_operations == NULL) {HCF}
 
     data->actual_offset = file_operations->offset(file_operations->special_data, data->offset, data->whence);
@@ -111,7 +114,7 @@ void syscall_lseek_fd(struct LseekFDData* data) {
 
 void syscall_close_fd(struct CloseFDData* data) {
     if(DEBUG_SYSCALLS) kprintf("%s: fd %d\n", __func__, data->file_descriptor_number);
-    struct FileOperations** file_operations = get_file_descriptors() + data->file_descriptor_number;
+    struct FileOperations** file_operations = get_process(0)->file_descriptors + data->file_descriptor_number;
 
     (*file_operations)->close((*file_operations)->special_data);
     *file_operations = NULL;
@@ -125,7 +128,7 @@ void syscall_fork(struct ForkData* data, struct ProcessorState* parent_state) {
     uint64_t child_page_table = clone_virtual_addressing(parent_page_table);
 
     struct LoadedProgram child = {
-        .heap_start = get_current_heap_start(),
+        .heap_start = get_process(0)->heap_start,
         .page_table_root = child_page_table,
         //file_descriptors is done after
         .initial_state = *parent_state
@@ -133,7 +136,7 @@ void syscall_fork(struct ForkData* data, struct ProcessorState* parent_state) {
     
     //add 1 to ref count as the child will have cloned the file descriptors
     for(int i=0; i<MAX_FD_COUNT; i++) {
-        struct FileOperations* fd = get_file_descriptors()[i];
+        struct FileOperations* fd = get_process(0)->file_descriptors[i];
         if (fd != NULL) fd->reference_count++;
         child.file_descriptors[i] = fd;
     }
@@ -149,17 +152,17 @@ void syscall_fork(struct ForkData* data, struct ProcessorState* parent_state) {
 
 void syscall_get_pgrp(struct GetPgrpData* data) {
     if(DEBUG_SYSCALLS) kprintf("%s: \n", __func__);
-    data->result = get_pgrp(0);
+    data->result = get_process(0)->pgrp;
 }
 
 void syscall_get_pid(struct GetPidData* data) {
     if(DEBUG_SYSCALLS) kprintf("%s: \n", __func__);
-    data->result = get_current_pid();
+    data->result = get_process(0)->pid;
 }
 
 void syscall_dup2(struct Dup2Data* data) {
     if(DEBUG_SYSCALLS) kprintf("%s: fd %d => fd %d\n", __func__, data->oldfd, data->newfd);
-    struct FileOperations **fd = get_file_descriptors();
+    struct FileOperations **fd = get_process(0)->file_descriptors;
 
     if(data->newfd >= MAX_FD_COUNT || data->newfd < 0) {HCF}
     //if it's stupid and it works...
@@ -241,7 +244,7 @@ void syscall_wait(struct WaitData* data, struct ProcessorState* state) {
 
 void syscall_isatty(struct IsattyData* data) {
     if(DEBUG_SYSCALLS) kprintf("%s: \n", __func__);
-    struct FileOperations* fop = get_file_descriptors()[data->fd];
+    struct FileOperations* fop = get_process(0)->file_descriptors[data->fd];
     data->result = fop->is_a_tty;
 }
 
@@ -251,9 +254,9 @@ void syscall_pipe(struct PipeData* data) {
     fop_generate_pipe(fds);
 
     int fd_a = find_free_fd();
-    get_file_descriptors()[fd_a] = fds[0];
+    get_process(0)->file_descriptors[fd_a] = fds[0];
     int fd_b = find_free_fd();
-    get_file_descriptors()[fd_b] = fds[1];
+    get_process(0)->file_descriptors[fd_b] = fds[1];
 
     data->fd_a = fd_a;
     data->fd_b = fd_b;
@@ -266,10 +269,49 @@ void syscall_stat(struct StatData* data) {
 }
 
 void syscall_sigprocmask(struct SigProcMaskData* data) {
-    data->oldset = *get_current_sigset();
+    if(DEBUG_SYSCALLS) kprintf("%s: \n", __func__);
+    sigset_t *curr = &get_process(0)->signal_mask;
+    data->oldset = *curr;
     if(data->set) {
-        HCF//TODO set using how
+        switch (data->how) {
+            case SIG_BLOCK:
+                *curr |= *data->set;break;
+            case SIG_UNBLOCK:
+                *curr &= ~*data->set;break;
+            case SIG_SETMASK:
+                *curr = *data->set;break;
+            default:
+                HCF
+        }
     }
+}
+
+void syscall_setsignalhandler(struct SetSignalHandlerData *data) {
+    if(DEBUG_SYSCALLS) kprintf("%s: \n", __func__);
+    sighandler_t* sig = get_process(0)->signal_handlers + data->signal_number;
+    data->old_handler = *sig;
+    *sig = data->handler;
+}
+
+void syscall_kill(struct KillData *data, struct ProcessorState* state) {
+    if(DEBUG_SYSCALLS) kprintf("%s: \n", __func__);
+    if (data->pid > 0) {
+        struct ProcessData *proc = get_process(data->pid);
+        proc->signal_pending[data->sig] = true;
+    } else if (data->pid == -1) {
+        HCF //send to nearly all processes? nah.
+    } else {
+        // 0 -> -0 (current processes)
+        pid_t process_group = data->pid == 0 ? get_process(0)->pgrp : -data->pid;
+        pid_t elegible_processes[100];
+        uint64_t num_elegible_processes = get_pids(elegible_processes, process_group);
+        for(uint64_t i=0; i<num_elegible_processes; i++) {
+            struct ProcessData *proc = get_process(elegible_processes[i]);
+            proc->signal_pending[data->sig] = true;
+        }
+    }
+
+    run_next_task(state);
 }
 
 void *syscall_table[] = {
@@ -302,4 +344,6 @@ void *syscall_table[] = {
     syscall_isatty,
     syscall_pipe,
     syscall_stat,
+    syscall_sigprocmask,
+
 };

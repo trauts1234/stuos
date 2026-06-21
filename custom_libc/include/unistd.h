@@ -3,6 +3,7 @@
 
 #include "sys/types.h"
 #include "stddef.h"
+#include "uapi/unistd.h"
 
 #define STDIN_FILENO 0
 #define STDOUT_FILENO 1

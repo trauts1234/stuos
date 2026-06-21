@@ -8,7 +8,11 @@
 #define SIG_UNBLOCK 1
 #define SIG_SETMASK 2
 
+#define SIGINT 0
+#define SIGKILL 1
+
 typedef uint32_t sigset_t;
 typedef int sig_atomic_t;
+typedef void (*sighandler_t)(int);
 
 #endif

@@ -158,14 +158,14 @@ static uint64_t blockdev_read_file(struct VNodeData inode_num, uint64_t offset, 
     return num_bytes;
 }
 
-static struct stat blockdev_stat(struct VNodeData inode_num) {
+static struct stat64 blockdev_stat(struct VNodeData inode_num) {
     if(inode_num.mount_id != 0) HCF
     if(inode_num.inode == DEV_ROOT_DIR_INODE_NUM) HCF
 
     uint32_t device_type = inode_num.inode >> 32;
     if(device_type != 0) HCF//other device types not impletmented
     
-    return (struct stat) {
+    return (struct stat64) {
         .st_ino = inode_num.inode,
         .st_mode = S_IFBLK,
         .st_uid = 0,
@@ -210,7 +210,7 @@ static int devroot_directory_lookup(struct VNodeData dir_inode_num, const char* 
     return -1;
 }
 
-struct stat devroot_stat(struct VNodeData inode_num) {
+struct stat64 devroot_stat(struct VNodeData inode_num) {
     //TODO
     HCF
 }

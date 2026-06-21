@@ -923,7 +923,6 @@ static void print_exponential_number(output_gadget_t* output, floating_point_t n
 
   /* Determine the decimal exponent */
   if (abs_number == (floating_point_t) 0.0) {
-    /* TODO: This is a special-case for 0.0 (and -0.0); but proper handling is required for denormals more generally. */
     floored_exp10 = 0; /* ... and no need to set a normalization factor or check the powers table */
   }
   else  {
@@ -1008,7 +1007,6 @@ static void print_exponential_number(output_gadget_t* output, floating_point_t n
       if (precision > 0U) { precision--; }
       /* ... and it should already be the case that decimal_part_components.fractional == 0 */
     }
-    /* TODO: What about rollover strictly within the fractional part? */
   }
 
   /*
