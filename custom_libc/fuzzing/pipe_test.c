@@ -10,8 +10,6 @@
         if (!(condition)) { \
             fprintf(stderr, "--- TEST FAILED: %s ---\n", message); \
             abort(); \
-        } else { \
-            printf("[PASS] %s\n", message); \
         } \
     } while (0)
 
@@ -22,7 +20,6 @@ void pipe_test() {
     char read_buf[100];
 
     // --- Test 1: Basic Successful Write and Read Cycle ---
-    printf("\n--- Running Test 1: Basic Write/Read ---\n");
     if (pipe(fds) == -1) {
         perror("pipe failed for Test 1");
         assert(0); // Force failure if pipe setup fails
@@ -46,7 +43,6 @@ void pipe_test() {
 
 
     // --- Test 2: Writing and Reading Empty Data ---
-    printf("\n--- Running Test 2: Empty Write/Read Cycle ---\n");
     if (pipe(fds) == -1) {
         perror("pipe failed for Test 2");
         assert(0);

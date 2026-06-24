@@ -251,3 +251,7 @@ char *strerror(int errnum) {
     if(errnum >= sys_nerr) return "unknown error number!";
     return (char*)sys_errlist[errnum];
 }
+
+int strcoll(const char *s1, const char *s2) {
+    return strcmp(s1, s2);
+}
