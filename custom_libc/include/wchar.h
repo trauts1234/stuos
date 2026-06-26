@@ -36,5 +36,7 @@ wint_t    towupper(wint_t);
 wctype_t wctype(const char *in);
 
 size_t mbrtowc(wchar_t *pwc, const char *s, size_t n, mbstate_t *ps);
+size_t mbsrtowcs(wchar_t *dest, const char **src, size_t len, mbstate_t *ps);
+
 
 #endif

@@ -14,6 +14,7 @@
 #include "pipe_test.h"
 #include "setjmp_test.h"
 #include "mbrtowc_test.h"
+#include "mbsrtowcs_test.h"
 
 #include "tools.h"
 #include "unistd.h"
@@ -151,5 +152,7 @@ int main(int argc, char *argv[]) {
     pipe_test();
     printf("running mbrtowc test\n");
     mbrtowc_test();
+    printf("running mbsrtowcs test\n");
+    mbsrtowcs_test();
     fprintf(stdout, "success!\n");
 }

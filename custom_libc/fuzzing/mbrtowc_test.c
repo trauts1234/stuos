@@ -21,10 +21,8 @@ static int tests_passed = 0;
 
 #define RUN_TEST(test_func) do { \
     tests_run++; \
-    printf("Running: %s... ", #test_func); \
     if (test_func()) { \
         tests_passed++; \
-        printf("[PASS]\n"); \
     } else { \
         printf("[FAIL]\n"); \
     } \
@@ -40,7 +38,7 @@ static void reset_state(mbstate_t *ps) {
 
 /* 1. Edge Cases: Null pointers and Zero sizes */
 
-int test_null_s_pointer(void) {
+static int test_null_s_pointer(void) {
     mbstate_t ps;
     reset_state(&ps);
     // Passing NULL for 's' resets the shift state and returns 0
@@ -49,7 +47,7 @@ int test_null_s_pointer(void) {
     return 1;
 }
 
-int test_null_pwc_pointer(void) {
+static int test_null_pwc_pointer(void) {
     mbstate_t ps;
     reset_state(&ps);
     // Passing NULL for 'pwc' is valid; it checks validity but doesn't store the result
@@ -58,7 +56,7 @@ int test_null_pwc_pointer(void) {
     return 1;
 }
 
-int test_zero_n_size(void) {
+static int test_zero_n_size(void) {
     wchar_t wc;
     mbstate_t ps;
     reset_state(&ps);
@@ -68,7 +66,7 @@ int test_zero_n_size(void) {
     return 1;
 }
 
-int test_null_ps_pointer(void) {
+static int test_null_ps_pointer(void) {
     wchar_t wc;
     // Reset internal state
     mbrtowc(NULL, NULL, 0, NULL);
@@ -80,7 +78,7 @@ int test_null_ps_pointer(void) {
 
 /* 2. Null Sentinel and ASCII */
 
-int test_null_sentinel(void) {
+static int test_null_sentinel(void) {
     wchar_t wc = L'X'; // Initialize to non-zero to ensure it gets overwritten
     mbstate_t ps;
     reset_state(&ps);
@@ -91,7 +89,7 @@ int test_null_sentinel(void) {
     return 1;
 }
 
-int test_ascii_characters(void) {
+static int test_ascii_characters(void) {
     wchar_t wc;
     mbstate_t ps;
     reset_state(&ps);
@@ -104,7 +102,7 @@ int test_ascii_characters(void) {
 
 /* 3. Unicode: 2, 3, and 4-byte UTF-8 Sequences */
 
-int test_2byte_utf8(void) {
+static int test_2byte_utf8(void) {
     wchar_t wc;
     mbstate_t ps;
     reset_state(&ps);
@@ -118,7 +116,7 @@ int test_2byte_utf8(void) {
     return 1;
 }
 
-int test_3byte_utf8(void) {
+static int test_3byte_utf8(void) {
     wchar_t wc;
     mbstate_t ps;
     reset_state(&ps);
@@ -132,7 +130,7 @@ int test_3byte_utf8(void) {
     return 1;
 }
 
-int test_4byte_utf8(void) {
+static int test_4byte_utf8(void) {
     wchar_t wc;
     mbstate_t ps;
     reset_state(&ps);
@@ -149,7 +147,7 @@ int test_4byte_utf8(void) {
 
 /* 4. Incremental Parsing (Calling multiple times for one character) */
 
-int test_incremental_parsing_4_times(void) {
+static int test_incremental_parsing_4_times(void) {
     wchar_t wc;
     mbstate_t ps;
     reset_state(&ps);
@@ -168,7 +166,7 @@ int test_incremental_parsing_4_times(void) {
     return 1;
 }
 
-int test_incremental_parsing_2_times(void) {
+static int test_incremental_parsing_2_times(void) {
     wchar_t wc;
     mbstate_t ps;
     reset_state(&ps);
@@ -176,11 +174,8 @@ int test_incremental_parsing_2_times(void) {
     // '⼩' (U+2F29) fed 2 bytes, then 1 byte
     char s[] = "\xE2\xBC\xA9";
     size_t val = mbrtowc(&wc, s, 2, &ps);
-    printf("%lld", (signed long long)val);
     TEST_ASSERT(val == (size_t)-2, "First 2 bytes of 3 should return -2");
-    printf("\n buf:%x len:%d rem:%d\n", ps.buffer, ps.expected_length, ps.expected_remaining_bytes);
     size_t res = mbrtowc(&wc, s+2, 1, &ps);
-    printf("%lld", (signed long long)res);
     TEST_ASSERT(res == 1, "Final byte of 3 should return 1");
     TEST_ASSERT(wc == 0x2F29, "Incremental 3-byte wide char value mismatch");
     return 1;
@@ -188,7 +183,7 @@ int test_incremental_parsing_2_times(void) {
 
 /* 5. Error Cases (Invalid UTF-8) */
 
-int test_invalid_start_byte(void) {
+static int test_invalid_start_byte(void) {
     wchar_t wc;
     mbstate_t ps;
     reset_state(&ps);
@@ -203,7 +198,7 @@ int test_invalid_start_byte(void) {
     return 1;
 }
 
-int test_invalid_continuation_byte(void) {
+static int test_invalid_continuation_byte(void) {
     wchar_t wc;
     mbstate_t ps;
     reset_state(&ps);
@@ -218,7 +213,7 @@ int test_invalid_continuation_byte(void) {
     return 1;
 }
 
-int test_overlong_encoding(void) {
+static int test_overlong_encoding(void) {
     wchar_t wc;
     mbstate_t ps;
     reset_state(&ps);
@@ -233,7 +228,7 @@ int test_overlong_encoding(void) {
     return 1;
 }
 
-// int test_out_of_range_unicode(void) {
+// static int test_out_of_range_unicode(void) {
 //     wchar_t wc;
 //     mbstate_t ps;
 //     reset_state(&ps);
@@ -248,7 +243,7 @@ int test_overlong_encoding(void) {
 //     return 1;
 // }
 
-int test_truncated_sequence_eof(void) {
+static int test_truncated_sequence_eof(void) {
     wchar_t wc;
     mbstate_t ps;
     reset_state(&ps);

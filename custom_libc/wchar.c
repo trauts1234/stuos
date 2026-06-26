@@ -1,6 +1,7 @@
 #include "wchar.h"
 #include "stdint.h"
 #include "string.h"
+#include "uapi/stddef.h"
 #include "wctype.h"
 #include "errno.h"
 #include <errno.h>
@@ -190,7 +191,6 @@ static size_t handle_continuation_bytes(wchar_t *output, const char *input, size
 		const char next = input[i];
 		//expect a continuation character which has high bits 10
 		if((next & 0b11000000) != 0b10000000) {
-			printf("LINE:%d\n", __LINE__);
 			errno = EILSEQ;
 			return (size_t)-1;
 		}
@@ -213,8 +213,6 @@ static size_t handle_continuation_bytes(wchar_t *output, const char *input, size
 				error = true;
 			}
 			if(error) {
-				printf("all done. expected length: %u, buffer hex: %x\n", state->expected_length, state->buffer);
-				printf("LINE:%d\n", __LINE__);
 				errno = EILSEQ;
 				return (size_t)-1;
 			}
@@ -237,7 +235,6 @@ size_t mbrtowc(wchar_t *output, const char *input, size_t input_bytes, mbstate_t
 			*state = (mbstate_t){};
 			return 0;
 		} else {
-			printf("LINE:%d\n", __LINE__);
 			errno = EILSEQ;
 			return (size_t)-1;
 		}
@@ -259,7 +256,7 @@ size_t mbrtowc(wchar_t *output, const char *input, size_t input_bytes, mbstate_t
 
 		if(count < 2 || count > 4) {
 			//unexpected number of leading 1s
-			printf("LINE:%d next:%x\n", __LINE__, next);
+			*state = (mbstate_t){};
 			errno = EILSEQ;
 			return (size_t)-1;
 		}
@@ -276,4 +273,43 @@ size_t mbrtowc(wchar_t *output, const char *input, size_t input_bytes, mbstate_t
 		if(output) *output = next;
 		return next != '\0';// null character returns 0
 	}
+}
+
+size_t mbsrtowcs(wchar_t *dest, const char **src, size_t len, mbstate_t *ps) {
+	if(!dest) len = (size_t)-1;//if dest is NULL, len is ignored
+
+	static mbstate_t internal = {};
+	if(!ps) ps = &internal;//if ps is a NULL pointer, a static anonymous state only known to the mbsrtowcs() function is used instead.
+
+	const char* curr = *src;
+
+	for(size_t i=0; i<len; i++) {
+		//parse one wchar
+		size_t res = mbrtowc(dest, curr, (size_t)-1, ps);
+		if(res == (size_t)-1) {
+			//fail
+			*ps = (mbstate_t){};
+			*src = curr;
+			errno = EILSEQ;
+			return (size_t)-1;
+		} else if(res == (size_t)-2) {
+			//uh oh
+			printf("PANIC in mbrstowcs\n");
+			abort();
+		}
+		curr += res;//jump past the character
+		if(dest) {
+			dest++;//jump to next slot	
+		}
+		if(res == 0) {
+			//null char found, so all done
+			if(dest) *src = NULL;
+			return i;// +0 since the null terminator isn't counted
+		}
+	}
+
+	//len reached
+	if(dest) *src = curr;
+	return len;
+
 }
