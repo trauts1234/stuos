@@ -92,12 +92,11 @@ ssize_t write(int fd, const void *buf, size_t count) {
 int close(int fd) {
     struct CloseFDData data = {
         .file_descriptor_number = fd,
-        .error_code = 0
     };
 
     do_syscall(&data, CLOSE_FD_SYSCALL);
 
-    return data.error_code;
+    return 0;
 }
 
 char *getcwd(char *buf, size_t size) {

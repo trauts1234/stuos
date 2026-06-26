@@ -118,8 +118,6 @@ void syscall_close_fd(struct CloseFDData* data) {
 
     (*file_operations)->close((*file_operations)->special_data);
     *file_operations = NULL;
-
-    data->error_code = 0;
 }
 
 void syscall_fork(struct ForkData* data, struct ProcessorState* parent_state) {

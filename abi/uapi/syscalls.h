@@ -82,8 +82,6 @@ struct LseekFDData {
 static const uint64_t CLOSE_FD_SYSCALL = 17;
 struct CloseFDData {
     int file_descriptor_number;
-    //TODO I am usually just returning this, instead of using errno
-    int error_code;
 };
 
 static const uint64_t FORK_SYSCALL = 18;
@@ -156,7 +154,7 @@ struct PipeData {
 
 static const uint64_t STAT_SYSCALL = 28;
 struct StatData {
-    struct stat64 result;
+    struct stat result;
     const char *path;
 };
 

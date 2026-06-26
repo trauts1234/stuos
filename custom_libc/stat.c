@@ -10,11 +10,15 @@ mode_t umask(mode_t mask) {
     return prev;
 }
 
-int stat(const char *path, struct stat64 *buf) {
+int stat(const char *path, struct stat *buf) {
     struct StatData data = {
         .path = path
     };
     do_syscall(&data, STAT_SYSCALL);
     *buf = data.result;
     return 0;
+}
+int lstat(const char *path, struct stat *buf) {
+    //if symlink, stat the link, not the file being linked to
+    return stat(path, buf);
 }

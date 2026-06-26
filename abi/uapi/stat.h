@@ -23,7 +23,7 @@
 // #define S_ISSOCK(m)  (((m) & S_IFMT) == S_IFSOCK)
 
 //TODO commented values, and how should stat work
-struct stat64 {
+struct stat {
     // dev_t     st_dev;     /* ID of device containing file */
     ino_t     st_ino;     /* inode number */
     mode_t    st_mode;    /* file type? */

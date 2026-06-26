@@ -56,13 +56,12 @@ FILE *fopen(const char *pathname, const char *mode) {
 int fclose(FILE *stream) {
     struct CloseFDData data = {
         .file_descriptor_number = stream->file_descriptor_number,
-        .error_code = 0
     };
 
     do_syscall(&data, CLOSE_FD_SYSCALL);
     free(stream);
 
-    return data.error_code;
+    return 0;
 }
 
 int fseek(FILE *stream, long offset, int whence) {

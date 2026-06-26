@@ -387,13 +387,13 @@ static void write_parent_dirent(struct Fat16Volume *vol, uint64_t inode_num, con
 
 }
 
-static struct stat64 stat_file(struct VNodeData inode_num) {
+static struct stat stat_file(struct VNodeData inode_num) {
     struct Fat16Volume vol = all_fat_mounts[inode_num.mount_id];
 
     const uint16_t parent_cluster_num = get_parent_cluster_num(inode_num.inode);
 
     //special case for root directory
-    if(parent_cluster_num == I_AM_ROOT_DIR) return (struct stat64) {
+    if(parent_cluster_num == I_AM_ROOT_DIR) return (struct stat) {
         .st_ino = inode_num.inode,
         .st_mode = S_IFDIR,
         .st_uid = 0,
@@ -404,7 +404,7 @@ static struct stat64 stat_file(struct VNodeData inode_num) {
     struct Fat16DirectoryEntry entry_in_parent = read_parent_dirent(&vol, inode_num.inode);
 
     
-    return (struct stat64) {
+    return (struct stat) {
         .st_ino = inode_num.inode,
         .st_mode = read_fat_mode(entry_in_parent.attributes),
         .st_uid = 0,
