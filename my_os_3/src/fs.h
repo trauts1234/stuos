@@ -1,6 +1,7 @@
 #ifndef FS_H
 #define FS_H
 
+#include <uapi/dirent.h>
 #include <uapi/stdint.h>
 #include <uapi/types.h>
 #include <uapi/stat.h>
@@ -23,13 +24,15 @@ struct VNode {
     /// -1 if `name` is not found
     int (*directory_lookup)(struct VNodeData dir_inode_num, const char* name, struct VNode* out);
 
-    /// This function should check that file is a valid file, then try to write `byte` to index `offset`
+    /// This function should check that file is a valid file, then try to write data from `input_buf` to index `offset`
     ///
     /// Returns:
     /// number of bytes written
     uint64_t (*write_file)(struct VNodeData inode_num, uint64_t offset, const uint8_t* input_buf, uint64_t num_bytes);
 
     /// This function should check that file is a valid file, then try to read `num_bytes` bytes into `out` at index in the file `offset`
+    ///
+    /// This operation is also valid for open files, where the directory pretends to be a list of struct dirent. may crash if offset or num_bytes are not a multiple of sizeof(struct dirent)
     ///
     /// Returns:
     /// number of bytes read

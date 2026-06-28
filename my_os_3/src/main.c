@@ -12,7 +12,7 @@
 #include "tty.h"
 #include "pci.h"
 #include "fs_dev.h"
-#include "fat.h"
+#include "fs_fat.h"
 
 //assembly functions
 extern void loop_hlt();

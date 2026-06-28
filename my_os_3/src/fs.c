@@ -133,6 +133,7 @@ static enum StepPathResult step_path2(struct VNode* current, const char** path_s
     segment_cpy[segment_len] = '\0';
 
     struct VNode result;
+    HCF//TODO manual routine using read()
     int status = current->directory_lookup(current->id, segment_cpy, &result);
     kfree(segment_cpy);
 
