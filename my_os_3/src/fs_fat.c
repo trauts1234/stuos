@@ -1,5 +1,6 @@
 #include "debugging.h"
 #include "fs.h"
+#include <uapi/dirent.h>
 #include <uapi/fcntl.h>
 #include <uapi/stat.h>
 #include <uapi/stdint.h>
@@ -417,8 +418,108 @@ static uint64_t read_file(struct VNodeData inode_num, uint64_t offset, uint8_t* 
     struct Fat16Volume vol = all_fat_mounts[inode_num.mount_id];
 
     if(S_ISDIR(stat_file(inode_num).st_mode)) {
-        //directories and root dir aren't readable
-        HCF
+        if(offset % sizeof(struct dirent)) HCF
+        if(num_bytes % sizeof(struct dirent)) HCF
+
+        const uint64_t dirent_index = offset / sizeof(struct dirent);
+        const uint64_t dirent_count = num_bytes / sizeof(struct dirent);
+        struct dirent *output_entries = (struct dirent*)output_buf;
+        uint64_t bytes_output = 0;
+
+        const uint16_t parent_cluster_num = get_parent_cluster_num(inode_num.inode);
+        const uint16_t cluster_number = (parent_cluster_num == I_AM_ROOT_DIR) ?
+            PARENT_IS_ROOT_DIR :
+            read_parent_dirent(&vol, inode_num.inode).cluster_number;
+
+        //microsoft spec limits file names to 255 chars
+        char file_name[256] = {};
+        char* file_name_next_free = file_name;
+        
+        for(uint64_t directory_i=0;;directory_i++) {
+            struct Fat16DirectoryEntry ent;
+            if(cluster_number == PARENT_IS_ROOT_DIR) {
+                read_from_root_dir(&vol, directory_i*sizeof(struct Fat16DirectoryEntry), &ent, sizeof(struct Fat16DirectoryEntry));
+            } else {
+                read_from_cluster_chain(&vol, cluster_number, directory_i*sizeof(struct Fat16DirectoryEntry), &ent, sizeof(struct Fat16DirectoryEntry));
+            }
+
+            if(ent.attributes & 0b11000000) HCF
+            
+            //reached end of dir
+            if(ent.filename[0] == 0) return bytes_output;
+            //empty entry
+            if(ent.filename[0] == (char)0xE5) continue;
+            
+            if(ent.attributes == FILE_ATTRIBUTES_LFN) {
+                //long file name
+                struct Fat16LFNEntry lfn = *(struct Fat16LFNEntry*)&ent;
+                if(lfn.attributes != FILE_ATTRIBUTES_LFN) HCF
+                if(lfn.zero_a || lfn.zero_b) HCF
+
+                bool done = false;
+                
+                for(int i=0; i<5 && !done; i++) {
+                    uint16_t c = lfn.unicode_name_1[i];
+                    if(c & 0xFF00) HCF//unicode... weird.
+
+                    *file_name_next_free++ = (char)c;
+                    if(c == 0) done = true;
+                }
+                for(int i=0; i<6 && !done; i++) {
+                    uint16_t c = lfn.unicode_name_2[i];
+                    if(c & 0xFF00) HCF//unicode... weird.
+
+                    *file_name_next_free++ = (char)c;
+                    if(c == 0) done = true;
+                }
+                for(int i=0; i<2 && !done; i++) {
+                    uint16_t c = lfn.unicode_name_3[i];
+                    if(c & 0xFF00) HCF//unicode... weird.
+
+                    *file_name_next_free++ = (char)c;
+                    if(c == 0) done = true;
+                }
+
+                if(!done) HCF
+            } else {
+                // if(ent.cluster_number < 2) HCF
+                if(ent.zero) HCF
+
+                mode_t node_type = read_fat_mode(ent.attributes);
+
+                //no long file name, so read short filename
+                if(file_name_next_free == file_name) {
+                    //short file name
+                    for(int i=0; i < 8 && ent.filename[i] != ' '; i++) {
+                        *file_name_next_free++ = ent.filename[i];
+                    }
+                    if(ent.filename[8] != ' ') *file_name_next_free++ = '.';
+                    for(int i=8; i<11 && ent.filename[i] != ' '; i++) {
+                        *file_name_next_free++ = ent.filename[i];
+                    }
+                    *file_name_next_free = '\0';
+                }
+                
+                if(strcmp(file_name, name) == 0) {
+                    *out = (struct VNode) {
+                        .id = {
+                            .mount_id = directory_entry.mount_id,
+                            .inode = make_inode(cluster_number, directory_i),
+                        },
+                        .directory_lookup = directory_lookup,
+                        .write_file = write_file,
+                        .read_file = read_file,
+                        .create_inode = create_inode,
+                        .stat_file = stat_file,
+                    };
+                    return 0;
+                }
+
+                //reset LFN
+                memset(file_name, 0, sizeof(file_name));
+                file_name_next_free = file_name;
+            }
+        }
     }
 
     struct Fat16DirectoryEntry entry_in_parent = read_parent_dirent(&vol, inode_num.inode);
@@ -569,102 +670,7 @@ static int create_inode(struct VNodeData parent_inode_num, mode_t new_inode_type
 }
 
 static int directory_lookup(struct VNodeData directory_entry, const char* name, struct VNode* out) {
-    struct Fat16Volume vol = all_fat_mounts[directory_entry.mount_id];
-
-    const uint16_t parent_cluster_num = get_parent_cluster_num(directory_entry.inode);
-    const uint16_t cluster_number = (parent_cluster_num == I_AM_ROOT_DIR) ?
-        PARENT_IS_ROOT_DIR :
-        read_parent_dirent(&vol, directory_entry.inode).cluster_number;
-
-    //microsoft spec limits file names to 255 chars
-    char file_name[256] = {};
-    char* file_name_next_free = file_name;
     
-    for(uint64_t directory_i=0;;directory_i++) {
-        struct Fat16DirectoryEntry ent;
-        if(cluster_number == PARENT_IS_ROOT_DIR) {
-            read_from_root_dir(&vol, directory_i*sizeof(struct Fat16DirectoryEntry), &ent, sizeof(struct Fat16DirectoryEntry));
-        } else {
-            read_from_cluster_chain(&vol, cluster_number, directory_i*sizeof(struct Fat16DirectoryEntry), &ent, sizeof(struct Fat16DirectoryEntry));
-        }
-
-        if(ent.attributes & 0b11000000) HCF
-        
-        //reached end of dir
-        if(ent.filename[0] == 0) return -1;
-        //empty entry
-        if(ent.filename[0] == (char)0xE5) continue;
-        
-        if(ent.attributes == FILE_ATTRIBUTES_LFN) {
-            //long file name
-            struct Fat16LFNEntry lfn = *(struct Fat16LFNEntry*)&ent;
-            if(lfn.attributes != FILE_ATTRIBUTES_LFN) HCF
-            if(lfn.zero_a || lfn.zero_b) HCF
-
-            bool done = false;
-            
-            for(int i=0; i<5 && !done; i++) {
-                uint16_t c = lfn.unicode_name_1[i];
-                if(c & 0xFF00) HCF//unicode... weird.
-
-                *file_name_next_free++ = (char)c;
-                if(c == 0) done = true;
-            }
-            for(int i=0; i<6 && !done; i++) {
-                uint16_t c = lfn.unicode_name_2[i];
-                if(c & 0xFF00) HCF//unicode... weird.
-
-                *file_name_next_free++ = (char)c;
-                if(c == 0) done = true;
-            }
-            for(int i=0; i<2 && !done; i++) {
-                uint16_t c = lfn.unicode_name_3[i];
-                if(c & 0xFF00) HCF//unicode... weird.
-
-                *file_name_next_free++ = (char)c;
-                if(c == 0) done = true;
-            }
-
-            if(!done) HCF
-        } else {
-            // if(ent.cluster_number < 2) HCF
-            if(ent.zero) HCF
-
-            mode_t node_type = read_fat_mode(ent.attributes);
-
-            //no long file name, so read short filename
-            if(file_name_next_free == file_name) {
-                //short file name
-                for(int i=0; i < 8 && ent.filename[i] != ' '; i++) {
-                    *file_name_next_free++ = ent.filename[i];
-                }
-                if(ent.filename[8] != ' ') *file_name_next_free++ = '.';
-                for(int i=8; i<11 && ent.filename[i] != ' '; i++) {
-                    *file_name_next_free++ = ent.filename[i];
-                }
-                *file_name_next_free = '\0';
-            }
-            
-            if(strcmp(file_name, name) == 0) {
-                *out = (struct VNode) {
-                    .id = {
-                        .mount_id = directory_entry.mount_id,
-                        .inode = make_inode(cluster_number, directory_i),
-                    },
-                    .directory_lookup = directory_lookup,
-                    .write_file = write_file,
-                    .read_file = read_file,
-                    .create_inode = create_inode,
-                    .stat_file = stat_file,
-                };
-                return 0;
-            }
-
-            //reset LFN
-            memset(file_name, 0, sizeof(file_name));
-            file_name_next_free = file_name;
-        }
-    }
 }
 
 void mount_fat16(struct VNode block_device, const char* mount_name) {
