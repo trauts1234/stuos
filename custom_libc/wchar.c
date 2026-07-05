@@ -313,3 +313,8 @@ size_t mbsrtowcs(wchar_t *dest, const char **src, size_t len, mbstate_t *ps) {
 	return len;
 
 }
+
+size_t mbrlen(const char *s, size_t n, mbstate_t *ps) {
+	static mbstate_t internal;
+	return mbrtowc(0, s, n, ps ? ps : &internal);
+}

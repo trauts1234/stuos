@@ -43,3 +43,6 @@ struct dirent *readdir(DIR *dirp) {
         return &dirp->current;
     }
 }
+struct dirent64 *readdir64(DIR *dirp) {
+    return (struct dirent64*)readdir(dirp);
+}

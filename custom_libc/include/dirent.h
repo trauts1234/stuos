@@ -13,4 +13,12 @@ int closedir(DIR *dirp);
 
 struct dirent *readdir(DIR *dirp);
 
+struct dirent64 {
+    ino_t d_ino;
+    unsigned char d_type;
+    
+    char d_name[256];
+};
+struct dirent64 *readdir64(DIR *dirp);
+
 #endif
