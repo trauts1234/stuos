@@ -3,6 +3,7 @@
 #include <uapi/dirent.h>
 #include <uapi/fcntl.h>
 #include <uapi/stat.h>
+#include <uapi/stddef.h>
 #include <uapi/stdint.h>
 #include <uapi/stdbool.h>
 #include "kern_libc.h"
@@ -388,6 +389,137 @@ static void write_parent_dirent(struct Fat16Volume *vol, uint64_t inode_num, con
 
 }
 
+static struct stat stat_file(struct VNodeData inode_num);
+static uint64_t read_file(struct VNodeData inode_num, uint64_t offset, uint8_t* output_buf, uint64_t num_bytes);
+static uint64_t write_file(struct VNodeData inode_num, uint64_t offset, const uint8_t *input_buf, uint64_t num_bytes);
+static int create_inode(struct VNodeData parent_inode_num, mode_t new_inode_type, const char *name, struct VNode *out) ;
+
+struct DirentAndVnode {
+    struct dirent directory_entry;
+    struct VNode vnode;
+};
+
+static uint64_t read_dirents(struct VNodeData inode_num, uint64_t dirent_index, struct dirent* dirent_buf, struct VNode* vnode_buf, uint64_t dirent_count) {
+    struct Fat16Volume vol = all_fat_mounts[inode_num.mount_id];
+    uint64_t entries_read = 0;
+    uint64_t entries_written = 0;
+
+    const uint16_t parent_cluster_num = get_parent_cluster_num(inode_num.inode);
+    const uint16_t cluster_number = (parent_cluster_num == I_AM_ROOT_DIR) ?
+        PARENT_IS_ROOT_DIR :
+        read_parent_dirent(&vol, inode_num.inode).cluster_number;
+
+    //microsoft spec limits file names to 255 chars
+    char file_name[256] = {};
+    char* file_name_next_free = file_name;
+    
+    for(uint64_t directory_i=0;;directory_i++) {
+        struct Fat16DirectoryEntry ent;
+        if(cluster_number == PARENT_IS_ROOT_DIR) {
+            read_from_root_dir(&vol, directory_i*sizeof(struct Fat16DirectoryEntry), &ent, sizeof(struct Fat16DirectoryEntry));
+        } else {
+            read_from_cluster_chain(&vol, cluster_number, directory_i*sizeof(struct Fat16DirectoryEntry), &ent, sizeof(struct Fat16DirectoryEntry));
+        }
+
+        if(ent.attributes & 0b11000000) HCF
+        
+        //reached end of dir
+        if(ent.filename[0] == 0) return entries_written;
+        //empty entry
+        if(ent.filename[0] == (char)0xE5) continue;
+        
+        if(ent.attributes == FILE_ATTRIBUTES_LFN) {
+            //long file name
+            struct Fat16LFNEntry lfn = *(struct Fat16LFNEntry*)&ent;
+            if(lfn.attributes != FILE_ATTRIBUTES_LFN) HCF
+            if(lfn.zero_a || lfn.zero_b) HCF
+
+            bool done = false;
+            
+            for(int i=0; i<5 && !done; i++) {
+                uint16_t c = lfn.unicode_name_1[i];
+                if(c & 0xFF00) HCF//unicode... weird.
+
+                *file_name_next_free++ = (char)c;
+                if(c == 0) done = true;
+            }
+            for(int i=0; i<6 && !done; i++) {
+                uint16_t c = lfn.unicode_name_2[i];
+                if(c & 0xFF00) HCF//unicode... weird.
+
+                *file_name_next_free++ = (char)c;
+                if(c == 0) done = true;
+            }
+            for(int i=0; i<2 && !done; i++) {
+                uint16_t c = lfn.unicode_name_3[i];
+                if(c & 0xFF00) HCF//unicode... weird.
+
+                *file_name_next_free++ = (char)c;
+                if(c == 0) done = true;
+            }
+
+            if(!done) HCF
+        } else {
+            // if(ent.cluster_number < 2) HCF
+            if(ent.zero) HCF
+
+            //no long file name, so read short filename
+            if(file_name_next_free == file_name) {
+                //short file name
+                for(int i=0; i < 8 && ent.filename[i] != ' '; i++) {
+                    *file_name_next_free++ = ent.filename[i];
+                }
+                if(ent.filename[8] != ' ') *file_name_next_free++ = '.';
+                for(int i=8; i<11 && ent.filename[i] != ' '; i++) {
+                    *file_name_next_free++ = ent.filename[i];
+                }
+                *file_name_next_free = '\0';
+            }
+
+            entries_read++;
+            
+            //if I have skipped to the `dirent_index`th element
+            if(dirent_index < entries_read) {
+                if((entries_written) >= dirent_count) {
+                    //read n entries already
+                    return dirent_count;
+                }
+
+                entries_written++;
+                
+                if(dirent_buf) {
+
+                    *dirent_buf = (struct dirent) {
+                        .d_ino = make_inode(cluster_number, directory_i),
+                        .d_name = {}
+                    };
+                    strcpy(dirent_buf->d_name, file_name);
+                    dirent_buf++;
+                }
+                if(vnode_buf) {
+
+                    *vnode_buf = (struct VNode) {
+                        .id = {
+                            .mount_id = inode_num.mount_id,
+                            .inode = make_inode(cluster_number, directory_i),
+                        },
+                        .read_dirents = read_dirents,
+                        .write_file = write_file,
+                        .read_file = read_file,
+                        .create_inode = create_inode,
+                        .stat_file = stat_file,
+                    };
+                    vnode_buf++;
+                }
+            }
+
+            //reset LFN
+            memset(file_name, 0, sizeof(file_name));
+            file_name_next_free = file_name;
+        }
+    }
+}
+
 static struct stat stat_file(struct VNodeData inode_num) {
     struct Fat16Volume vol = all_fat_mounts[inode_num.mount_id];
 
@@ -415,113 +547,17 @@ static struct stat stat_file(struct VNodeData inode_num) {
 }
 
 static uint64_t read_file(struct VNodeData inode_num, uint64_t offset, uint8_t* output_buf, uint64_t num_bytes) {
-    struct Fat16Volume vol = all_fat_mounts[inode_num.mount_id];
-
+    
     if(S_ISDIR(stat_file(inode_num).st_mode)) {
         if(offset % sizeof(struct dirent)) HCF
         if(num_bytes % sizeof(struct dirent)) HCF
-
+        
         const uint64_t dirent_index = offset / sizeof(struct dirent);
         const uint64_t dirent_count = num_bytes / sizeof(struct dirent);
-        struct dirent *output_entries = (struct dirent*)output_buf;
-        uint64_t bytes_output = 0;
-
-        const uint16_t parent_cluster_num = get_parent_cluster_num(inode_num.inode);
-        const uint16_t cluster_number = (parent_cluster_num == I_AM_ROOT_DIR) ?
-            PARENT_IS_ROOT_DIR :
-            read_parent_dirent(&vol, inode_num.inode).cluster_number;
-
-        //microsoft spec limits file names to 255 chars
-        char file_name[256] = {};
-        char* file_name_next_free = file_name;
-        
-        for(uint64_t directory_i=0;;directory_i++) {
-            struct Fat16DirectoryEntry ent;
-            if(cluster_number == PARENT_IS_ROOT_DIR) {
-                read_from_root_dir(&vol, directory_i*sizeof(struct Fat16DirectoryEntry), &ent, sizeof(struct Fat16DirectoryEntry));
-            } else {
-                read_from_cluster_chain(&vol, cluster_number, directory_i*sizeof(struct Fat16DirectoryEntry), &ent, sizeof(struct Fat16DirectoryEntry));
-            }
-
-            if(ent.attributes & 0b11000000) HCF
-            
-            //reached end of dir
-            if(ent.filename[0] == 0) return bytes_output;
-            //empty entry
-            if(ent.filename[0] == (char)0xE5) continue;
-            
-            if(ent.attributes == FILE_ATTRIBUTES_LFN) {
-                //long file name
-                struct Fat16LFNEntry lfn = *(struct Fat16LFNEntry*)&ent;
-                if(lfn.attributes != FILE_ATTRIBUTES_LFN) HCF
-                if(lfn.zero_a || lfn.zero_b) HCF
-
-                bool done = false;
-                
-                for(int i=0; i<5 && !done; i++) {
-                    uint16_t c = lfn.unicode_name_1[i];
-                    if(c & 0xFF00) HCF//unicode... weird.
-
-                    *file_name_next_free++ = (char)c;
-                    if(c == 0) done = true;
-                }
-                for(int i=0; i<6 && !done; i++) {
-                    uint16_t c = lfn.unicode_name_2[i];
-                    if(c & 0xFF00) HCF//unicode... weird.
-
-                    *file_name_next_free++ = (char)c;
-                    if(c == 0) done = true;
-                }
-                for(int i=0; i<2 && !done; i++) {
-                    uint16_t c = lfn.unicode_name_3[i];
-                    if(c & 0xFF00) HCF//unicode... weird.
-
-                    *file_name_next_free++ = (char)c;
-                    if(c == 0) done = true;
-                }
-
-                if(!done) HCF
-            } else {
-                // if(ent.cluster_number < 2) HCF
-                if(ent.zero) HCF
-
-                mode_t node_type = read_fat_mode(ent.attributes);
-
-                //no long file name, so read short filename
-                if(file_name_next_free == file_name) {
-                    //short file name
-                    for(int i=0; i < 8 && ent.filename[i] != ' '; i++) {
-                        *file_name_next_free++ = ent.filename[i];
-                    }
-                    if(ent.filename[8] != ' ') *file_name_next_free++ = '.';
-                    for(int i=8; i<11 && ent.filename[i] != ' '; i++) {
-                        *file_name_next_free++ = ent.filename[i];
-                    }
-                    *file_name_next_free = '\0';
-                }
-                
-                if(strcmp(file_name, name) == 0) {
-                    *out = (struct VNode) {
-                        .id = {
-                            .mount_id = directory_entry.mount_id,
-                            .inode = make_inode(cluster_number, directory_i),
-                        },
-                        .directory_lookup = directory_lookup,
-                        .write_file = write_file,
-                        .read_file = read_file,
-                        .create_inode = create_inode,
-                        .stat_file = stat_file,
-                    };
-                    return 0;
-                }
-
-                //reset LFN
-                memset(file_name, 0, sizeof(file_name));
-                file_name_next_free = file_name;
-            }
-        }
+        return read_dirents(inode_num, dirent_index, (struct dirent*)output_buf, NULL, dirent_count) * sizeof(struct dirent);
     }
-
+    
+    struct Fat16Volume vol = all_fat_mounts[inode_num.mount_id];
     struct Fat16DirectoryEntry entry_in_parent = read_parent_dirent(&vol, inode_num.inode);
     
     //don't read past the end of the file
@@ -669,10 +705,6 @@ static int create_inode(struct VNodeData parent_inode_num, mode_t new_inode_type
     return 0;
 }
 
-static int directory_lookup(struct VNodeData directory_entry, const char* name, struct VNode* out) {
-    
-}
-
 void mount_fat16(struct VNode block_device, const char* mount_name) {
     struct Fat16Header hdr;
     block_device.read_file(block_device.id, 0, (uint8_t*)&hdr, sizeof(struct Fat16Header));
@@ -708,7 +740,7 @@ void mount_fat16(struct VNode block_device, const char* mount_name) {
             .mount_id = mount_id,
             .inode = make_inode(I_AM_ROOT_DIR, 0),
         },
-        .directory_lookup=directory_lookup,
+        .read_dirents = read_dirents,
         .read_file = read_file,
         .write_file = write_file,
         .stat_file = stat_file,

@@ -17,12 +17,12 @@ struct VNode {
 
     struct stat (*stat_file)(struct VNodeData id);
 
-    /// This function should check that `directory` is a directory node, then try to find a node with name `name`
+    /// This function reads directory entries, and fills dirent_buf and vnode_buf accordingly
     ///
-    /// Returns:
-    /// 0 on success
-    /// -1 if `name` is not found
-    int (*directory_lookup)(struct VNodeData dir_inode_num, const char* name, struct VNode* out);
+    /// dirent_buf and/or vnode_buf can be NULL
+    ///
+    /// Returns the number of items put into dirent_buf and vnode_buf
+    uint64_t (*read_dirents)(struct VNodeData inode_num, uint64_t dirent_index, struct dirent* dirent_buf, struct VNode* vnode_buf, uint64_t dirent_count);
 
     /// This function should check that file is a valid file, then try to write data from `input_buf` to index `offset`
     ///
@@ -32,7 +32,7 @@ struct VNode {
 
     /// This function should check that file is a valid file, then try to read `num_bytes` bytes into `out` at index in the file `offset`
     ///
-    /// This operation is also valid for open files, where the directory pretends to be a list of struct dirent. may crash if offset or num_bytes are not a multiple of sizeof(struct dirent)
+    /// This operation is also valid for open directories, where the directory pretends to be a list of struct dirent. may crash if offset or num_bytes are not a multiple of sizeof(struct dirent)
     ///
     /// Returns:
     /// number of bytes read

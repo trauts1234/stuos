@@ -29,7 +29,7 @@ bool is_eq_vnode(struct VNode l, struct VNode r) {
     return 1 &&
         l.id.inode == r.id.inode &&
         l.id.mount_id == r.id.mount_id &&
-        l.directory_lookup == r.directory_lookup &&
+        l.read_dirents == r.read_dirents &&
         l.write_file == r.write_file &&
         l.read_file == r.read_file &&
         l.create_inode == r.create_inode &&
@@ -40,7 +40,7 @@ bool is_null_vnode(struct VNode v) {
     return 1 &&
         v.id.inode == 0 &&
         v.id.mount_id == 0 &&
-        v.directory_lookup == 0 &&
+        v.read_dirents == 0 &&
         v.write_file == 0 &&
         v.read_file == 0 &&
         v.create_inode == 0 &&
@@ -63,23 +63,34 @@ static struct stat tmpfs_stat_file(struct VNodeData id) {
     HCF
 }
 
-//until a proper root fs is mounted, this contains a fake directory
-static int tmpfs_directory_lookup(struct VNodeData id, const char *name, struct VNode *out) {
-    if(id.mount_id != 0 || id.inode != ROOT_INODE_NUM) HCF
-
-    if(strcmp(name, "dev") == 0) {
-        //devfs
-        *out = (struct VNode) {
+static uint64_t tmpfs_read_dirents(struct VNodeData inode_num, uint64_t dirent_index, struct dirent* dirent_buf, struct VNode* vnode_buf, uint64_t dirent_count) {
+    struct dirent dirents[] = {
+        [0] = {
+            .d_ino = TMPFS_DEV,
+            .d_name = "dev"
+        }
+    };
+    struct VNode vnodes[] = {
+        [0] = {
             .id = {
                 .inode = TMPFS_DEV,
                 .mount_id = 0
             },
             .stat_file = tmpfs_stat_file
-        };
-        return 0;
+        }
+    };
+
+    const uint64_t num_dirents = sizeof(dirents) / sizeof(struct dirent);
+    if(num_dirents != sizeof(vnodes)/sizeof(struct VNode)) HCF
+
+    uint64_t i=0;
+    while((i+dirent_index) < num_dirents && i < dirent_count) {
+        if(dirent_buf) dirent_buf[i] = dirents[i+dirent_index];
+        if(vnode_buf) vnode_buf[i] = vnodes[i+dirent_index];
+        i++;
     }
 
-    HCF
+    return i;
 }
 
 struct VNode vfs_get_root() {
@@ -88,7 +99,7 @@ struct VNode vfs_get_root() {
             .inode = ROOT_INODE_NUM,
             .mount_id = 0
         },
-        .directory_lookup = tmpfs_directory_lookup,
+        .read_dirents = tmpfs_read_dirents,
         .stat_file = tmpfs_stat_file,
     };
 }
@@ -103,6 +114,29 @@ enum StepPathResult {
     /// Parsing failed somewhere, *path_start points to the remaining path and *current points to the directory walked to so far
     STEPPATH_NOTEXIST
 };
+
+#define DIR_LOOKUP_BUF_SIZE 2
+//returns: 0 on success, -1 otherwise
+static int directory_lookup(struct VNode* dir, const char* name, struct VNode* out) {
+    struct VNode vnode_buf[DIR_LOOKUP_BUF_SIZE];
+    struct dirent dirent_buf[DIR_LOOKUP_BUF_SIZE];
+
+    uint64_t offset = 0;
+    while(1) {
+        uint64_t res = dir->read_dirents(dir->id, offset, dirent_buf, vnode_buf, DIR_LOOKUP_BUF_SIZE);
+        if(res == 0) {
+            return -1;
+        }
+        for(uint64_t i=0; i<res; i++) {
+            if(strcmp(dirent_buf[i].d_name, name) == 0) {
+                //names match:
+                *out = vnode_buf[i];
+                return 0;
+            }
+        }
+        offset += res;
+    }
+}
 
 //if current is the host for a mount, current is also replaced with the root of the mounted directory
 static enum StepPathResult step_path2(struct VNode* current, const char** path_start) {
@@ -133,8 +167,7 @@ static enum StepPathResult step_path2(struct VNode* current, const char** path_s
     segment_cpy[segment_len] = '\0';
 
     struct VNode result;
-    HCF//TODO manual routine using read()
-    int status = current->directory_lookup(current->id, segment_cpy, &result);
+    int status = directory_lookup(current, segment_cpy, &result);
     kfree(segment_cpy);
 
     bool must_be_folder;
@@ -218,7 +251,7 @@ struct VNode vfs_get(const char* cwd_path, const char* path, int open_flags) {
                 continue;//try and read the file now I have created it
             }
             /* FALLTHROUGH, since I have doesn't exist and no OPEN_CREATE */
-            // [[ fallthrough ]];
+            [[ fallthrough ]];
         case STEPPATH_NOTEXIST:
             kprintf("failed to parse remaining part of path: %s", path);
             HCF

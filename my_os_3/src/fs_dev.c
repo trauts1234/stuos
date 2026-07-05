@@ -17,6 +17,7 @@ struct BlockDevice {
     void (*block_read)(void* driver_private, uint64_t sector_number, uint8_t output[BLOCK_DEVICE_READ_SIZE]);
     void (*block_write)(void* driver_private, uint64_t sector_number, uint8_t input[BLOCK_DEVICE_READ_SIZE]);
 
+    //guaranteed to be at least 1, since offset 0 length n to represent the whole drive is valid
     uint8_t num_partitions;
     struct BlockDevicePartition {
         uint64_t byte_offset;
@@ -39,7 +40,12 @@ void fs_dev_add_block_device(
         .driver_private = driver_private,
         .block_read = block_read,
         .block_write = block_write,
-        .num_partitions = 0,
+        .num_partitions = 1,
+        .partitions = {
+            [0] = {
+                .byte_offset = 0
+            }
+        }
     };
 
     //try and read a MBR
@@ -71,8 +77,9 @@ void fs_dev_add_block_device(
         //MBR or fat, for sure
         //TODO try to exclude FAT using heuristics
         for(int i=0;i<4;i++) {
+            if(result.num_partitions >= MAX_PARTITIONS) HCF
             if(mbr.partition_table[i].partition_sector_count == 0) break;
-            result.partitions[i] = (struct BlockDevicePartition) {
+            result.partitions[result.num_partitions] = (struct BlockDevicePartition) {
                 .byte_offset = mbr.partition_table[i].lba_partition_start * BLOCK_DEVICE_READ_SIZE
             };
             result.num_partitions++;
@@ -174,40 +181,50 @@ static struct stat blockdev_stat(struct VNodeData inode_num) {
     };
 }
 
-static int devroot_directory_lookup(struct VNodeData dir_inode_num, const char* name, struct VNode* out) {
-    if(dir_inode_num.inode != DEV_ROOT_DIR_INODE_NUM || dir_inode_num.mount_id != 0) HCF
+uint64_t devroot_read_dirents(struct VNodeData inode_num, uint64_t dirent_index, struct dirent* dirent_buf, struct VNode* vnode_buf, uint64_t dirent_count) {
+    if(inode_num.inode != DEV_ROOT_DIR_INODE_NUM || inode_num.mount_id != 0) HCF
 
-    uint64_t name_len = strlen(name);
+    uint64_t count = 0;
+    for(uint64_t dev_num=0;dev_num<next_free_block_device;dev_num++) {
+        struct BlockDevice *blk;
+        blk = block_devices + dev_num;
+        for(uint64_t partition_num=0; partition_num<blk->num_partitions; partition_num++) {
+            if(dirent_index) {
+                //still skipping
+                dirent_index--;
+                continue;
+            }
+            if(count == dirent_count) {
+                //reached n
+                return dirent_count;
+            }
 
-    if(name_len > 3 && strncmp(name, "blk", 3) == 0) {
-        if(name[3] < 'A') HCF
-        uint8_t dev_number = name[3] - 'A';
-        if(dev_number >= next_free_block_device) HCF
+            const uint64_t ino = dev_num << 16 | partition_num;
+            *dirent_buf++ = (struct dirent){
+                .d_ino = ino,
+                .d_name = {
+                    'b','l','k',
+                    'A' + dev_num,
+                    partition_num ? 'p' : '\0',
+                    partition_num ? '0'+partition_num : '\0',
+                    '\0'
+                }
+            };
+            *vnode_buf++ = (struct VNode){
+                .id = {
+                    .inode = ino,
+                    .mount_id = 0
+                },
+                .stat_file=blockdev_stat,
+                .write_file=blockdev_write_file,
+                .read_file=blockdev_read_file,
+            };
 
-        uint16_t partition_num = 0;
-        if(name_len > 4) {
-            //partition
-            if(name_len != 6) HCF
-            if(name[4] != 'p') HCF
-            if(name[5] < '0') HCF
-            partition_num = name[5] - '0';
+            count++;
         }
-
-        *out = (struct VNode){
-            .id = {
-                .inode = dev_number << 16 | partition_num,
-                .mount_id = 0
-            },
-            .stat_file = blockdev_stat,
-            .directory_lookup = 0,
-            .write_file = blockdev_write_file,
-            .read_file = blockdev_read_file,
-            .create_inode = 0,
-        };
-        return 0;
     }
 
-    return -1;
+    return count;
 }
 
 struct stat devroot_stat(struct VNodeData inode_num) {
@@ -223,7 +240,7 @@ void devfs_init() {
                 .inode = DEV_ROOT_DIR_INODE_NUM,
                 .mount_id = 0,
             },
-            .directory_lookup = devroot_directory_lookup,
+            .read_dirents = devroot_read_dirents,
             .write_file = 0,
             .read_file = 0,
             .stat_file = devroot_stat,
