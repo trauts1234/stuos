@@ -15,8 +15,10 @@ __attribute__((noreturn))
 void exit(int status);
 
 int atoi(const char *nptr);
+double atof(const char *nptr);
 long int strtol(const char *nptr, char **endptr, int base);
 long long int strtoll(const char *nptr, char **endptr, int base);
+double strtod(const char *nptr, char **endptr);
 
 void qsort(void *base, size_t nmemb, size_t size, int (*compar)(const void *, const void *));
 

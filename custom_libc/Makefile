@@ -17,6 +17,7 @@ ASM_SRCS = $(wildcard *.asm)
 INCLUDE_SRCS = $(shell find $(INCLUDE_DIR) -name "*.h")
 UAPI_SRCS = $(shell find $(ABI_DIR) -name "*.h")
 MALLOC_LIBRARY := ../malloc_my_os_3/target/x86_64-unknown-none/debug/libmalloc_my_os_3.a
+LIBM_OBJS := $(wildcard /home/stuart/Programming/C/openlibm/objectfiles/*)
 
 ARTIFACT_DIR := ./.build
 ARTIFACT_OBJS := $(C_SRCS:%.c=$(ARTIFACT_DIR)/%.o) $(ASM_SRCS:%.asm=$(ARTIFACT_DIR)/%.o)
@@ -28,10 +29,10 @@ all: $(OUTPUT_BINARY) $(OUTPUT_HEADERS)
 
 # need to make libc
 # start by copying the .a archive for malloc, then append my object files on to it
-$(OUTPUT_BINARY): $(ARTIFACT_OBJS) $(MALLOC_LIBRARY)
+$(OUTPUT_BINARY): $(ARTIFACT_OBJS) $(MALLOC_LIBRARY) $(LIBM_OBJS)
 	@mkdir -p $(dir $@)
 	cp $(MALLOC_LIBRARY) $@
-	ar rs $@ $(ARTIFACT_OBJS)
+	ar rs $@ $(ARTIFACT_OBJS) $(LIBM_OBJS)
 
 # .o files require the .c or .asm source files
 $(ARTIFACT_DIR)/%.o: %.c

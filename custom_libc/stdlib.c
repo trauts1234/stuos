@@ -1,6 +1,7 @@
 #include "stdlib.h"
 #include "stdint.h"
 
+#include "uapi/stddef.h"
 #include "uapi/syscalls.h"
 #include "rust_bindings.h"
 #include "stdio.h"
@@ -52,4 +53,7 @@ void abort() {
 
 int atoi(const char *nptr) {
     return strtol(nptr, NULL, 10);
+}
+double atof(const char *nptr) {
+    return strtod(nptr, NULL);
 }

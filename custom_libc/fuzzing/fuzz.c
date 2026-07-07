@@ -15,6 +15,7 @@
 #include "setjmp_test.h"
 #include "mbrtowc_test.h"
 #include "mbsrtowcs_test.h"
+#include "strtod_test.h"
 
 #include "tools.h"
 #include "unistd.h"
@@ -128,6 +129,8 @@ int main(int argc, char *argv[]) {
         abort();
     }
 
+    printf("running strtod test\n");
+    strtod_test();
     printf("running setjmp test\n");
     setjmp_test();
     printf("running sleep test\n");
