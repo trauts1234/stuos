@@ -195,7 +195,15 @@ void syscall_chdir(struct ChdirData* data) {
 }
 
 void syscall_execve(const struct ExecveData* data) {
-    if(DEBUG_SYSCALLS) kprintf("%s: %s\n", __func__, data->filename);
+    if(DEBUG_SYSCALLS) {
+        kprintf("%s: %s with args ", __func__, data->filename);
+        char*const * curr = data->argv;
+        while(curr && *curr) {
+            kprintf("%s,", *curr);
+            curr++;
+        }
+        kprintf("\n");
+    }
     const struct VNode to_execute = vfs_get(get_current_cwd(), data->filename, 0);
 
     uint64_t argc=0;

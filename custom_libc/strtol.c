@@ -59,7 +59,7 @@ long int strtol(const char *nptr, char **endptr, int base) {
                 accumulator = accumulator*base - d;
             }
         } else {
-            if(accumulator > (LONG_MIN - d) / base) {
+            if(accumulator > (LONG_MAX - d) / base) {
                 overflowing = true;//this means that accumulator*base + d > LONG_MAX, and overflowing
             } else {
                 accumulator = accumulator*base + d;

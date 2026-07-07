@@ -144,7 +144,7 @@ static void setup_args_for_new_process(struct VirtualMemoryRegion* virtual_memor
     *output_argc = argc;
     
     //walk through the data, putting in the strings and array
-    char* curr_offset = args_data_start + argc * sizeof(char*);//start saving the actual strings after the array
+    char* curr_offset = args_data_start + (argc+1) * sizeof(char*);//start saving the actual strings after the array
     for(uint64_t i=0; i<argc; i++) {
         (*output_allocated_argv)[i] = curr_offset;//add array item
 
