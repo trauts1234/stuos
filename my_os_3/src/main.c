@@ -3,6 +3,7 @@
 #include "display.h"
 #include "fs.h"
 #include "interrupts.h"
+#include "idt.h"
 #include "limine.h"
 #include "ps2.h"
 #include "memory.h"
@@ -89,7 +90,8 @@ void kmain(void) {
     display_init(framebuffer);
     initialise_ps2();
     memory_init(memmap_response, hhdm_offset);
-    setup_pic_pit_idt();
+    setup_pic_pit();
+    setup_idt();
     devfs_init();
     syscall_init();
     initialise_tty();
