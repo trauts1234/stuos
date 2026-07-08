@@ -5,6 +5,7 @@ LIMINE_FOLDER=./limine
 OUTPUT_DISK=./filesystem
 OUTPUT_DIR=./filesystem_mnt
 LIMINE_CONFIG=./my_os_3/src/limine.conf
+PUT_IN_FILESYSTEM=./put_in_filesystem
 
 #remove mount, loop device, and filesystem image
 sudo umount filesystem_mnt || true
@@ -34,6 +35,7 @@ cp ${LIMINE_FOLDER}/BOOTX64.EFI ${LIMINE_FOLDER}/BOOTIA32.EFI ${OUTPUT_DIR}/EFI/
 ./build_all.sh
 
 cp ./my_os_3/.build/myos ${OUTPUT_DIR}/boot
+cp ${PUT_IN_FILESYSTEM}/* ${OUTPUT_DIR}/
 ${LIMINE_FOLDER}/limine bios-install "${OUTPUT_DISK}"
 
 sudo umount filesystem_mnt

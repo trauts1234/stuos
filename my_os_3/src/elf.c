@@ -63,8 +63,8 @@ static void allocate_virtual_range(struct VirtualMemoryRegion* virtual_memory_tr
         if(curr->is_free && curr->next->is_free) {
             if(curr->end_addr != curr->next->start_addr) {HCF}
             curr->end_addr = curr->next->end_addr;//update curr to talk about the combined free region
+            //TODO free curr->next ???
             curr->next = curr->next->next;
-            // shift_remove(elf, curr->next);//remove curr->next as curr represents the combined region
             continue;
         }
         curr = curr->next;
@@ -237,7 +237,10 @@ struct LoadedProgram instantiate_ELF(struct VNode exe, char*const *argv) {
         void* page_alloc_end = (void*)((curr_header.p_vaddr + curr_header.p_memsz + PAGE_SIZE-1) & ~PAGE_MASK);//round page up to find which is the first free page after the allocated region
         allocate_virtual_range(virtual_memory_tracker_head, page_alloc_start, page_alloc_end);
 
-        exe.read_file(exe.id, curr_header.p_offset, (uint8_t*)curr_header.p_vaddr, curr_header.p_filesz);//copy data from file
+        uint64_t read = exe.read_file(exe.id, curr_header.p_offset, (uint8_t*)curr_header.p_vaddr, curr_header.p_filesz);//copy data from file
+        if(read != curr_header.p_filesz) HCF
+        //zero the remaining data
+        memset((void*)(curr_header.p_vaddr+curr_header.p_filesz), 0, curr_header.p_memsz - curr_header.p_filesz);
     }
     kfree(prog_headers);
 

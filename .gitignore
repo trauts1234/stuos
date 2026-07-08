@@ -3,3 +3,4 @@ stuos_image.iso
 .vscode/
 filesystem
 filesystem_mnt/
+put_in_filesystem/

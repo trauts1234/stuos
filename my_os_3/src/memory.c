@@ -190,6 +190,8 @@ static void walk_virtual_tree(uint64_t page_table_phys, void (*leaf_callback)(vo
 
 //a leaf callback, that frees the physical page
 static void leaf_callback_remove_page(void* _, uint64_t phys) {
+    void* virt = phys_to_hhdm(phys);
+    memset(virt, 0xEE, PAGE_SIZE);
     free4k_phys(phys);
 }
 //a table entry callback, that frees the physical page

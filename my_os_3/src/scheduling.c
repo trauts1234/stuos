@@ -117,7 +117,7 @@ int add_new_process(struct LoadedProgram program) {
 }
 
 void replace_current_process(struct LoadedProgram program) {
-    if(!current_process_in_ll) HCF//there must be a parent
+    if(!current_process_in_ll) HCF//there must be a process to replace
 
     struct ProcessData new = (struct ProcessData) {
         .heap_start = program.heap_start,
@@ -129,8 +129,9 @@ void replace_current_process(struct LoadedProgram program) {
         .cwd = current_process_in_ll->cwd,
         .paused_state = program.initial_state,
         .waiting_data = {
-            .status = NOT_WAITING, //is this right?
+            .status = NOT_WAITING,
         },
+        //TODO signals and stuff
         .next_process_to_run = current_process_in_ll->next_process_to_run,
     };
     memcpy(&new.file_descriptors, current_process_in_ll->file_descriptors, sizeof(struct FileOperations*) * MAX_FD_COUNT);

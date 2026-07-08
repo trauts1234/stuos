@@ -234,7 +234,7 @@ void syscall_execve(const struct ExecveData* data) {
 }
 
 void syscall_wait(struct WaitData* data, struct ProcessorState* state) {
-    if(DEBUG_SYSCALLS) kprintf("%s: for pid %d\n", __func__);
+    if(DEBUG_SYSCALLS) kprintf("%s: for pid %d\n", __func__, data->pid);
     register_as_waiting((struct WaitingData) {
         .status = WAITING_FOR_CHILD,
         .child = {
