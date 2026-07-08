@@ -125,6 +125,7 @@ static void do_newline() {
 }
 
 static void write_from_multiple_sources(char c, bool is_from_keyboard) {
+    if(c< 0) c = '?';
     if(c == '\b') {
         if(current_run_of_keyboard_inputs == 0) return;
         current_run_of_keyboard_inputs--;
