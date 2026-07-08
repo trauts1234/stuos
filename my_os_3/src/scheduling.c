@@ -259,7 +259,7 @@ void run_next_task(const struct ProcessorState* const interrupted_processor_stat
         current_process_in_ll = current_process_in_ll->next_process_to_run;
         set_pml4_phys(current_process_in_ll->page_table_root);
 
-        if(DEBUG_SCHEDULER) kprintf("scheduling process %p with pid=%d: ", current_process_in_ll, current_process_in_ll->pid);
+        if(DEBUG_SCHEDULER) kprintf("scheduling process %p with pid=%d pml4=%llu: ", current_process_in_ll, current_process_in_ll->pid, current_process_in_ll->page_table_root);
 
         switch (current_process_in_ll->waiting_data.status) {
 
@@ -283,7 +283,7 @@ void run_next_task(const struct ProcessorState* const interrupted_processor_stat
             break;
 
         case WAITING_FOR_CHILD:
-            if(DEBUG_SCHEDULER) kprintf("wainting for child\n");
+            if(DEBUG_SCHEDULER) kprintf("waiting for child\n");
             struct WaitingChild request = current_process_in_ll->waiting_data.child;
             if(request.options != 0) HCF//TODO implement the flags that can be passed
 
