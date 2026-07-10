@@ -14,7 +14,6 @@ void free(void* ptr) {
 }
 
 void exit(int status) {
-    //TODO exit code
     struct HaltSyscallData data = {
         .exit_code = status
     };

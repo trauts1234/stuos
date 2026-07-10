@@ -258,8 +258,6 @@ static int test_truncated_sequence_eof(void) {
 }
 
 void mbrtowc_test() {
-    printf("=== mbrtowc Test Suite ===\n");
-
     // Edge Cases
     RUN_TEST(test_null_s_pointer);
     RUN_TEST(test_null_pwc_pointer);
@@ -286,7 +284,5 @@ void mbrtowc_test() {
     // RUN_TEST(test_out_of_range_unicode);
     RUN_TEST(test_truncated_sequence_eof);
 
-    printf("\n=== Results: %d/%d tests passed ===\n", tests_passed, tests_run);
-    
     if(tests_passed != tests_run) exit(EXIT_FAILURE);
 }

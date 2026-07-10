@@ -61,11 +61,7 @@ static void allocate_virtual_range(struct VirtualMemoryRegion* virtual_memory_tr
     {
         if(curr->next == NULL) {HCF}
         if(curr->is_free && curr->next->is_free) {
-            if(curr->end_addr != curr->next->start_addr) {HCF}
-            curr->end_addr = curr->next->end_addr;//update curr to talk about the combined free region
-            //TODO free curr->next ???
-            curr->next = curr->next->next;
-            continue;
+            HCF //this should never happen as I never free any virtual ranges
         }
         curr = curr->next;
     }

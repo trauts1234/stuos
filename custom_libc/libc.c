@@ -3,8 +3,7 @@
 #include "uapi/syscalls.h"
 #include <stdint.h>
 
-//This is a minimal libc, with some extra functions to control OS-specific features like the display
-
+//used by the malloc thing, when errors occur
 void debug_print(char* data) {
     printf("%s", data);
 }
@@ -13,18 +12,6 @@ void debug_int(uint64_t data) {
 }
 void debug_hex(uint64_t data) {
     printf("%llx", data);
-}
-
-int getchar_nonblocking(int* pressed) {
-    struct GetCharNonblockingData data = {.output=0};
-    do_syscall(&data, GETCHARNONBLOCKING_SYSCALL);
-    *pressed = data.pressed;
-    return data.output;
-}
-
-void write_pixel(uint64_t x, uint64_t y, uint8_t r, uint8_t g, uint8_t b) {
-    struct WritePixelData data = {.x=x, .y=y, .r=r, .g=g, .b=b};
-    do_syscall(&data, WRITEPIXEL_SYSCALL);
 }
 
 void clear_screen() {

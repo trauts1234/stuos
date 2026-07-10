@@ -110,8 +110,6 @@ struct ProcessData *get_process(int pid);
 uint64_t get_pids(int output_pids[100], int pgrp);
 void register_as_waiting(struct WaitingData data);
 
-//TODO remove?
-const char* get_current_cwd();
 void set_current_cwd(const char* new_ptr);
 
 // pass NULL if you don't want to save the processor state, i.e after killing the current process or when no process has been started yet

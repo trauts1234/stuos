@@ -145,11 +145,6 @@ void replace_current_process(struct LoadedProgram program) {
     set_pml4_phys(new.page_table_root);
 }
 
-
-const char* get_current_cwd() {
-    return current_process_in_ll->cwd;
-}
-
 void set_current_cwd(const char* new_ptr) {
     uint64_t new_ptr_len = strlen(new_ptr);
     uint64_t cwd_len = strlen(current_process_in_ll->cwd);

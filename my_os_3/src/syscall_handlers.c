@@ -5,7 +5,6 @@
 #include "fs.h"
 #include "interrupts.h"
 #include "memory.h"
-#include "display.h"
 #include "debugging.h"
 #include "interrupts.h"
 #include <uapi/syscalls.h>
@@ -30,18 +29,6 @@ void syscall_halt(struct HaltSyscallData *data, struct ProcessorState* processor
         }
     });
     run_next_task(NULL);
-}
-
-void syscall_write_pixel(struct WritePixelData* data) {
-    if(DEBUG_SYSCALLS) kprintf("%s: x=%d,y=%d = rgb %d %d %d\n", __func__, data->x, data->y, data->r, data->g, data->b);
-    struct Colour col = {.r=data->r, .g=data->g, .b=data->b, .a=0};
-    display_write_pixel(data->x, data->y, col);
-}
-
-void syscall_readchar_nonblocking(struct GetCharNonblockingData* data) {
-    if(DEBUG_SYSCALLS) kprintf("%s: \n", __func__);
-    HCF
-    // data->output = read_char_nonblocking(&data->pressed);
 }
 
 void syscall_get_uptime_ms(struct GetUptimeMsData* data) {
@@ -83,7 +70,7 @@ static int find_free_fd() {
 void syscall_open_file(struct OpenFileData* data) {
     if(DEBUG_SYSCALLS) kprintf("%s: path: %s\n", __func__, data->path);
     struct FileOperations** fd_list = get_process(0)->file_descriptors;
-    struct FileOperations* file = fop_generate_file(get_current_cwd(), data->path, data->open_flags);
+    struct FileOperations* file = fop_generate_file(get_process(0)->cwd, data->path, data->open_flags);
     int fd_num = find_free_fd();
     fd_list[fd_num] = file;
     data->output_file_descriptor_number = fd_num;
@@ -183,7 +170,7 @@ void syscall_dup2(struct Dup2Data* data) {
 
 void syscall_getcwd(struct GetCwdData* data) {
     if(DEBUG_SYSCALLS) kprintf("%s: \n", __func__);
-    const char* cwd = get_current_cwd();
+    const char* cwd = get_process(0)->cwd;
     if(strlen(cwd) + 1 > data->size) {HCF}
 
     strcpy(data->buf, cwd);
@@ -204,7 +191,7 @@ void syscall_execve(const struct ExecveData* data) {
         }
         kprintf("\n");
     }
-    const struct VNode to_execute = vfs_get(get_current_cwd(), data->filename, 0);
+    const struct VNode to_execute = vfs_get(get_process(0)->cwd, data->filename, 0);
 
     uint64_t argc=0;
     for(;data->argv[argc]; argc++);
@@ -270,7 +257,7 @@ void syscall_pipe(struct PipeData* data) {
 
 void syscall_stat(struct StatData* data) {
     if(DEBUG_SYSCALLS) kprintf("%s: %s\n", __func__, data->path);
-    struct VNode file = vfs_get(get_current_cwd(), data->path, 0);
+    struct VNode file = vfs_get(get_process(0)->cwd, data->path, 0);
     data->result = file.stat_file(file.id);
 }
 
@@ -323,10 +310,10 @@ void syscall_kill(struct KillData *data, struct ProcessorState* state) {
 void *syscall_table[] = {
     syscall_halt,
     NULL,
-    syscall_readchar_nonblocking,
     NULL,
     NULL,
-    syscall_write_pixel,
+    NULL,
+    NULL,
     NULL,
     syscall_get_uptime_ms,
     NULL,

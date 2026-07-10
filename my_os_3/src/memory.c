@@ -111,7 +111,6 @@ static uint64_t hhdm_offset;
 
 void *mmio_start;
 
-//TODO use this more
 void* phys_to_hhdm(uint64_t phys) {
     return (void*)(phys + hhdm_offset);
 }
@@ -263,28 +262,28 @@ void map_page(uint64_t physical_addr, void* virtual_addr) {
         HCF//pointer to the middle of a page???
     }
 
-    struct PageTableEntry* pml4_base = (struct PageTableEntry*)(get_pml4_phys() + hhdm_offset);
+    struct PageTableEntry* pml4_base = (struct PageTableEntry*)phys_to_hhdm(get_pml4_phys());
     struct PageTableEntry* my_pml4 = &pml4_base[virt_addr_bitmap.pml4_index];//get *my* pml4 entry
 
     if(!my_pml4->present) {
         setup_page_table_entry(my_pml4);
     }
 
-    struct PageTableEntry* pdpt_base = (struct PageTableEntry*)((my_pml4->addr << 12) + hhdm_offset);
+    struct PageTableEntry* pdpt_base = (struct PageTableEntry*)phys_to_hhdm(my_pml4->addr << 12);
     struct PageTableEntry* my_pdpt = &pdpt_base[virt_addr_bitmap.pdpt_index];//get *my* pdpt entry
 
     if(!my_pdpt->present) {
         setup_page_table_entry(my_pdpt);
     }
 
-    struct PageTableEntry* pd_base = (struct PageTableEntry*)((my_pdpt->addr << 12) + hhdm_offset);
+    struct PageTableEntry* pd_base = (struct PageTableEntry*)phys_to_hhdm(my_pdpt->addr << 12);
     struct PageTableEntry* my_pd = &pd_base[virt_addr_bitmap.pd_index];
 
     if(!my_pd->present) {
         setup_page_table_entry(my_pd);
     }
 
-    struct PageTableEntry* pt_base = (struct PageTableEntry*)((my_pd->addr << 12) + hhdm_offset);
+    struct PageTableEntry* pt_base = (struct PageTableEntry*)phys_to_hhdm(my_pd->addr << 12);
     struct PageTableEntry* my_pt = &pt_base[virt_addr_bitmap.pt_index];
 
     if(my_pt->present) {
@@ -320,28 +319,28 @@ void deallocate_page(void* virtual_addr) {
         HCF//pointer to the middle of a page???
     }
 
-    struct PageTableEntry* pml4_base = (struct PageTableEntry*)(get_pml4_phys() + hhdm_offset);
+    struct PageTableEntry* pml4_base = (struct PageTableEntry*)phys_to_hhdm(get_pml4_phys());
     struct PageTableEntry* my_pml4 = &pml4_base[virt_addr_bitmap.pml4_index];//get *my* pml4 entry
 
     if(!my_pml4->present) {
         HCF //double free? how did I free a non-allocated address?
     }
 
-    struct PageTableEntry* pdpt_base = (struct PageTableEntry*)((my_pml4->addr << 12) + hhdm_offset);
+    struct PageTableEntry* pdpt_base = (struct PageTableEntry*)phys_to_hhdm(my_pml4->addr << 12);
     struct PageTableEntry* my_pdpt = &pdpt_base[virt_addr_bitmap.pdpt_index];//get *my* pdpt entry
 
     if(!my_pdpt->present) {
         HCF //double free? how did I free a non-allocated address?
     }
 
-    struct PageTableEntry* pd_base = (struct PageTableEntry*)((my_pdpt->addr << 12) + hhdm_offset);
+    struct PageTableEntry* pd_base = (struct PageTableEntry*)phys_to_hhdm(my_pdpt->addr << 12);
     struct PageTableEntry* my_pd = &pd_base[virt_addr_bitmap.pd_index];
 
     if(!my_pd->present) {
         HCF //double free? how did I free a non-allocated address?
     }
 
-    struct PageTableEntry* pt_base = (struct PageTableEntry*)((my_pd->addr << 12) + hhdm_offset);
+    struct PageTableEntry* pt_base = (struct PageTableEntry*)phys_to_hhdm(my_pd->addr << 12);
     struct PageTableEntry* my_pt = &pt_base[virt_addr_bitmap.pt_index];
 
     if(!my_pt->present) {
@@ -405,7 +404,7 @@ extern void apply_gdt_tss(struct GdtTablePtr* gdt_base);
 
 void memory_init(volatile struct limine_memmap_response *memmap_response, uint64_t hhdm_ofs) {
     hhdm_offset = hhdm_ofs;
-    original_kernel_page_table = (struct PageTableEntry*)(get_pml4_phys() + hhdm_offset);//cr3 is the physical address
+    original_kernel_page_table = (struct PageTableEntry*)phys_to_hhdm(get_pml4_phys());//cr3 is the physical address
 
     struct limine_memmap_entry *result = NULL;
     for(uint64_t range_idx=0; range_idx < memmap_response->entry_count; range_idx++) {
@@ -420,7 +419,7 @@ void memory_init(volatile struct limine_memmap_response *memmap_response, uint64
         HCF//didn't find any useful ram
     }
 
-    void* base_virt_hhdm = (void*)(result->base + hhdm_offset);
+    void* base_virt_hhdm = phys_to_hhdm(result->base);
     init_physical_memory(result->base, base_virt_hhdm, result->length);
 
     void* kheap_start = base_virt_hhdm + BIG_AMOUNT_OF_RAM;

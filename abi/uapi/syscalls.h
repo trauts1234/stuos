@@ -15,23 +15,6 @@ struct HaltSyscallData {
     uint8_t exit_code;
 };
 
-//TODO remove
-static const uint64_t GETCHARNONBLOCKING_SYSCALL = 2;
-struct GetCharNonblockingData {
-    int pressed;
-    char output;
-};
-
-//TODO remove
-static const uint64_t WRITEPIXEL_SYSCALL = 5;
-struct WritePixelData {
-    uint64_t x;
-    uint64_t y;
-    uint8_t r;
-    uint8_t g;
-    uint8_t b;
-};
-
 static const uint64_t CLEARSCREEN_SYSCALL=6;
 
 static const uint64_t GET_UPTIME_MS_SYSCALL=7;
