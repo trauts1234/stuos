@@ -11,13 +11,18 @@
 extern void do_syscall(void* data, uint64_t syscall_number);
 
 static const uint64_t HALT_SYSCALL = 0;
+struct HaltSyscallData {
+    uint8_t exit_code;
+};
 
+//TODO remove
 static const uint64_t GETCHARNONBLOCKING_SYSCALL = 2;
 struct GetCharNonblockingData {
     int pressed;
     char output;
 };
 
+//TODO remove
 static const uint64_t WRITEPIXEL_SYSCALL = 5;
 struct WritePixelData {
     uint64_t x;

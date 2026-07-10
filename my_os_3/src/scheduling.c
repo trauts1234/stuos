@@ -4,6 +4,7 @@
 #include "pipes_and_files.h"
 #include "memory.h"
 #include <uapi/signal.h>
+#include <uapi/wait.h>
 
 #define MAX_THREADS_COUNT 1
 
@@ -200,7 +201,7 @@ static bool is_suitable_zombie(struct WaitingChild waiting_data, struct ProcessD
     }
 }
 
-void reap(int pid) {
+uint8_t reap(int pid) {
     //find the process
     struct ProcessData *prev_ptr = NULL;
     struct ProcessData *to_reap = get_process_and_previous(pid, &prev_ptr);
@@ -212,6 +213,7 @@ void reap(int pid) {
     }
 
     if(to_reap->waiting_data.status != I_AM_ZOMBIE) HCF//can only reap zombie processes
+    uint8_t return_code = to_reap->waiting_data.zombie.exit_code;
 
     //reparent children
     for(struct ProcessData* curr = to_reap->next_process_to_run; curr != to_reap; curr = curr->next_process_to_run) {
@@ -242,6 +244,7 @@ void reap(int pid) {
     remove_virtual_addressing();
 
     set_pml4_phys(original_cr3);
+    return return_code;
 }
 
 /// Called by an assembly interrupt handler
@@ -291,14 +294,15 @@ void run_next_task(const struct ProcessorState* const interrupted_processor_stat
             for (struct ProcessData* curr = current_process_in_ll->next_process_to_run; curr != current_process_in_ll; curr = curr->next_process_to_run) {
                 if(is_suitable_zombie(request, curr)) {
                     //zombie child found!
-                    if (request.status) {
-                        *request.status = 0;//TODO put status code here
-                    }
                     *request.output_pid = curr->pid;
                     current_process_in_ll->waiting_data.status = NOT_WAITING;
 
                     //reap the child
-                    reap(curr->pid);
+                    uint8_t return_code = reap(curr->pid);
+
+                    if (request.status) {
+                        *request.status = return_code | WIFEXITED_MASK;//TODO this should include extra info
+                    }
 
                     break;
                 }

@@ -15,12 +15,15 @@ void free(void* ptr) {
 
 void exit(int status) {
     //TODO exit code
-    do_syscall(0, HALT_SYSCALL);
+    struct HaltSyscallData data = {
+        .exit_code = status
+    };
+    do_syscall(&data, HALT_SYSCALL);
     while(1) {printf("ERROR: exit() returned somehow!\n");}
 }
 void abort() {
-    do_syscall(0, HALT_SYSCALL);
-    while(1) {printf("ERROR: abort() returned somehow!\n");}
+    //TODO send SIGABRT
+    exit(0);
 }
 
 int atoi(const char *nptr) {

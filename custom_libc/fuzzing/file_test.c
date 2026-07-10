@@ -8,7 +8,7 @@
 
 void file_test() {
     //TODO remove tocreate here if it exists
-    char* rw_files[] = {".test", "tocreate"};
+    char* rw_files[] = {"tocreate"};
     //these files should start with their data being equal to the filename
     // char* r_files[] = {};
 

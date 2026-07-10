@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <stdio.h>
+#include <assert.h>
 #include <sys/wait.h>
 
 void fork_test() {
@@ -8,10 +9,13 @@ void fork_test() {
     if(result == 0) {
         printf("hello from child\n");
         usleep(100 * 1000);
-        abort();
+        exit(2);
     } else {
         printf("Hello from parent. Child's pid is %d\n", result);
-        waitpid(result, NULL, 0);
+        int status = 0;
+        waitpid(result, &status, 0);
+        assert(WIFEXITED(status));
+        assert(WEXITSTATUS(status) == 2);
     }
 
     int result2 = fork();

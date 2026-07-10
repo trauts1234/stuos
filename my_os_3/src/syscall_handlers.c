@@ -21,12 +21,12 @@ static uint8_t syscall_stack[4096 * 4] __attribute__ ((__aligned__(16)));
 // used in assembly
 uint8_t *const syscall_stack_top = syscall_stack + sizeof(syscall_stack);
 
-void syscall_crash(void* _, struct ProcessorState* processor_state) {
-    if(DEBUG_SYSCALLS) kprintf("%s: \n", __func__);
+void syscall_halt(struct HaltSyscallData *data, struct ProcessorState* processor_state) {
+    if(DEBUG_SYSCALLS) kprintf("%s: exit code %d\n", __func__, data->exit_code);
     register_as_waiting((struct WaitingData) {
         .status = I_AM_ZOMBIE,
         .zombie = {
-            
+            .exit_code=data->exit_code
         }
     });
     run_next_task(NULL);
@@ -321,7 +321,7 @@ void syscall_kill(struct KillData *data, struct ProcessorState* state) {
 }
 
 void *syscall_table[] = {
-    syscall_crash,
+    syscall_halt,
     NULL,
     syscall_readchar_nonblocking,
     NULL,

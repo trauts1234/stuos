@@ -2,6 +2,7 @@ global _start
 
 extern main
 extern stuos_libc_init
+extern exit
 
 _start:
     push rdi
@@ -10,5 +11,5 @@ _start:
     pop rsi
     pop rdi
     call main
-    mov rax, 0; halt syscall number
-    syscall
+    mov rdi, 0
+    call exit
