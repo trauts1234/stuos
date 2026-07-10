@@ -1,47 +1,55 @@
 CC = x86_64-elf-gcc
 
+#the sysroot-esque results directory
+OUTPUT_DIR := ../stuos_libc
+#where build artifacts are
+ARTIFACT_DIR := ./.build
+#compiler flags for building libc
+CFLAGS = -ffreestanding -nostdlib -O2 -Wall -Wextra -fPIC -march=x86-64 -g -fno-omit-frame-pointer \
+	-I include/ -I ../malloc_my_os_3/ -I $(ABI_DIR)
+
+
+### Building the CRT* files
+
+# where CRT* source is
+CRT_DIR := ./crt
+CRT_SRCS = $(wildcard $(CRT_DIR)/crt*.asm)
+OUTPUT_CRTS = $(CRT_SRCS:$(CRT_DIR)/%.asm=$(OUTPUT_DIR)/%.o)
+
+
+### Moving the header files
+
 # where UAPI source is
 ABI_DIR := ../abi
 # where the libc header source is
 INCLUDE_DIR := ./include
-
-OUTPUT_DIR := ../stuos_libc
-# where the installed headers go
-OUTPUT_INCLUDE_DIR = $(OUTPUT_DIR)/include
-
-CFLAGS = -ffreestanding -m64 -nostdlib -O2 -Wall -Wextra -fno-pie -mno-red-zone -march=x86-64 -g -fno-omit-frame-pointer -fno-builtin \
-	-I include/ -I ../malloc_my_os_3/ -I $(ABI_DIR)
-
-C_SRCS = $(wildcard *.c)
-ASM_SRCS = $(wildcard *.asm)
 INCLUDE_SRCS = $(shell find $(INCLUDE_DIR) -name "*.h")
 UAPI_SRCS = $(shell find $(ABI_DIR) -name "*.h")
-MALLOC_LIBRARY := ../malloc_my_os_3/target/x86_64-unknown-none/debug/libmalloc_my_os_3.a
-LIBM_OBJS := $(wildcard /home/stuart/Programming/C/openlibm/objectfiles/*)
 
-ARTIFACT_DIR := ./.build
-ARTIFACT_OBJS := $(C_SRCS:%.c=$(ARTIFACT_DIR)/%.o) $(ASM_SRCS:%.asm=$(ARTIFACT_DIR)/%.o)
-
-OUTPUT_BINARY = $(OUTPUT_DIR)/libc.a
+# where the installed headers go
+OUTPUT_INCLUDE_DIR = $(OUTPUT_DIR)/include
 OUTPUT_HEADERS := $(INCLUDE_SRCS:$(INCLUDE_DIR)/%.h=$(OUTPUT_INCLUDE_DIR)/%.h) $(UAPI_SRCS:$(ABI_DIR)/%.h=$(OUTPUT_INCLUDE_DIR)/%.h)
 
-all: $(OUTPUT_BINARY) $(OUTPUT_HEADERS)
 
-# need to make libc
-# start by copying the .a archive for malloc, then append my object files on to it
-$(OUTPUT_BINARY): $(ARTIFACT_OBJS) $(MALLOC_LIBRARY) $(LIBM_OBJS)
-	@mkdir -p $(dir $@)
-	cp $(MALLOC_LIBRARY) $@
-	ar rs $@ $(ARTIFACT_OBJS) $(LIBM_OBJS)
+### Building the libc.* files
 
-# .o files require the .c or .asm source files
-$(ARTIFACT_DIR)/%.o: %.c
-	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) -c $< -o $@
-$(ARTIFACT_DIR)/%.o: %.asm
+#malloc and libm dependencies
+MALLOC_LIBRARY := ../malloc_my_os_3/target/x86_64-unknown-none/debug/libmalloc_my_os_3.a
+LIBM_OBJS := $(wildcard /home/stuart/Programming/C/openlibm/objectfiles/*)
+#source
+C_SRCS = $(wildcard *.c)
+ASM_SRCS = $(wildcard *.asm)
+#where the .o files go before being linked
+LIBC_ARTIFACTS := $(C_SRCS:%.c=$(ARTIFACT_DIR)/%.o) $(ASM_SRCS:%.asm=$(ARTIFACT_DIR)/%.o)
+#output files
+OUTPUT_A = $(OUTPUT_DIR)/libc.a
+OUTPUT_SO = $(OUTPUT_DIR)/libc.so
+
+all: $(OUTPUT_A) $(OUTPUT_SO) $(OUTPUT_CRTS) $(OUTPUT_HEADERS)
+
+$(OUTPUT_DIR)/crt%.o: $(CRT_DIR)/crt%.asm
 	@mkdir -p $(dir $@)
 	nasm -f elf64 $< -o $@
-
 
 #copy headers from uapi and include dir
 $(OUTPUT_INCLUDE_DIR)/%.h: $(INCLUDE_DIR)/%.h
@@ -50,6 +58,23 @@ $(OUTPUT_INCLUDE_DIR)/%.h: $(INCLUDE_DIR)/%.h
 $(OUTPUT_INCLUDE_DIR)/%.h: $(ABI_DIR)/%.h
 	@mkdir -p $(dir $@)
 	cp $< $@
+
+# start by copying the .a archive for malloc, then append my object files on to it
+$(OUTPUT_A): $(LIBC_ARTIFACTS) $(MALLOC_LIBRARY) $(LIBM_OBJS)
+	@mkdir -p $(dir $@)
+	cp $(MALLOC_LIBRARY) $@
+	ar rs $@ $(LIBC_ARTIFACTS) $(LIBM_OBJS)
+# Create a dynamic library from the static one
+$(OUTPUT_SO): $(OUTPUT_A)
+	$(CC) --shared -Wl,-soname,libc.so -o $@ $<
+
+# .o files require the .c or .asm source files
+$(ARTIFACT_DIR)/%.o: %.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) -c $< -o $@
+$(ARTIFACT_DIR)/%.o: %.asm
+	@mkdir -p $(dir $@)
+	nasm -f elf64 $< -o $@
 
 clean:
 	rm -rf $(ARTIFACT_DIR) $(OUTPUT_DIR)

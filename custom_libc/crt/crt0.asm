@@ -2,7 +2,6 @@ global _start
 
 extern main
 extern stuos_libc_init
-extern HALT_SYSCALL
 
 _start:
     push rdi
