@@ -10,8 +10,6 @@ uint16_t in16(uint16_t port);
 
 void out32(uint16_t port, uint32_t val);
 uint32_t in32(uint16_t port);
-/// Wait for IO? this may be rubbish
-static void io_wait() {}
 
 void spin_wait();
 

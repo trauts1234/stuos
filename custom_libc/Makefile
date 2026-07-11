@@ -1,4 +1,5 @@
 CC = x86_64-elf-gcc
+LD = x86_64-elf-ld
 
 #the sysroot-esque results directory
 OUTPUT_DIR := ../stuos_libc
@@ -42,8 +43,8 @@ ASM_SRCS = $(wildcard *.asm)
 #where the .o files go before being linked
 LIBC_ARTIFACTS := $(C_SRCS:%.c=$(ARTIFACT_DIR)/%.o) $(ASM_SRCS:%.asm=$(ARTIFACT_DIR)/%.o)
 #output files
-OUTPUT_A = $(OUTPUT_DIR)/libc.a
-OUTPUT_SO = $(OUTPUT_DIR)/libc.so
+OUTPUT_A = $(OUTPUT_DIR)/libc_stuos.a
+OUTPUT_SO = $(OUTPUT_DIR)/libc_stuos.so
 
 all: $(OUTPUT_A) $(OUTPUT_SO) $(OUTPUT_CRTS) $(OUTPUT_HEADERS)
 
@@ -66,7 +67,7 @@ $(OUTPUT_A): $(LIBC_ARTIFACTS) $(MALLOC_LIBRARY) $(LIBM_OBJS)
 	ar rs $@ $(LIBC_ARTIFACTS) $(LIBM_OBJS)
 # Create a dynamic library from the static one
 $(OUTPUT_SO): $(OUTPUT_A)
-	$(CC) --shared -Wl,-soname,libc.so -o $@ $<
+	$(CC) -ffreestanding -nostdlib -O2 -march=x86-64 -shared -Wl,--whole-archive -Wl,-soname,libc_stuos.so -o $@ $<
 
 # .o files require the .c or .asm source files
 $(ARTIFACT_DIR)/%.o: %.c

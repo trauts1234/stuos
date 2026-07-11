@@ -1,7 +1,7 @@
 CC = x86_64-elf-gcc
 LD = x86_64-elf-ld
 
-LIBC = ../../stuos_libc/libc.a ../../stuos_libc/crt0.o
+LIBC = ../../stuos_libc/libc_stuos.a ../../stuos_libc/crt0.o
 LIBC_HEADERS = ../../stuos_libc/include/
 
 CFLAGS = -ffreestanding -nostdlib -O2 -Wall -Wextra -mno-red-zone -march=x86-64 -I $(LIBC_HEADERS)

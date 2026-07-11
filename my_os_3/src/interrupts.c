@@ -3,8 +3,6 @@
 #include "debugging.h"
 #include "io.h"
 #include "kern_libc.h"
-#include "ps2.h"
-#include "tty.h"
 #include <uapi/stdint.h>
 
 static const uint16_t PIC1_COMMAND = 0x20;
@@ -32,24 +30,16 @@ static void setup_pic() {
 
     // starts the initialization sequence (in cascade mode)
     out8(PIC1_COMMAND, ICW1_INIT | ICW1_ICW4);
-	io_wait();
 	out8(PIC2_COMMAND, ICW1_INIT | ICW1_ICW4);
-	io_wait();
 
     //add an offset to all the PIC interrupt numbers, to make room for error interrupts (0 to 32)
 	out8(PIC1_DATA, PIC1_OFFSET);
-	io_wait();
 	out8(PIC2_DATA, PIC2_OFFSET);
-	io_wait();
 	out8(PIC1_DATA, 1 << CASCADE_IRQ);        // ICW3: tell Master PIC that there is a slave PIC at IRQ2
-	io_wait();
 	out8(PIC2_DATA, 2);                       // ICW3: tell Slave PIC its cascade identity (0000 0010)
-	io_wait();
 	
 	out8(PIC1_DATA, ICW4_8086);               // ICW4: have the PICs use 8086 mode (and not 8080 mode)
-	io_wait();
 	out8(PIC2_DATA, ICW4_8086);
-	io_wait();
 
 	// Unmask both PICs.
 	out8(PIC1_DATA, 0);
@@ -63,7 +53,6 @@ static void setup_pit() {
     const uint16_t PIT_CMD = 0x43;
     const uint16_t PIT_CHANNEL0 = 0x40;
     out8(PIT_CMD, 0x36); /* channel 0, access: lobyte/hibyte, mode 3 (square wave) */
-    io_wait();
     out8(PIT_CHANNEL0, divisor & 0xFF);       /* low byte */
     out8(PIT_CHANNEL0, (divisor >> 8) & 0xFF);/* high byte */
 }
