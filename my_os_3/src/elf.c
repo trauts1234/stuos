@@ -71,8 +71,8 @@ static void allocate_virtual_range(struct VirtualMemoryRegion* virtual_memory_tr
     // I am replacing a -> curr -> z with:
     // a -> curr -> allocated_region -> next_free -> z
 
-    struct VirtualMemoryRegion* allocated_region = kmalloc(sizeof(struct VirtualMemoryRegion));
-    struct VirtualMemoryRegion* next_free = kmalloc(sizeof(struct VirtualMemoryRegion));
+    struct VirtualMemoryRegion* allocated_region = malloc(sizeof(struct VirtualMemoryRegion));
+    struct VirtualMemoryRegion* next_free = malloc(sizeof(struct VirtualMemoryRegion));
     //the next free region after the allocated region is from the end of the allocated region to the segment we are replacing's end
     next_free->is_free = true;
     next_free->start_addr = page_end;
@@ -109,7 +109,7 @@ static void* find_contiguous_virtual_range(struct VirtualMemoryRegion* virtual_m
             //two contiguous memory regions!
             //merge them!
             curr->end_addr = curr->next->end_addr;//update curr to talk about the combined free region
-            kfree(curr->next);
+            free(curr->next);
             curr->next = curr->next->next;
             continue;//try again
         }
@@ -203,7 +203,7 @@ struct LoadedProgram instantiate_ELF(struct VNode exe, char*const *argv) {
 
     struct VirtualMemoryRegion* virtual_memory_tracker_head;
 
-    virtual_memory_tracker_head = kmalloc(sizeof(struct VirtualMemoryRegion));
+    virtual_memory_tracker_head = malloc(sizeof(struct VirtualMemoryRegion));
     virtual_memory_tracker_head->start_addr = (void*)PAGE_SIZE;//skip first page
     virtual_memory_tracker_head->end_addr = (void*)0x00007FFFFFFFFFFF;//lower cannonical half
     virtual_memory_tracker_head->next = NULL;
@@ -211,7 +211,7 @@ struct LoadedProgram instantiate_ELF(struct VNode exe, char*const *argv) {
 
     //read the program headers from disk
     uint64_t headers_num_bytes = header.program_header_table_num_entries * header.program_header_table_entry_size;
-    struct ElfProgramHeader* prog_headers = kmalloc(headers_num_bytes);
+    struct ElfProgramHeader* prog_headers = malloc(headers_num_bytes);
     if(exe.read_file(exe.id, header.program_header_table_offset, (uint8_t*)prog_headers, headers_num_bytes) != headers_num_bytes) {HCF}
 
     for(size_t i=0; i<header.program_header_table_num_entries; i++) {
@@ -238,7 +238,7 @@ struct LoadedProgram instantiate_ELF(struct VNode exe, char*const *argv) {
         //zero the remaining data
         memset((void*)(curr_header.p_vaddr+curr_header.p_filesz), 0, curr_header.p_memsz - curr_header.p_filesz);
     }
-    kfree(prog_headers);
+    free(prog_headers);
 
     const size_t STACK_SIZE = 16 * PAGE_SIZE;//must be a multiple of PAGE_SIZE otherwise allocating a range will fail
     void* stack_virt_base = find_contiguous_virtual_range(virtual_memory_tracker_head, STACK_SIZE);
@@ -255,7 +255,7 @@ struct LoadedProgram instantiate_ELF(struct VNode exe, char*const *argv) {
     struct VirtualMemoryRegion* ptr = virtual_memory_tracker_head;
     while (ptr) {
         struct VirtualMemoryRegion *next = ptr->next;
-        kfree(ptr);
+        free(ptr);
         ptr = next;
     }
 

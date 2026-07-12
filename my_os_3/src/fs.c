@@ -162,13 +162,13 @@ static enum StepPathResult step_path2(struct VNode* current, const char** path_s
     }
 
     uint64_t segment_len = path_segment_len(*path_start);
-    char* segment_cpy = kmalloc(segment_len + 1);
+    char* segment_cpy = malloc(segment_len + 1);
     memcpy(segment_cpy, *path_start, segment_len);
     segment_cpy[segment_len] = '\0';
 
     struct VNode result;
     int status = directory_lookup(current, segment_cpy, &result);
-    kfree(segment_cpy);
+    free(segment_cpy);
 
     bool must_be_folder;
     bool was_last_segment;
@@ -253,7 +253,7 @@ struct VNode vfs_get(const char* cwd_path, const char* path, int open_flags) {
             /* FALLTHROUGH, since I have doesn't exist and no OPEN_CREATE */
             [[ fallthrough ]];
         case STEPPATH_NOTEXIST:
-            kprintf("failed to parse remaining part of path: %s", path);
+            printf("failed to parse remaining part of path: %s", path);
             HCF
         default:
             HCF
@@ -265,7 +265,7 @@ struct VNode vfs_get(const char* cwd_path, const char* path, int open_flags) {
     if(S_ISDIR(location_mode) && !(open_flags & O_DIRECTORY)) HCF //tried to open a non directory and it was
     if(open_flags & O_TRUNC) {
         if(!S_ISREG(location_mode)) HCF//tried to open_clear a non-file
-        debug_print("TODO clear file\n");
+        printf("TODO clear file\n");
     }
     if(open_flags & O_APPEND) {
         HCF

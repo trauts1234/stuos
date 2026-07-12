@@ -6,6 +6,7 @@
 #include "limine.h"
 #include "debugging.h"
 #include "physical_slab_allocation.h"
+#include "required.h"
 
 extern void invalidate_page(void* ptr);
 
@@ -430,7 +431,7 @@ void memory_init(volatile struct limine_memmap_response *memmap_response, uint64
     }
 
     fill_kernel_pml4();//fill the original kernel page table with empty entries, so EVERYONE will share the kernel space
-    kmalloc_init(kheap_start);
+    init_memory_allocator(kheap_start);
 
     //set up GDT and TSS
     memset(&tss_entry, 0, sizeof(struct TssEntry));

@@ -1,13 +1,10 @@
 #include <uapi/stdint.h>
-#include "rust_bindings.h"
 #include "debugging.h"
 #include "memory.h"
 #include "physical_slab_allocation.h"
 #include <uapi/stddef.h>
 
-static struct MemoryAllocator kmalloc_data;
-
-static uint64_t expand_kheap(void*kheap_end, uint64_t size) {
+uint64_t _malloc_expand_heap (void*kheap_end, uint64_t size) {
     if((uint64_t)kheap_end & PAGE_MASK) {HCF}//must be page aligned
     uint64_t rounded_up_pages = (size + PAGE_SIZE - 1) / PAGE_SIZE;
 
@@ -17,16 +14,6 @@ static uint64_t expand_kheap(void*kheap_end, uint64_t size) {
     }
 
     return PAGE_SIZE * rounded_up_pages;
-}
-
-void kmalloc_init(void* kernel_heap_base_virt) {
-    init_memory_allocator(expand_kheap, kernel_heap_base_virt, &kmalloc_data);
-}
-void* kmalloc(uint64_t size){
-    return allocate(&kmalloc_data, size);
-}
-void kfree(void* ptr){
-    deallocate(&kmalloc_data, ptr);
 }
 
 int strcmp(const char *str1, const char *str2) {

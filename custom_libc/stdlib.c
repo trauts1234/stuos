@@ -1,17 +1,7 @@
 #include "stdlib.h"
 #include "uapi/stddef.h"
 #include "uapi/syscalls.h"
-#include "rust_bindings.h"
 #include "stdio.h"
-
-extern struct MemoryAllocator memory_allocator;
-
-void* malloc(unsigned long bytes){
-    return allocate(&memory_allocator, bytes);
-}
-void free(void* ptr) {
-    deallocate(&memory_allocator, ptr);
-}
 
 void exit(int status) {
     struct HaltSyscallData data = {

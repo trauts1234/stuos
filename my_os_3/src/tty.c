@@ -110,7 +110,7 @@ void initialise_tty() {
     chars_height = display_get_height() / CHAR_SCREEN_SIZE;
 
     const uint64_t buf_len = chars_width * chars_height;
-    buffer = kmalloc(buf_len);
+    buffer = malloc(buf_len);
     memset(buffer, ' ', buf_len);
 
     current_buffer_dirty_status = ALL_DIRTY;

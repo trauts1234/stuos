@@ -1408,7 +1408,7 @@ int vprintf(const char* format, va_list arg)
   return (int)gadget.pos;
 }
 
-int kprintf(const char* format, ...)
+int printf(const char* format, ...)
 {
   int ret;
   va_list args;

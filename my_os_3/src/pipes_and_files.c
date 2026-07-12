@@ -33,7 +33,7 @@ static void do_nothing_close(void* special_data) {
 }
 /// When the data just needs to be freed to close the special data, run this
 static void just_free_close(void* special_data) {
-    kfree(special_data);
+    free(special_data);
 }
 
 static uint64_t pipe_write(void* special_data, const uint8_t* output_buf, uint64_t num) {
@@ -43,12 +43,12 @@ static uint64_t pipe_write(void* special_data, const uint8_t* output_buf, uint64
 
     //reallocate the buffer every time
     uint64_t new_buffer_length = num + data->buffer_length - data->reader_next_byte;
-    void* new_buffer = kmalloc(new_buffer_length);
+    void* new_buffer = malloc(new_buffer_length);
     if(data->buffer_length) memcpy(new_buffer, data->buffer, data->buffer_length);
     memcpy(new_buffer + data->buffer_length, output_buf, num);
 
     //replace buffer
-    kfree(data->buffer);
+    free(data->buffer);
     data->buffer = new_buffer;
     data->buffer_length = new_buffer_length;
     data->reader_next_byte = 0;
@@ -96,8 +96,8 @@ static void pipe_close(void* special_data) {
     //ensure that the other end of the pipe can't access me
     if(data->other_pipe_data) data->other_pipe_data->other_pipe_data = NULL;
 
-    kfree(data->buffer);
-    kfree(data);
+    free(data->buffer);
+    free(data);
 }
 
 /// Prints to stdout, and can be put as a file operation
@@ -162,7 +162,7 @@ static uint64_t file_lseek(void* special_data, int64_t off, int whence) {
 }
 
 struct FileOperations* fop_generate_stdout(){
-    struct FileOperations* heap_allocation = kmalloc(sizeof(struct FileOperations));
+    struct FileOperations* heap_allocation = malloc(sizeof(struct FileOperations));
     *heap_allocation = (struct FileOperations){
         .reference_count = 1,
         .special_data = NULL,
@@ -176,7 +176,7 @@ struct FileOperations* fop_generate_stdout(){
     return heap_allocation;
 }
 struct FileOperations* fop_generate_stdin(){
-    struct FileOperations* heap_allocation = kmalloc(sizeof(struct FileOperations));
+    struct FileOperations* heap_allocation = malloc(sizeof(struct FileOperations));
     *heap_allocation = (struct FileOperations){
         .reference_count = 1,
         .special_data = NULL,
@@ -191,7 +191,7 @@ struct FileOperations* fop_generate_stdin(){
 }
 
 struct FileOperations* fop_generate_file(const char* cwd, const char* path, int open_flags) {
-    struct OpenVnodeSpecialData* file = kmalloc(sizeof(struct OpenVnodeSpecialData));
+    struct OpenVnodeSpecialData* file = malloc(sizeof(struct OpenVnodeSpecialData));
     *file = (struct OpenVnodeSpecialData) {
         .file = vfs_get(cwd, path, open_flags),
         .offset = 0
@@ -199,7 +199,7 @@ struct FileOperations* fop_generate_file(const char* cwd, const char* path, int 
 
     if(open_flags & O_APPEND) HCF// need to set offset to point at EOF
 
-    struct FileOperations* heap_allocation = kmalloc(sizeof(struct FileOperations));
+    struct FileOperations* heap_allocation = malloc(sizeof(struct FileOperations));
     *heap_allocation = (struct FileOperations) {
         .reference_count = 1,
         .special_data = (void*)file,
@@ -214,8 +214,8 @@ struct FileOperations* fop_generate_file(const char* cwd, const char* path, int 
 }
 
 void fop_generate_pipe(struct FileOperations* output[2]) {
-    struct PipeSpecialData* a = kmalloc(sizeof(struct PipeSpecialData));
-    struct PipeSpecialData* b = kmalloc(sizeof(struct PipeSpecialData));
+    struct PipeSpecialData* a = malloc(sizeof(struct PipeSpecialData));
+    struct PipeSpecialData* b = malloc(sizeof(struct PipeSpecialData));
 
     *a = (struct PipeSpecialData) {
         .other_pipe_data = b,
@@ -230,8 +230,8 @@ void fop_generate_pipe(struct FileOperations* output[2]) {
         .reader_next_byte = 0
     };
 
-    struct FileOperations* a_ops = kmalloc(sizeof(struct FileOperations));
-    struct FileOperations* b_ops = kmalloc(sizeof(struct FileOperations));
+    struct FileOperations* a_ops = malloc(sizeof(struct FileOperations));
+    struct FileOperations* b_ops = malloc(sizeof(struct FileOperations));
 
     *a_ops = (struct FileOperations) {
         .reference_count= 1,
@@ -261,6 +261,6 @@ void free_file_operations(struct FileOperations* ptr){
     ptr->reference_count--;
     if(ptr->reference_count == 0) {
         ptr->close(ptr->special_data);
-        kfree(ptr);
+        free(ptr);
     }
 }

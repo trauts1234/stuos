@@ -4,3 +4,4 @@ stuos_image.iso
 filesystem
 filesystem_mnt/
 put_in_filesystem/
+.clangd

@@ -1,10 +1,8 @@
-#include "rust_bindings.h"
+#include "required.h"
 #include "uapi/syscalls.h"
 #include <stdlib.h>
 
-struct MemoryAllocator memory_allocator;
-
-static uint64_t allocate_more_heap(void* heap_end, uint64_t bytes){
+uint64_t _malloc_expand_heap(void* heap_end, uint64_t bytes){
     //hope these constants are the same in the kernel...
     static const uint64_t PAGE_SIZE = 4096;
     static const uint64_t PAGE_MASK = PAGE_SIZE-1;
@@ -23,5 +21,5 @@ static uint64_t allocate_more_heap(void* heap_end, uint64_t bytes){
 void stuos_libc_init() {
     struct GetHeapStartData heap_start;
     do_syscall(&heap_start, GET_HEAP_START_SYSCALL);
-    init_memory_allocator(allocate_more_heap, heap_start.output, &memory_allocator);
+    init_memory_allocator(heap_start.output);
 }

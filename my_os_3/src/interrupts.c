@@ -75,10 +75,6 @@ void acknowledge_interrupt(uint8_t irq) {
 /// Handles interrupt 14
 __attribute__((noreturn))
 void memory_exception_handle(void* bad_address, void* rip) {
-    debug_print("failed to access address: ");
-    debug_hex((uint64_t)bad_address);
-    debug_print("\nwith RIP = ");
-    debug_hex((uint64_t)rip);
-    debug_print("\n");
+    printf("failed to access address: %p with RIP=%p\n", bad_address, rip);
     HCF
 }

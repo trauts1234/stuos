@@ -35,13 +35,14 @@ OUTPUT_HEADERS := $(INCLUDE_SRCS:$(INCLUDE_DIR)/%.h=$(OUTPUT_INCLUDE_DIR)/%.h) $
 ### Building the libc.* files
 
 #malloc and libm dependencies
-MALLOC_LIBRARY := ../malloc_my_os_3/target/x86_64-unknown-none/debug/libmalloc_my_os_3.a
+MALLOC_SRC_DIR = ../malloc_my_os_3
+MALLOC_SRCS = $(wildcard $(MALLOC_SRC_DIR)/*.c)
 LIBM_OBJS := $(wildcard /home/stuart/Programming/C/openlibm/objectfiles/*)
 #source
 C_SRCS = $(wildcard *.c)
 ASM_SRCS = $(wildcard *.asm)
 #where the .o files go before being linked
-LIBC_ARTIFACTS := $(C_SRCS:%.c=$(ARTIFACT_DIR)/%.o) $(ASM_SRCS:%.asm=$(ARTIFACT_DIR)/%.o)
+LIBC_ARTIFACTS := $(C_SRCS:%.c=$(ARTIFACT_DIR)/%.o) $(ASM_SRCS:%.asm=$(ARTIFACT_DIR)/%.o) $(MALLOC_SRCS:$(MALLOC_SRC_DIR)/%.c=$(ARTIFACT_DIR)/%.o)
 #output files
 OUTPUT_A = $(OUTPUT_DIR)/libc_stuos.a
 OUTPUT_SO = $(OUTPUT_DIR)/libc_stuos.so
@@ -61,10 +62,9 @@ $(OUTPUT_INCLUDE_DIR)/%.h: $(ABI_DIR)/%.h
 	cp $< $@
 
 # start by copying the .a archive for malloc, then append my object files on to it
-$(OUTPUT_A): $(LIBC_ARTIFACTS) $(MALLOC_LIBRARY) $(LIBM_OBJS)
+$(OUTPUT_A): $(LIBC_ARTIFACTS) $(LIBM_OBJS)
 	@mkdir -p $(dir $@)
-	cp $(MALLOC_LIBRARY) $@
-	ar rs $@ $(LIBC_ARTIFACTS) $(LIBM_OBJS)
+	ar rcs $@ $(LIBC_ARTIFACTS) $(LIBM_OBJS)
 # Create a dynamic library from the static one
 $(OUTPUT_SO): $(OUTPUT_A)
 	$(CC) -ffreestanding -nostdlib -O2 -march=x86-64 -shared -Wl,--whole-archive -Wl,-soname,libc_stuos.so -o $@ $<
@@ -73,6 +73,9 @@ $(OUTPUT_SO): $(OUTPUT_A)
 $(ARTIFACT_DIR)/%.o: %.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
+$(ARTIFACT_DIR)/%.o: $(MALLOC_SRC_DIR)/%.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) $(DBGFLAGS) -c $< -o $@
 $(ARTIFACT_DIR)/%.o: %.asm
 	@mkdir -p $(dir $@)
 	nasm -f elf64 $< -o $@

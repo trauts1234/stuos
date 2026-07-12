@@ -4,12 +4,7 @@
 #include <uapi/stdint.h>
 #include <uapi/stddef.h>
 
-void kmalloc_init(void* kernel_heap_base_virt);
-void* kmalloc(uint64_t size);
-// void* krealloc(void* original_ptr, uint64_t new_size);
-void kfree(void* ptr);
-
-int kprintf(const char* format, ...);
+int printf(const char* format, ...);
 
 int strcmp(const char *str1, const char *str2);
 char *strcpy(char *destination, const char *source);
@@ -22,5 +17,8 @@ size_t strlen(const char* str);
 int strncmp(const char *s1, const char *s2, size_t n);
 
 int toupper(int c);
+
+void* malloc(size_t size);
+void free(void* ptr);
 
 #endif

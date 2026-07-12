@@ -232,7 +232,7 @@ void initialise_virtio(struct PciConfigurationHeader header, void* header_buffer
 
     if(!bar_list[0].is_io_bar) HCF;
 
-    struct VirtioBlockDevice *dev_data = kmalloc(sizeof(struct VirtioBlockDevice));
+    struct VirtioBlockDevice *dev_data = malloc(sizeof(struct VirtioBlockDevice));
 
     const uint16_t bar_port = bar_list[0].address;
 

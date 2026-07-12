@@ -81,14 +81,14 @@ int add_new_process(struct LoadedProgram program) {
         //inherit
         pgrp = current_process_in_ll->pgrp;
         ppid = current_process_in_ll->pid;
-        cwd = kmalloc(strlen(current_process_in_ll->cwd) + 1);
+        cwd = malloc(strlen(current_process_in_ll->cwd) + 1);
         strcpy(cwd, current_process_in_ll->cwd);
     } else {
-        cwd = kmalloc(2);
+        cwd = malloc(2);
         strcpy(cwd, "/");
     }
 
-    struct ProcessData* new = kmalloc(sizeof(struct ProcessData));
+    struct ProcessData* new = malloc(sizeof(struct ProcessData));
     *new = (struct ProcessData) {
         .heap_start = program.heap_start,
         //file_descriptors is set later
@@ -152,19 +152,19 @@ void set_current_cwd(const char* new_ptr) {
 
     if (*new_ptr == '/') {
         //absolute path, just set
-        dest = kmalloc(new_ptr_len+1);
+        dest = malloc(new_ptr_len+1);
         memcpy(dest, new_ptr, new_ptr_len+1);
     } else {
         if(current_process_in_ll->cwd[cwd_len - 1] == '/') {
             //old cwd ends with slash, just concatenate
             uint64_t len = new_ptr_len + cwd_len;
-            dest = kmalloc(len+1);
+            dest = malloc(len+1);
             memcpy(dest, current_process_in_ll->cwd, cwd_len);
             memcpy(dest + cwd_len, new_ptr, new_ptr_len+1);
         } else {
             //old cwd doesn't have a slash, add one
             uint64_t len = new_ptr_len + cwd_len + 1;
-            dest = kmalloc(len+1);
+            dest = malloc(len+1);
             memcpy(dest, current_process_in_ll->cwd, cwd_len);
             dest[cwd_len] = '/';
             memcpy(dest + cwd_len + 1, new_ptr, new_ptr_len+1);
@@ -203,7 +203,7 @@ uint8_t reap(int pid) {
 
     if(prev_ptr == to_reap) {
         //last process has died
-        debug_print("Ran out of processes to run, as they have all died\n");
+        printf("Ran out of processes to run, as they have all died\n");
         HCF
     }
 
@@ -218,7 +218,7 @@ uint8_t reap(int pid) {
     }
 
     //destroy cwd
-    kfree((void*)to_reap->cwd);
+    free((void*)to_reap->cwd);
 
     //destroy file descriptors:
     // TODO should this happen when they go zombie, not now
@@ -230,7 +230,7 @@ uint8_t reap(int pid) {
     }
 
     prev_ptr->next_process_to_run = to_reap->next_process_to_run;
-    kfree(to_reap);
+    free(to_reap);
 
     uint64_t original_cr3 = get_pml4_phys();
     if(original_cr3 == to_reap->page_table_root) HCF//how is a zombie process running right now?
@@ -258,17 +258,17 @@ void run_next_task(const struct ProcessorState* const interrupted_processor_stat
         current_process_in_ll = current_process_in_ll->next_process_to_run;
         set_pml4_phys(current_process_in_ll->page_table_root);
 
-        if(DEBUG_SCHEDULER) kprintf("scheduling process %p with pid=%d pml4=%llu: ", current_process_in_ll, current_process_in_ll->pid, current_process_in_ll->page_table_root);
+        if(DEBUG_SCHEDULER) printf("scheduling process %p with pid=%d pml4=%llu: ", current_process_in_ll, current_process_in_ll->pid, current_process_in_ll->page_table_root);
 
         switch (current_process_in_ll->waiting_data.status) {
 
         case NOT_WAITING:
-            if(DEBUG_SCHEDULER) kprintf("running normally\n");
+            if(DEBUG_SCHEDULER) printf("running normally\n");
             // program needs running normally
             start_userland(&current_process_in_ll->paused_state);
 
         case WAITING_FOR_READ:
-            if(DEBUG_SCHEDULER) kprintf("waiting for read\n");
+            if(DEBUG_SCHEDULER) printf("waiting for read\n");
             // poll for read
             struct WaitingRead read_data = current_process_in_ll->waiting_data.read;
             struct FileOperations* fop = current_process_in_ll->file_descriptors[read_data.fd_number];
@@ -282,7 +282,7 @@ void run_next_task(const struct ProcessorState* const interrupted_processor_stat
             break;
 
         case WAITING_FOR_CHILD:
-            if(DEBUG_SCHEDULER) kprintf("waiting for child\n");
+            if(DEBUG_SCHEDULER) printf("waiting for child\n");
             struct WaitingChild request = current_process_in_ll->waiting_data.child;
             if(request.options != 0) HCF//TODO implement the flags that can be passed
 
@@ -304,7 +304,7 @@ void run_next_task(const struct ProcessorState* const interrupted_processor_stat
             }
             break;
         case I_AM_ZOMBIE:
-            if(DEBUG_SCHEDULER) kprintf("is a zombie\n");
+            if(DEBUG_SCHEDULER) printf("is a zombie\n");
             break;//nothing to do here
 
         }

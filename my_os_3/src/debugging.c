@@ -1,4 +1,5 @@
 #include "debugging.h"
+#include "kern_libc.h"
 #include "io.h"
 
 static const int PORT = 0x3f8;    
@@ -35,45 +36,13 @@ void putchar(char a) {
    out8(PORT,a);
 }
 
-void debug_print(const char *a){
-    while(*a) {
-        putchar(*a);
-        a++;
-    }
+void abort() {
+    HCF
 }
 
-void debug_int(uint64_t num) {
-    //find the biggest divisor
-    uint64_t divisor = 1;
-    while(num / divisor >= 10) {
-        divisor *= 10;
-    }
-
-    for(; divisor>=1; divisor /= 10) {
-        uint64_t digit = (num/divisor) % 10;
-        putchar('0' + digit);
-    }
-}
-
-void debug_hex(uint64_t num) {
-    debug_print("0x");
-    
-    for(int shift = 60; shift >= 0; shift -= 4) {
-        uint64_t data = (num >> shift) & 0xf;
-        if(data <= 9) {
-            putchar('0' + data);
-        } else {
-            putchar('A' + data - 10);
-        }
-    }
-}
 __attribute__((noreturn)) extern void loop_hlt();
 
 __attribute__((noreturn)) void __debugging_hcf(int line, char* file) {
-    debug_print("halt and catch fire!\n");
-    debug_print("line:\n");
-    debug_int(line);
-    debug_print("\nfile:\n");
-    debug_print(file);
+    printf("halt and catch fire!\nline: %d\nfile: %s\n", line, file);
     loop_hlt();
 }
