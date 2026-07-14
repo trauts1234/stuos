@@ -67,7 +67,7 @@ $(OUTPUT_A): $(LIBC_ARTIFACTS) $(LIBM_OBJS)
 	ar rcs $@ $(LIBC_ARTIFACTS) $(LIBM_OBJS)
 # Create a dynamic library from the static one
 $(OUTPUT_SO): $(OUTPUT_A)
-	$(CC) -ffreestanding -nostdlib -O2 -march=x86-64 -shared -Wl,--whole-archive -Wl,-soname,libc_stuos.so -o $@ $<
+	$(LD) -shared --whole-archive -o $@ $<
 
 # .o files require the .c or .asm source files
 $(ARTIFACT_DIR)/%.o: %.c

@@ -1,5 +1,3 @@
-section .note.GNU-stack progbits
-
 global do_syscall
 
 do_syscall:
