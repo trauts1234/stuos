@@ -4,6 +4,7 @@
 #include <errno.h>
 #include <string.h>
 #include "fcntl.h"
+#include "unistd.h"
 
 static FILE _stdin = {.file_descriptor_number = 0};
 static FILE _stdout = {.file_descriptor_number = 1};
@@ -65,15 +66,7 @@ int fclose(FILE *stream) {
 }
 
 int fseek(FILE *stream, long offset, int whence) {
-    struct LseekFDData data = {
-        .file_descriptor_number = stream->file_descriptor_number,
-        .offset = offset,
-        .whence = whence
-    };
-
-    do_syscall(&data, LSEEK_FD_SYSCALL);
-
-    return data.actual_offset;
+    return lseek(stream->file_descriptor_number, offset, whence);
 }
 
 size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream) {

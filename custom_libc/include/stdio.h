@@ -19,6 +19,8 @@ extern FILE *stderr;
 # define SEEK_CUR	1	/* Seek from current position.  */
 # define SEEK_END	2	/* Seek from end of file.  */
 
+#define BUFSIZ 256
+
 int printf(const char* format, ...);
 int vprintf(const char* format, va_list arg);
 int  sprintf(char* s, const char* format, ...);

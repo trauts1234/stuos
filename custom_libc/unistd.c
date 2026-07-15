@@ -89,6 +89,17 @@ ssize_t write(int fd, const void *buf, size_t count) {
     do_syscall(&data, WRITE_FD_SYSCALL);
     return data.num_bytes_actually_written;
 }
+off_t lseek(int fd, off_t offset, int whence) {
+    struct LseekFDData data = {
+        .file_descriptor_number = fd,
+        .offset = offset,
+        .whence = whence
+    };
+
+    do_syscall(&data, LSEEK_FD_SYSCALL);
+
+    return data.actual_offset;
+}
 int close(int fd) {
     struct CloseFDData data = {
         .file_descriptor_number = fd,
