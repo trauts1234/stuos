@@ -6,6 +6,7 @@
 #include "stat.h"
 #include "stdint.h"
 #include "fcntl.h"
+#include "termios.h"
 #include "types.h"
 
 extern void do_syscall(void* data, uint64_t syscall_number);
@@ -165,6 +166,14 @@ static const uint64_t KILL_SYSCALL = 31;
 struct KillData {
     pid_t pid;
     int sig;
+};
+
+static const uint64_t TCGETATTR_SYSCALL = 32;
+struct TcGetAttrData {
+    int fd;
+    struct termios output;
+    // 0, -EBADF, -ENOTTY
+    int errno;
 };
 
 #endif

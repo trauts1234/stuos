@@ -1,5 +1,6 @@
 #include "debugging.h"
 #include <uapi/stdint.h>
+#include "uapi/termios.h"
 #include "display.h"
 #include "kern_libc.h"
 #include "font8x8_basic.h"
@@ -24,6 +25,10 @@ static unsigned int cursor_x = 0, cursor_y = 0;
 static char *buffer = 0;
 //the most recent n characters are backspace-able
 static uint64_t current_run_of_keyboard_inputs = 0;
+// the current settings of the terminal
+struct termios tty_settings = {
+    //TODO default settings are compliated
+};
 
 static enum {
     ONLY_PREV_CHAR_AFFECTED,//cursor_x must be > 0, and only cursor_x-1 will be re-rendered

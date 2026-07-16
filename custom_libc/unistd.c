@@ -2,9 +2,10 @@
 #include "stddef.h"
 #include "uapi/syscalls.h"
 #include "sys/types.h"
-#include <stdint.h>
-#include <stdlib.h>
+#include "stdint.h"
+#include "stdlib.h"
 #include "stdio.h"
+#include "errno.h"
 #include "unistd.h"
 
 char **environ = {NULL};
@@ -149,6 +150,11 @@ int isatty(int fd) {
         .result = -2
     };
     do_syscall(&data, ISATTY_SYSCALL);
+
+    if(data.result == 0) {
+        errno = ENOTTY;
+        //TODO EBADF is possible
+    }
 
     return data.result;
 }

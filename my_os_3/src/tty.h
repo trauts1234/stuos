@@ -4,6 +4,8 @@
 #include "ps2.h"
 #include <uapi/stdint.h>
 
+extern struct termios tty_settings;
+
 //display must be initialised first
 void initialise_tty();
 
