@@ -263,6 +263,7 @@ struct VNode vfs_get(const char* cwd_path, const char* path, int open_flags) {
     mode_t location_mode = location.stat_file(location.id).st_mode;
     if(!S_ISDIR(location_mode) && open_flags & O_DIRECTORY) HCF //tried to open a directory and it wasn't
     if(S_ISDIR(location_mode) && !(open_flags & O_DIRECTORY)) HCF //tried to open a non directory and it was
+    if(open_flags & O_NONBLOCK) HCF//do I need to do anything
     if(open_flags & O_TRUNC) {
         if(!S_ISREG(location_mode)) HCF//tried to open_clear a non-file
         printf("TODO clear file\n");

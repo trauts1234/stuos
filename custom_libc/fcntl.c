@@ -1,6 +1,8 @@
 #include "sys/types.h"
 #include "uapi/syscalls.h"
 #include <stdarg.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 int open(const char *pathname, int flags, ...) {
     mode_t mode = 0;
@@ -32,4 +34,13 @@ int open64(const char *pathname, int flags, ...) {
     }
     
     return open(pathname, flags, mode);
+}
+
+int fcntl(int fildes, int cmd, ...) {
+    switch (cmd) {
+
+        default:
+        printf("UNKNOWN FCNTL!!!");
+        abort();
+    }
 }
