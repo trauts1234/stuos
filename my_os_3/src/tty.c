@@ -27,7 +27,7 @@ static char *buffer = 0;
 static uint64_t current_run_of_keyboard_inputs = 0;
 // the current settings of the terminal
 struct termios tty_settings = {
-    //TODO default settings are compliated
+    .c_lflag = ICANON,
 };
 
 static enum {
@@ -42,9 +42,10 @@ const struct Colour background_col = {.r=0,   .g=0,   .b=0,   .a=0};
 static char input_buffer[INPUT_BUF_LENGTH] = {0};
 static char* next = input_buffer;
 
-static char* find_newline_in_input_buffer() {
-    for(char* i=input_buffer; i < next; i++) {
-        if(*i == '\n') {
+/// Returns 0 if a newline isn't found
+static uint64_t find_newline_in_input_buffer() {
+    for(uint64_t i=0; input_buffer + i < next; i++) {
+        if(input_buffer[i] == '\n') {
             return i;
         }
     }
@@ -130,8 +131,8 @@ static void do_newline() {
 }
 
 static void write_from_multiple_sources(char c, bool is_from_keyboard) {
-    if(c< 0) c = '?';
-    if(c == '\b') {
+    if(c < 0) c = '?';
+    if(c == '\b' && is_from_keyboard && tty_settings.c_lflag & ICANON) {
         if(current_run_of_keyboard_inputs == 0) return;
         current_run_of_keyboard_inputs--;
 
@@ -198,7 +199,7 @@ void tty_provide_stdin(struct KeyEvent ev) {
     
     write_from_multiple_sources(ev.character, true);
 
-    if(ev.character == '\b') {
+    if(ev.character == '\b' && tty_settings.c_lflag & ICANON) {
         if(next == input_buffer) return;//underflow
         next--;
     } else {
@@ -208,22 +209,31 @@ void tty_provide_stdin(struct KeyEvent ev) {
 }
 
 uint64_t tty_read(char* out, uint64_t num) {
-    char* buffer_newline = find_newline_in_input_buffer();
-    if(!buffer_newline) return 0;//nothing to read
+    if(tty_settings.c_lflag & ICANON) {
+        // don't read past a newline, or don't read anything
+        uint64_t end_position = find_newline_in_input_buffer();
+        if(end_position < num) {
+            num = end_position;
+        }
+        
+    } else {
+        //TODO special non-cannonical stuff?
+    }
 
-    uint64_t num_read=0;
+    if(num == 0) return 0;//early return
+
     //read until output buffer is full or I have copied a newline
-    while (num_read<num && input_buffer + num_read <= buffer_newline) {
+    for(uint64_t num_read=0; num_read < num; num_read++) {
         *out++ = input_buffer[num_read++];
     }
 
     //shuffle the remaining data down
-    uint64_t remaining = (uint64_t)(next - input_buffer) - num_read;
+    uint64_t remaining = (uint64_t)(next - input_buffer) - num;
     for(uint64_t j=0; j < remaining; j++) {
-        input_buffer[j] = input_buffer[j+num_read];
+        input_buffer[j] = input_buffer[j+num];
     }
     //adjust write pointer
-    next -= num_read;
+    next -= num;
     
-    return num_read;
+    return num;
 }

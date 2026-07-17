@@ -96,7 +96,7 @@ struct termios {
 
 /* c_lflag bits */
 // #define ISIG	0000001   /* Enable signals.  */
-// #define ICANON	0000002   /* Canonical input (erase and kill processing).  */
+#define ICANON	0000002   /* Canonical input (erase and kill processing).  */
 // #define ECHO	0000010   /* Enable echo.  */
 // #define ECHOE	0000020   /* Echo erase character as error-correcting backspace.  */
 // #define ECHOK	0000040   /* Echo KILL.  */

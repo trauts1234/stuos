@@ -1,3 +1,4 @@
+#include <uapi/errno.h>
 #include <uapi/signal.h>
 #include <uapi/stddef.h>
 #include <uapi/stdbool.h>
@@ -11,8 +12,8 @@
 #include <uapi/types.h>
 #include "pipes_and_files.h"
 #include "scheduling.h"
+#include "tty.h"
 #include "kern_libc.h"
-#include "signal.h"
 
 #define DEBUG_SYSCALLS false
 
@@ -51,7 +52,7 @@ void syscall_get_heap_start(struct GetHeapStartData* data) {
 }
 
 void syscall_write_fd(struct WriteFDData* data) {
-    if(DEBUG_SYSCALLS) printf("%s: write %lu bytes to fd %d\n", __func__, data->num_bytes, data->file_descriptor_number);
+    if(DEBUG_SYSCALLS) printf("%s: write %llu bytes to fd %d\n", __func__, data->num_bytes, data->file_descriptor_number);
     struct FileOperations* file_operations = get_process(0)->file_descriptors[data->file_descriptor_number];
     if(file_operations == NULL) {HCF}
     data->num_bytes_actually_written = file_operations->write(file_operations->special_data, data->buffer, data->num_bytes);
@@ -77,7 +78,7 @@ void syscall_open_file(struct OpenFileData* data) {
 }
 
 void syscall_read_fd(struct ReadFDData* data, struct ProcessorState* processor_state) {
-    if(DEBUG_SYSCALLS) printf("%s: read up to %lu bytes from fd %d\n", __func__, data->num_bytes, data->file_descriptor_number);
+    if(DEBUG_SYSCALLS) printf("%s: read up to %llu bytes from fd %d\n", __func__, data->num_bytes, data->file_descriptor_number);
     register_as_waiting((struct WaitingData) {
         .status = WAITING_FOR_READ,
         .read = {
@@ -92,7 +93,7 @@ void syscall_read_fd(struct ReadFDData* data, struct ProcessorState* processor_s
 }
 
 void syscall_lseek_fd(struct LseekFDData* data) {
-    if(DEBUG_SYSCALLS) printf("%s: offset %lu in fd %d. whence: %d\n", __func__, data->offset, data->file_descriptor_number, data->whence);
+    if(DEBUG_SYSCALLS) printf("%s: offset %llu in fd %d. whence: %d\n", __func__, data->offset, data->file_descriptor_number, data->whence);
     struct FileOperations* file_operations = get_process(0)->file_descriptors[data->file_descriptor_number];
     if(file_operations == NULL) {HCF}
 
@@ -307,6 +308,20 @@ void syscall_kill(struct KillData *data, struct ProcessorState* state) {
     run_next_task(state);
 }
 
+void syscall_tcgetattr(struct TcGetAttrData *data) {
+    if(DEBUG_SYSCALLS) printf("%s: \n", __func__);
+    //DRY from isatty, TODO out of range file descriptors
+    struct FileOperations* fop = get_process(0)->file_descriptors[data->fd];
+
+    data->err = 0;
+    if(!fop->is_a_tty) {
+        data->err = ENOTTY;
+        return;
+    }
+
+    data->output = tty_settings;
+}
+
 void *syscall_table[] = {
     syscall_halt,
     NULL,
@@ -338,5 +353,6 @@ void *syscall_table[] = {
     syscall_pipe,
     syscall_stat,
     syscall_sigprocmask,
+    syscall_tcgetattr,
 
 };

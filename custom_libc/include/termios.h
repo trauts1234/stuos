@@ -3,6 +3,6 @@
 
 #include "uapi/termios.h"
 
-
+int tcgetattr(int fd, struct termios *termios_p);
 
 #endif

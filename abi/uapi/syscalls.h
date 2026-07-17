@@ -168,12 +168,14 @@ struct KillData {
     int sig;
 };
 
+//TODO test
 static const uint64_t TCGETATTR_SYSCALL = 32;
 struct TcGetAttrData {
     int fd;
+    //only written to if errno == 0
     struct termios output;
-    // 0, -EBADF, -ENOTTY
-    int errno;
+    // 0, EBADF, ENOTTY
+    int err;
 };
 
 #endif
