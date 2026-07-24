@@ -42,11 +42,11 @@ const struct Colour background_col = {.r=0,   .g=0,   .b=0,   .a=0};
 static char input_buffer[INPUT_BUF_LENGTH] = {0};
 static char* next = input_buffer;
 
-/// Returns 0 if a newline isn't found
+/// Returns 0 if a newline isn't found, or i such that input_buffer[i-1] == '\n'
 static uint64_t find_newline_in_input_buffer() {
     for(uint64_t i=0; input_buffer + i < next; i++) {
         if(input_buffer[i] == '\n') {
-            return i;
+            return i+1;//+1 since I need to include the newline
         }
     }
     return 0;
@@ -218,13 +218,14 @@ uint64_t tty_read(char* out, uint64_t num) {
         
     } else {
         //TODO special non-cannonical stuff?
+        HCF
     }
 
     if(num == 0) return 0;//early return
 
     //read until output buffer is full or I have copied a newline
-    for(uint64_t num_read=0; num_read < num; num_read++) {
-        *out++ = input_buffer[num_read++];
+    for(uint64_t i=0; i < num; i++) {
+        out[i] = input_buffer[i];
     }
 
     //shuffle the remaining data down

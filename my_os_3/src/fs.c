@@ -266,7 +266,7 @@ struct VNode vfs_get(const char* cwd_path, const char* path, int open_flags) {
     if(open_flags & O_NONBLOCK) HCF//do I need to do anything
     if(open_flags & O_TRUNC) {
         if(!S_ISREG(location_mode)) HCF//tried to open_clear a non-file
-        printf("TODO clear file\n");
+        location.ftruncate(location.id, 0);
     }
     if(open_flags & O_APPEND) {
         HCF

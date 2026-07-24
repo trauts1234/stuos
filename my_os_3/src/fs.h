@@ -45,6 +45,9 @@ struct VNode {
     /// Returns:
     /// 0 on success
     int (*create_inode)(struct VNodeData parent_inode_num, mode_t new_inode_type, const char* name, struct VNode* out);
+
+    /// This function should check that file is a valid file, then either truncate data or zero-extend to len bytes
+    void (*ftruncate)(struct VNodeData inode_num, uint64_t len);
 };
 
 /// mounts filesystem_root on top of mount_against

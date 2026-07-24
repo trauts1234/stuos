@@ -7,46 +7,12 @@
 #include "tools.h"
 
 void file_test() {
-    //TODO remove tocreate here if it exists
     char* rw_files[] = {"tocreate"};
-    //these files should start with their data being equal to the filename
-    // char* r_files[] = {};
 
-    // printf("testing R\n");
-    // for(uint64_t i = 0; i<sizeof(r_files)/sizeof(char*); i++) {
-    //     char* curr_f = r_files[i];
-    //     uint64_t filename_len = strlen(curr_f);
-    //     FILE* fd = fopen(curr_f, "r");
-
-    //     for(uint64_t j = 0; j<300; j++) {
-    //         uint64_t off = rand64() % filename_len;
-    //         uint64_t size = rand64() % filename_len;
-    //         uint64_t expected_size = size > filename_len - off ? filename_len - off : size;
-
-
-    //         //jump to a random location
-    //         fseek(fd, off, SEEK_SET);
-    //         //read into a zero-terminated buffer
-    //         char* buf = malloc(size + 1);
-    //         memset(buf, 0, size + 1);
-    //         uint64_t actual_size = fread(buf, sizeof(char), size, fd);
-
-    //         if(actual_size != expected_size) {
-    //             printf("expected %lld bytes, read %lld\n", expected_size, actual_size);
-    //             abort();
-    //         }
-
-    //         if(memcmp(buf, curr_f + off, expected_size)) {
-    //             printf("read incorrect data from file! expected %s, got %s\n", curr_f + off, buf);
-    //             abort();
-    //         }
-
-    //         free(buf);
-
-    //     }
-
-    //     fclose(fd);
-    // }
+    //pre-fill tocreate
+    FILE *f = fopen("tocreate", "w");
+    fwrite("hello world", sizeof(char), 11, f);
+    fclose(f);
 
     uint16_t counting[4096];
     for(int i=0; i<4096; i++) {counting[i] = i;}
@@ -61,7 +27,7 @@ void file_test() {
         uint64_t count = fread(buf, 1, 2, fd);
         if(count != 0) {
             printf("read %lld bytes from an empty file\n", count);
-            // abort();
+            abort();
         }
 
         for(uint64_t j = 0; j < 300; j++) {

@@ -392,7 +392,8 @@ static void write_parent_dirent(struct Fat16Volume *vol, uint64_t inode_num, con
 static struct stat stat_file(struct VNodeData inode_num);
 static uint64_t read_file(struct VNodeData inode_num, uint64_t offset, uint8_t* output_buf, uint64_t num_bytes);
 static uint64_t write_file(struct VNodeData inode_num, uint64_t offset, const uint8_t *input_buf, uint64_t num_bytes);
-static int create_inode(struct VNodeData parent_inode_num, mode_t new_inode_type, const char *name, struct VNode *out) ;
+static int create_inode(struct VNodeData parent_inode_num, mode_t new_inode_type, const char *name, struct VNode *out);
+static void ftruncate(struct VNodeData inode_num, uint64_t len);
 
 struct DirentAndVnode {
     struct dirent directory_entry;
@@ -508,6 +509,7 @@ static uint64_t read_dirents(struct VNodeData inode_num, uint64_t dirent_index, 
                         .read_file = read_file,
                         .create_inode = create_inode,
                         .stat_file = stat_file,
+                        .ftruncate = ftruncate,
                     };
                     vnode_buf++;
                 }
@@ -703,6 +705,46 @@ static int create_inode(struct VNodeData parent_inode_num, mode_t new_inode_type
     }
 
     return 0;
+}
+
+static void ftruncate(struct VNodeData inode_num, uint64_t len) {
+    struct Fat16Volume vol = all_fat_mounts[inode_num.mount_id];
+
+    if(S_ISDIR(stat_file(inode_num).st_mode)) {
+        //directories and root dir aren't truncatable
+        HCF
+    }
+
+    struct Fat16DirectoryEntry entry_in_parent = read_parent_dirent(&vol, inode_num.inode);
+
+    if(is_invalid_cluster_num(entry_in_parent.cluster_number)) {
+        //no clusters allocated to this file yet...
+        uint16_t first_cluster = find_free_cluster_number(&vol);
+        write_fat(&vol, first_cluster, 0xFFF8);//mark as last cluster
+        entry_in_parent.cluster_number = first_cluster;//update directory entry
+    }
+    
+    //update length
+    const uint32_t old_size_bytes = entry_in_parent.file_size_bytes;
+    if(len > UINT32_MAX) HCF
+    entry_in_parent.file_size_bytes = len;
+
+    if(len >= entry_in_parent.file_size_bytes) {
+        //zero pad
+        uint32_t num_zeroes = len - entry_in_parent.file_size_bytes;
+        void* zeroes = malloc(num_zeroes);
+        memset(zeroes, 0, num_zeroes);
+        write_to_cluster_chain(&vol, entry_in_parent.cluster_number, entry_in_parent.file_size_bytes, zeroes, num_zeroes);
+        free(zeroes);
+    } else {
+        //TODO clear, and free clusters that become unused
+        //perhaps when deleting a file, ftruncate(x,0) could be used to DRY on freeing clusters?
+    }
+
+    //update directory entry in parent
+    write_parent_dirent(&vol, inode_num.inode, entry_in_parent);
+    
+    //write the data
 }
 
 void mount_fat16(struct VNode block_device, const char* mount_name) {
