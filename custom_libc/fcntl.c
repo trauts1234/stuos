@@ -36,11 +36,11 @@ int open64(const char *pathname, int flags, ...) {
     return open(pathname, flags, mode);
 }
 
-int fcntl(int fildes, int cmd, ...) {
-    switch (cmd) {
+// int fcntl(int fildes, int cmd, ...) {
+//     switch (cmd) {
 
-        default:
-        printf("UNKNOWN FCNTL!!!");
-        abort();
-    }
-}
+//         default:
+//         printf("UNKNOWN FCNTL!!!");
+//         abort();
+//     }
+// }

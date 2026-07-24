@@ -13,6 +13,6 @@ int open64(const char *pathname, int flags, ...);
 #define F_GETFL		3	/* Get file status flags.  */
 #define F_SETFL		4	/* Set file status flags.  */
 
-int fcntl(int fildes, int cmd, ...);
+// int fcntl(int fildes, int cmd, ...);
 
 #endif
