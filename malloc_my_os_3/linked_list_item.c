@@ -13,7 +13,7 @@
 static void assert_invariant(const struct LinkedListItem *const self) {
     if(self->canary != LL_CANARY) {
         printf("ERROR WITH MALLOC CANARY!\ncanary: %X", self->canary);
-        abort();
+        HCF
     }
 }
 static struct LinkedListItem *get_next(struct LinkedListItem *self) {
@@ -50,7 +50,7 @@ uint64_t lli_region_size(const struct LinkedListItem *self, void* heap_end) {
 
     int64_t region_size_bytes = region_end_ptr - region_start_ptr;
     if(region_size_bytes < 0) {
-        abort();
+        HCF
     }
     return region_size_bytes;
 }
@@ -61,9 +61,9 @@ uint64_t lli_region_size(const struct LinkedListItem *self, void* heap_end) {
 void lli_insert_after(struct LinkedListItem *self, void* to_insert_addr, struct LinkedListItem **last_item_ptr) {
     // let's call the nodes self -> to_insert -> after
     struct LinkedListItem *after_addr = get_next(self);
-    if(to_insert_addr == 0) abort();
+    if(to_insert_addr == 0) HCF
     //inserted item must be after me, either in my region (as I am being split), or at the start of a newly brk'd region
-    if(lli_region_start(self) > to_insert_addr) abort();
+    if(lli_region_start(self) > to_insert_addr) HCF
 
     //insert
     self->next = to_insert_addr;
@@ -73,7 +73,7 @@ void lli_insert_after(struct LinkedListItem *self, void* to_insert_addr, struct 
         *last_item_ptr = to_insert_addr;
     } else {
         //next item must be after inserted item
-        if(lli_region_start(to_insert_addr) > (void*)after_addr) abort();
+        if(lli_region_start(to_insert_addr) > (void*)after_addr) HCF
     }
 }
 

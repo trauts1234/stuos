@@ -40,9 +40,11 @@ static struct LinkedListItem *find_or_make_free(uint64_t size) {
     uint64_t remaining_to_request = size - last_size;
     bool result = expand_heap(remaining_to_request);
     if(!result) {
-        abort();
+        HCF
     }
-    if(!allocator.tail->is_free || lli_region_size(allocator.tail, allocator.heap_end) < size) abort();
+    lli_try_merge_after(old_last_item_ptr, &allocator.tail);
+    if(!allocator.tail->is_free) HCF
+    if(lli_region_size(allocator.tail, allocator.heap_end) < size) HCF
 
     return allocator.tail;
 }
@@ -50,7 +52,7 @@ static struct LinkedListItem *find_or_make_free(uint64_t size) {
 void init_memory_allocator(void* heap_start) {
     uint64_t allocated_initial_memory = _malloc_expand_heap(heap_start, sizeof(struct LinkedListItem));
     void* heap_end = heap_start + allocated_initial_memory;
-    if(allocated_initial_memory < sizeof(struct LinkedListItem)) abort();
+    if(allocated_initial_memory < sizeof(struct LinkedListItem)) HCF;
 
     struct LinkedListItem *first_ll_item_ptr = heap_start;
     lli_new(0, first_ll_item_ptr);

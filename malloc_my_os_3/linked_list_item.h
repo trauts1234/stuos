@@ -2,6 +2,10 @@
 #define LINKED_LIST_ITEM_H
 
 #include "uapi/stdint.h"
+#include "required.h"
+
+//debugging stuff
+#define HCF {printf("MALLOC ABORT ON LINE %d FILE %s\n", __LINE__, __FILE__); abort();}
 
 /// Must be aligned to 16 byte, so that all mallocs are
 struct LinkedListItem {
