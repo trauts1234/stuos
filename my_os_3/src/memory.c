@@ -255,7 +255,7 @@ static void fill_kernel_pml4() {
     }
 }
 
-void map_page(uint64_t physical_addr, void* virtual_addr) {
+static void map_page(uint64_t physical_addr, void* virtual_addr, bool can_cache) {
     union PointerBitmap virt_addr_bitmap;
     virt_addr_bitmap.raw_ptr = virtual_addr;
 
@@ -296,7 +296,7 @@ void map_page(uint64_t physical_addr, void* virtual_addr) {
     my_pt->global = false;//when cr3 is overwritten, clear this from cache
     my_pt->addr = physical_addr >> 12;//shift by 12 as it is 4k aligned, so they should be zeroes anyways
     my_pt->huge = 0;//4k page please
-    my_pt->pcd = false;//don't disable caches
+    my_pt->pcd = !can_cache;//disable cache if I can't cache
     my_pt->pwt = true;//some cache thing
     my_pt->user = true;//user mode
     my_pt->read_write = true;
@@ -307,9 +307,23 @@ void map_page(uint64_t physical_addr, void* virtual_addr) {
     invalidate_page(virtual_addr);
 }
 
+void *setup_mmio(uint64_t phys_addr, uint64_t size) {
+    //must be aligned
+    if(phys_addr & PAGE_MASK) HCF
+    if((uint64_t)mmio_start & PAGE_MASK) HCF
+    void *result = mmio_start;
+
+    for(uint64_t i=phys_addr; i<phys_addr + size; i += PAGE_SIZE) {
+        map_page(i, mmio_start, false);
+        mmio_start += PAGE_SIZE;
+    }
+
+    return result;
+}
+
 void allocate_ram_page(void* virtual_addr) {
     uint64_t new_page_phys = malloc4k_phys();
-    map_page(new_page_phys, virtual_addr);
+    map_page(new_page_phys, virtual_addr, true);
 }
 
 void deallocate_page(void* virtual_addr) {

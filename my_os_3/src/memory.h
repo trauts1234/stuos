@@ -4,8 +4,6 @@
 #ifndef MEMORY_H
 #define MEMORY_H
 
-extern void *mmio_start;
-
 //converts physical addresses to get virtual addresses
 void* phys_to_hhdm(uint64_t phys);
 
@@ -26,10 +24,12 @@ extern uint64_t get_pml4_phys();
 /// @brief allocates and zeroes a new page, and you can pick what the address is
 /// @param virtual_addr virtual address of the start of an unmapped page
 void allocate_ram_page(void* virtual_addr);
-/// Links a virtual page to a physical address
-void map_page(uint64_t physical_addr, void* virtual_addr);
 /// @brief Releases a virtual page by walking the paging tree and marking as free - This doesn't free the underlying memory, just means that virtual addresses don't point to it
 // void deallocate_page(void* virtual_addr);
-void debug_allocated_pages();
+
+// Maps a range of physical addresses to virtual addresses, and disables caching
+//
+// Returns: a pointer to the virtual address that has been mapped
+void *setup_mmio(uint64_t phys_addr, uint64_t size);
 
 #endif

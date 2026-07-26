@@ -25,20 +25,6 @@ loop_hlt:
     hlt
     jmp loop_hlt
 
-; returns (bool) 1 if the CPU supports SSE, else 0
-check_cpuid_sse:
-    push rbx; this is preserved in SysV ABI
-
-    mov eax, 1 ; CPUID leaf 1 (seems to have most information)
-    cpuid
-    and edx, 0x06_00_00_00; get only the SSE and SSE2 bits
-    xor edx, 0x06_00_00_00; flip the (hopefully set) bits to get 0
-    cmp edx, 0
-    sete al; if it is actually 0, set boolean to 1
-
-    pop rbx
-    ret
-
 ; sets up SSE support
 enable_sse:
     mov rax, cr0

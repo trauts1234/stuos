@@ -1,3 +1,4 @@
+#include "cpuid.h"
 #include "kern_libc.h"
 #include <uapi/stdint.h>
 #include "display.h"
@@ -17,7 +18,6 @@
 
 //assembly functions
 extern void loop_hlt();
-extern bool check_cpuid_sse();
 extern void enable_sse();
 extern void syscall_init();
 
@@ -68,7 +68,7 @@ void kmain(void) {
 
     // Ensure we got a framebuffer and a filesystem
     if (framebuffer_request.response == NULL
-     || framebuffer_request.response->framebuffer_count < 1
+     || framebuffer_request.response->framebuffer_count != 1
      || memmap_request.response == NULL
      || hhdm_request.response == NULL) {
         HCF
@@ -79,7 +79,7 @@ void kmain(void) {
     volatile struct limine_memmap_response *memmap_response = memmap_request.response;
     uint64_t hhdm_offset = hhdm_request.response->offset;
     
-    if(check_cpuid_sse()) {
+    if(sse_supported()) {
         enable_sse();
     } else {
         //how did we get here? what sort of weird processor is this running on?
@@ -90,12 +90,16 @@ void kmain(void) {
     display_init(framebuffer);
     initialise_ps2();
     memory_init(memmap_response, hhdm_offset);
+    initialise_tty();
+    // for(char* c="hello world!";*c; c++) tty_write_char(*c);
     setup_pic_pit();
     setup_idt();
     devfs_init();
     syscall_init();
-    initialise_tty();
     initialise_pci();
+    // while(1) {
+    //     __asm("nop");
+    // }
     mount_fat16(vfs_get("/", "/dev/blkAp1", 0), "fat");
 
     // struct VNode fuzz = vfs_get("/", "testing.out", 0);

@@ -2,7 +2,6 @@
 #include "io.h"
 #include "kern_libc.h"
 #include "pci.h"
-#include "physical_slab_allocation.h"
 #include "virtio_driver.h"
 #include <uapi/stdint.h>
 #include "memory.h"
@@ -82,17 +81,7 @@ static uint64_t get_bar_size_64(uint32_t original_bar_low, uint32_t original_bar
     return bar_size;
 }
 
-static void setup_mmio(uint64_t phys_addr, uint64_t size, void **next_free_mmio) {
-    if(phys_addr & PAGE_MASK) HCF
-    if((uint64_t)*next_free_mmio & PAGE_MASK) HCF
-
-    for(uint64_t i=phys_addr; i<phys_addr + size; i += PAGE_SIZE) {
-        map_page(i, *next_free_mmio);
-        *next_free_mmio += PAGE_SIZE;
-    }
-}
-
-static void handle_bar(struct PciDevice device, struct PciConfigurationHeader header, struct BarInfo output_bar_list[6], void **next_free_mmio) {
+static void handle_bar(struct PciDevice device, struct PciConfigurationHeader header, struct BarInfo output_bar_list[6]) {
     int bar_number=0;
     while (bar_number < 6) {
         union ConfigAddress addr_low = {
@@ -126,8 +115,7 @@ static void handle_bar(struct PciDevice device, struct PciConfigurationHeader he
                     uint64_t bar_size = get_bar_size_32(bar_val_low, addr_low);
                     uint64_t address = bar_val_low & ~0xFul;
 
-                    void* virtual_address = *next_free_mmio;
-                    setup_mmio(address, bar_size, next_free_mmio);
+                    void* virtual_address = setup_mmio(address, bar_size);
 
                     output_bar_list[bar_number] = (struct BarInfo) {
                         .bar_size = bar_size,
@@ -151,8 +139,7 @@ static void handle_bar(struct PciDevice device, struct PciConfigurationHeader he
                     uint64_t bar_size = get_bar_size_64(bar_val_low, bar_val_high, addr_low, addr_high);
                     uint64_t address = ((uint64_t)bar_val_high << 32) | (bar_val_low & ~0xFul);
 
-                    void* virtual_address = *next_free_mmio;
-                    setup_mmio(address, bar_size, next_free_mmio);
+                    void* virtual_address = setup_mmio(address, bar_size);
 
                     output_bar_list[bar_number + 1] = output_bar_list[bar_number] = (struct BarInfo) {
                         .bar_size = bar_size,
@@ -183,7 +170,6 @@ static void handle_bar(struct PciDevice device, struct PciConfigurationHeader he
 // }
 
 void initialise_pci() {
-    void* next_free_mmio = mmio_start;
     for(unsigned int bus_number = 0; bus_number < 256; bus_number++) {
         for(unsigned int device_number = 0; device_number < 32; device_number++) {
             for(unsigned int function_number = 0; function_number < 8; function_number++) {
@@ -199,7 +185,7 @@ void initialise_pci() {
                 if(header.header_type != 0) continue;//not a standard PCI device
 
                 struct BarInfo bar_list[6];
-                handle_bar(device, header, bar_list, &next_free_mmio);
+                handle_bar(device, header, bar_list);
                 
                 if(header.vendor_id == 0x1AF4) {
                     //virtio device
