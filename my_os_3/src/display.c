@@ -12,9 +12,11 @@ void display_init(volatile struct limine_framebuffer* framebuffer_ptr) {
 void display_write_pixel(uint64_t x, uint64_t y, struct Colour colour) {
     if(x >= display_get_width()) HCF
     if(y >= display_get_height()) HCF
-    volatile struct Colour *screen_ptr = (struct Colour*)raw_framebuffer->address;
-    uint64_t index = x + raw_framebuffer->width * y;
-    screen_ptr[index] = colour;
+    uint64_t bytes_per_pixel = raw_framebuffer->bpp/8;
+    uint64_t offset = x*bytes_per_pixel + raw_framebuffer->pitch * y;
+    //TODO ensure bytes_per_pixel == sizeof(struct Colour) n stuff
+    volatile struct Colour *screen_ptr = (struct Colour*)(raw_framebuffer->address+offset);
+    *screen_ptr = colour;
 }
 
 struct Colour display_read_pixel(uint64_t x, uint64_t y) {
