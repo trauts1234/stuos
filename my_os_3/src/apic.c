@@ -88,7 +88,46 @@ static void disable_legacy_pic() {
 	out8(PIC2_DATA, 0xFF);
 }
 
-void apic_init() {
+struct XSDP_t {
+    char Signature[8];
+    uint8_t Checksum;
+    char OEMID[6];
+    uint8_t Revision;
+    uint32_t RsdtAddress;      // deprecated since version 2.0
+
+    uint32_t Length;
+    uint64_t XsdtAddress;
+    uint8_t ExtendedChecksum;
+    uint8_t reserved[3];
+} __attribute__ ((packed));
+
+static void ioapic_init(uint64_t rsdp_response_phys) {
+    struct XSDP_t *rsdp = (void*)rsdp_response_phys;
+    // phys_to_hhdm(rsdp_response_phys);
+    //check signature
+    assert(memcmp(rsdp->Signature, "RSD PTR ", 8) == 0)
+
+    //check first checksum
+    uint8_t sum = 0;
+    for(int i=0; i<20; i++) {
+        sum += ((uint8_t*)rsdp)[i];
+    }
+    assert(sum == 0)
+
+    //check revision
+    if(rsdp->Revision == 2) {
+        //check second checksum
+        sum = 0;
+        for(int i=0; i<rsdp->Length; i++) {
+            sum += ((uint8_t*)rsdp)[i];
+        }
+        assert(sum == 0)
+    } else {
+        HCF
+    }
+}
+
+void apic_init(uint64_t rsdp_response_phys) {
     disable_legacy_pic();
 
     //memory map the local APIC
@@ -101,6 +140,8 @@ void apic_init() {
     lapic_registers->divide_configuration.data = 0;// /2
 
     lapic_registers->lvt_timer.data = 32 | (1 << 17);
+
+    ioapic_init(rsdp_response_phys);
 }
 
 void apic_eoi() {

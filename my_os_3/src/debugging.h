@@ -16,5 +16,6 @@ __attribute__((noreturn)) void __debugging_hcf(int line, char* file);
 #define DEBUG_HERE {printf("I reached line %d in %s\n", __LINE__, __FILE__);}
 
 #define HCF {__debugging_hcf(__LINE__, __FILE__);}
+#define assert(value){if(!(value)) {HCF}}
 
 #endif

@@ -21,17 +21,10 @@ extern void loop_hlt();
 extern void enable_sse();
 extern void syscall_init();
 
-// Set the base revision to 3, this is recommended as this is the latest
-// base revision described by the Limine boot protocol specification.
-// See specification for further info.
-
+// Set the base revision to 3
+//this may be required since the rsdp response will then give a physical address?
 __attribute__((used, section(".limine_requests")))
-static volatile LIMINE_BASE_REVISION(3);
-
-// The Limine requests can be placed anywhere, but it is important that
-// the compiler does not optimise them away, so, usually, they should
-// be made volatile or equivalent, _and_ they should be accessed at least
-// once or marked as used with the "used" attribute as done here.
+static volatile LIMINE_BASE_REVISION(6);
 
 __attribute__((used, section(".limine_requests")))
 static volatile struct limine_framebuffer_request framebuffer_request = {
@@ -48,6 +41,12 @@ static volatile struct limine_memmap_request memmap_request =  {
 __attribute__((used, section(".limine_requests")))
 static volatile struct limine_hhdm_request hhdm_request = {
     .id = LIMINE_HHDM_REQUEST,
+    .revision = LIMINE_API_REVISION
+};
+
+__attribute__((used, section(".limine_requests")))
+static volatile struct limine_rsdp_request rsdp_request = {
+    .id = LIMINE_RSDP_REQUEST,
     .revision = LIMINE_API_REVISION
 };
 
@@ -70,7 +69,8 @@ void kmain(void) {
     if (framebuffer_request.response == NULL
      || framebuffer_request.response->framebuffer_count != 1
      || memmap_request.response == NULL
-     || hhdm_request.response == NULL) {
+     || hhdm_request.response == NULL
+     || rsdp_request.response == NULL) {
         HCF
     }
 
@@ -93,7 +93,7 @@ void kmain(void) {
     initialise_tty();
     // for(char* c="hello world!";*c; c++) tty_write_char(*c);
     setup_idt();
-    apic_init();
+    apic_init((uint64_t)rsdp_request.response);
     devfs_init();
     syscall_init();
     initialise_pci();
