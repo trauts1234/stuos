@@ -7,6 +7,8 @@
 #define EXIT_FAILURE 1
 
 void* malloc(unsigned long bytes);
+void *realloc(void *ptr, size_t size);
+void *calloc(size_t nmemb, size_t size);
 void free(void* ptr);
 
 __attribute__((noreturn)) 

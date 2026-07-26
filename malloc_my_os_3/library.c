@@ -91,3 +91,17 @@ void free(void* ptr) {
     struct LinkedListItem *ptr_to_ll = ((struct LinkedListItem*)ptr)-1;
     lli_mark_as(ptr_to_ll, true);
 }
+
+void *realloc(void *ptr, size_t size) {
+    void* region = malloc(size);
+    if(ptr == 0 || region == 0) return region;//fail or ptr is null
+
+    struct LinkedListItem *ptr_to_ll = ((struct LinkedListItem*)ptr)-1;
+    uint64_t curr_size = lli_region_size(ptr_to_ll, allocator.heap_end);
+    size_t smallest = (curr_size > size) ? size : curr_size;
+    //copy data to new region
+    memcpy(region, ptr, smallest);
+    free(ptr);
+
+    return region;
+}

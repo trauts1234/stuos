@@ -2,6 +2,7 @@
 #include "uapi/stddef.h"
 #include "uapi/syscalls.h"
 #include "stdio.h"
+#include <string.h>
 
 void exit(int status) {
     struct HaltSyscallData data = {
@@ -13,6 +14,13 @@ void exit(int status) {
 void abort() {
     //TODO send SIGABRT
     exit(0);
+}
+
+void *calloc(size_t nmemb, size_t size) {
+    void *region = malloc(nmemb * size);
+    if(region == 0) return 0;
+    memset(region, 0, nmemb * size);
+    return region;
 }
 
 int atoi(const char *nptr) {
