@@ -3,7 +3,6 @@
 #include <uapi/stdint.h>
 #include "display.h"
 #include "fs.h"
-#include "interrupts.h"
 #include "idt.h"
 #include "limine.h"
 #include "ps2.h"
@@ -15,6 +14,7 @@
 #include "pci.h"
 #include "fs_dev.h"
 #include "fs_fat.h"
+#include "apic.h"
 
 //assembly functions
 extern void loop_hlt();
@@ -92,14 +92,15 @@ void kmain(void) {
     memory_init(memmap_response, hhdm_offset);
     initialise_tty();
     // for(char* c="hello world!";*c; c++) tty_write_char(*c);
-    setup_pic_pit();
     setup_idt();
+    apic_init();
     devfs_init();
     syscall_init();
     initialise_pci();
-    // while(1) {
-    //     __asm("nop");
-    // }
+    __asm("sti");
+    while(1) {
+        __asm("nop");
+    }
     mount_fat16(vfs_get("/", "/dev/blkAp1", 0), "fat");
 
     // struct VNode fuzz = vfs_get("/", "testing.out", 0);

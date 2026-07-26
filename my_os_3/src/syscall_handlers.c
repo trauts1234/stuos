@@ -4,10 +4,8 @@
 #include <uapi/stdbool.h>
 #include "elf.h"
 #include "fs.h"
-#include "interrupts.h"
 #include "memory.h"
 #include "debugging.h"
-#include "interrupts.h"
 #include <uapi/syscalls.h>
 #include <uapi/types.h>
 #include "pipes_and_files.h"
@@ -34,7 +32,8 @@ void syscall_halt(struct HaltSyscallData *data, struct ProcessorState* processor
 
 void syscall_get_uptime_ms(struct GetUptimeMsData* data) {
     if(DEBUG_SYSCALLS) printf("%s: \n", __func__);
-    data->ms = get_uptime_ms();
+    HCF
+    // data->ms = get_uptime_ms();
 }
 
 void syscall_request_page(struct RequsetPageData* data) {

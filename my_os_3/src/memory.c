@@ -1,6 +1,5 @@
 #include <uapi/stdint.h>
 #include <uapi/stdbool.h>
-#include "interrupts.h"
 #include "kern_libc.h"
 #include "memory.h"
 #include "limine.h"
@@ -104,6 +103,8 @@ static struct PageTableEntry* original_kernel_page_table;//on init, this was the
 static struct GdtTable gdt_table;
 static struct TssEntry tss_entry;
 static struct __attribute__((packed)) GdtTablePtr {uint16_t limit; void* base;} gdt_table_ptr = {.limit = sizeof(struct GdtTable) - 1, .base = &gdt_table};
+static uint8_t interrupt_stack[4096 * 4] __attribute__ ((__aligned__(16)));
+static uint8_t *const interrupt_stack_top = interrupt_stack + sizeof(interrupt_stack);
 
 #define BIG_AMOUNT_OF_RAM (1ul << 38)
 

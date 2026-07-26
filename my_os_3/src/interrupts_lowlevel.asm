@@ -5,16 +5,25 @@ global vector_32_handler
 global vector_33_handler
 global vector_14_handler
 global start_userland
+global enable_apic
 
 extern run_next_task
 extern memory_exception_handle
-extern acknowledge_interrupt
+extern apic_eoi
 extern handle_incoming_byte
 
 SECTION .data
 total_timer_interrupts dq 0; counts the number of times the timer interrupt has gone off (uint64_t) - This is updated via assembly
 
 section .text
+
+enable_apic:
+    ; get APIC base
+    mov ecx, 0x1B
+    rdmsr
+    or eax, 0x800
+    wrmsr
+    ret
 
 ; interrupt 14
 vector_14_handler:
@@ -52,7 +61,7 @@ vector_32_handler:
     mov [total_timer_interrupts], rax
 
     mov rdi, 32
-    call acknowledge_interrupt; might be to re-enable interrupts?
+    call apic_eoi; might be to re-enable interrupts?
 
     mov rax, [rsp + 128]; 8*15 to skip pushed register state, 8 to skip return address, to get cs
     test ax, 3; check if I interrupted a userland process
@@ -101,7 +110,7 @@ vector_33_handler:
     push r15
 
     mov rdi, 32
-    call acknowledge_interrupt
+    call apic_eoi
 
     call handle_incoming_byte
 
