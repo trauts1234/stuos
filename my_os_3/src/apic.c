@@ -3,7 +3,6 @@
 #include "io.h"
 #include "physical_slab_allocation.h"
 #include "memory.h"
-#include "tty.h"
 
 struct LapicReg {uint32_t data; uint32_t reserved[3];};
 struct PriorityReg {
@@ -88,6 +87,14 @@ static void disable_legacy_pic() {
 	out8(PIC2_DATA, 0xFF);
 }
 
+static bool matches_checksum(void* data, uint64_t len) {
+    uint8_t sum = 0;
+    for(uint64_t i=0; i<len; i++) {
+        sum += ((uint8_t*)data)[i];
+    }
+    return sum == 0;
+}
+
 struct XSDP_t {
     char Signature[8];
     uint8_t Checksum;
@@ -101,33 +108,222 @@ struct XSDP_t {
     uint8_t reserved[3];
 } __attribute__ ((packed));
 
-static void ioapic_init(uint64_t rsdp_response_phys) {
-    struct XSDP_t *rsdp = (void*)rsdp_response_phys;
+struct SDT_header {
+    char Signature[4];
+    uint32_t Length;
+    uint8_t Revision;
+    uint8_t Checksum;
+    char OEMID[6];
+    char OEMTableID[8];
+    uint32_t OEMRevision;
+    uint32_t CreatorID;
+    uint32_t CreatorRevision;
+} __attribute__ ((packed));
+
+struct RSDT {
+  struct SDT_header header;
+  uint32_t entries[];//length (header.Length - sizeof(header)) / 4
+} __attribute__ ((packed));
+struct XSDT {
+  struct SDT_header header;
+  uint64_t entries[];//length (header.Length - sizeof(header)) / 8
+} __attribute__ ((packed));
+struct MADT {
+    struct SDT_header header;
+    uint32_t local_apic_address;
+    uint32_t flags;
+    uint8_t entries[];//starts with [0] entry type, [1] record length, then a struct
+} __attribute__ ((packed));
+struct GenericAddressStructure
+{
+  uint8_t AddressSpace;
+  uint8_t BitWidth;
+  uint8_t BitOffset;
+  uint8_t AccessSize;
+  uint64_t Address;
+} __attribute__ ((packed));
+struct FADT
+{
+    struct   SDT_header h;
+    uint32_t FirmwareCtrl;
+    uint32_t Dsdt;
+
+    // field used in ACPI 1.0; no longer in use, for compatibility only
+    uint8_t  Reserved;
+
+    uint8_t  PreferredPowerManagementProfile;
+    uint16_t SCI_Interrupt;
+    uint32_t SMI_CommandPort;
+    uint8_t  AcpiEnable;
+    uint8_t  AcpiDisable;
+    uint8_t  S4BIOS_REQ;
+    uint8_t  PSTATE_Control;
+    uint32_t PM1aEventBlock;
+    uint32_t PM1bEventBlock;
+    uint32_t PM1aControlBlock;
+    uint32_t PM1bControlBlock;
+    uint32_t PM2ControlBlock;
+    uint32_t PMTimerBlock;
+    uint32_t GPE0Block;
+    uint32_t GPE1Block;
+    uint8_t  PM1EventLength;
+    uint8_t  PM1ControlLength;
+    uint8_t  PM2ControlLength;
+    uint8_t  PMTimerLength;
+    uint8_t  GPE0Length;
+    uint8_t  GPE1Length;
+    uint8_t  GPE1Base;
+    uint8_t  CStateControl;
+    uint16_t WorstC2Latency;
+    uint16_t WorstC3Latency;
+    uint16_t FlushSize;
+    uint16_t FlushStride;
+    uint8_t  DutyOffset;
+    uint8_t  DutyWidth;
+    uint8_t  DayAlarm;
+    uint8_t  MonthAlarm;
+    uint8_t  Century;
+
+    // reserved in ACPI 1.0; used since ACPI 2.0+
+    uint16_t BootArchitectureFlags;
+
+    uint8_t  Reserved2;
+    uint32_t Flags;
+
+    // 12 byte structure; see below for details
+    struct GenericAddressStructure ResetReg;
+
+    uint8_t  ResetValue;
+    uint8_t  Reserved3[3];
+  
+    // 64bit pointers - Available on ACPI 2.0+
+    uint64_t                X_FirmwareControl;
+    uint64_t                X_Dsdt;
+
+    struct GenericAddressStructure X_PM1aEventBlock;
+    struct GenericAddressStructure X_PM1bEventBlock;
+    struct GenericAddressStructure X_PM1aControlBlock;
+    struct GenericAddressStructure X_PM1bControlBlock;
+    struct GenericAddressStructure X_PM2ControlBlock;
+    struct GenericAddressStructure X_PMTimerBlock;
+    struct GenericAddressStructure X_GPE0Block;
+    struct GenericAddressStructure X_GPE1Block;
+} __attribute__ ((packed));
+
+union RedirectionEntry
+{
+    struct {
+        uint64_t vector       : 8;
+        uint64_t delvMode     : 3;
+        uint64_t destMode     : 1;
+        uint64_t delvStatus   : 1;
+        uint64_t pinPolarity  : 1;
+        uint64_t remoteIRR    : 1;
+        uint64_t triggerMode  : 1;
+        uint64_t mask         : 1;
+        uint64_t reserved     : 39;
+        uint64_t destination  : 8;
+    };
+    struct
+    {
+        uint32_t lower;
+        uint32_t upper;
+    };
+};
+
+static uint32_t io_red_tbl(uint32_t i) {return 0x10 + 2*i;}
+struct IOAPICData {
+    //register selector
+    volatile uint32_t io_reg_sel;
+    uint32_t reserved[3];
+    //read/write this
+    volatile uint32_t io_win;
+};
+
+static void handle_acpi_table(struct SDT_header* curr, uint8_t interrupt_destination_apic_id) {
+    //TODO handle revision
+    assert(matches_checksum(curr, curr->Length));
+
+    if(memcmp(curr->Signature, "APIC", 4) == 0) {
+        struct MADT *madt = (void*)curr;
+        for(uint32_t i=0; 0x2C + i < madt->header.Length; i += madt->entries[i+1]) {
+            switch (madt->entries[i]) {
+                case 0://LAPIC
+                case 2://IOAPIC interrupt source override
+                case 3://IOAPIC non maskable interrupt source
+                case 4://LAPIC non maskable interrupts
+                case 5://LAPIC address override
+                case 9://processor L x2APIC
+                break;
+
+                case 1://IOAPIC
+                assert(madt->entries[i+1] == 12)
+                printf("IOAPIC: id %d, address %u, interrupt base %u\n", madt->entries[i+2], *(uint32_t*)(madt->entries + i+4), *(uint32_t*)(madt->entries + i+8));
+
+                struct IOAPICData *ioapic = setup_mmio(*(uint32_t*)(madt->entries + i+4), PAGE_SIZE);
+
+                ioapic->io_reg_sel = 1;//IOAPICVER
+                uint8_t max_redirection_entry = ioapic->io_win >> 16;
+                printf("can handle %d irqs\n", max_redirection_entry);
+
+                //write keyboard interrupt
+                union RedirectionEntry ps2_keyboard_entry = {
+                    .vector = 33,
+                    .destination = interrupt_destination_apic_id
+                };
+                ioapic->io_reg_sel = io_red_tbl(1);
+                ioapic->io_win = ps2_keyboard_entry.lower;
+                ioapic->io_reg_sel = io_red_tbl(1) + 1;
+                ioapic->io_win = ps2_keyboard_entry.upper;
+
+                break;
+
+                default:
+                HCF
+            }
+        }
+    } else if(memcmp(curr->Signature, "FACP", 4) == 0) {
+        struct FADT *fadt = (void*)curr;
+        printf("PM timer: %d\n", fadt->PMTimerLength);
+    }
+}
+
+static void ioapic_init(struct XSDP_t *rsdp, uint8_t interrupt_destination_apic_id) {
     // phys_to_hhdm(rsdp_response_phys);
     //check signature
     assert(memcmp(rsdp->Signature, "RSD PTR ", 8) == 0)
 
     //check first checksum
-    uint8_t sum = 0;
-    for(int i=0; i<20; i++) {
-        sum += ((uint8_t*)rsdp)[i];
-    }
-    assert(sum == 0)
+    assert(matches_checksum(rsdp, 20))
 
     //check revision
     if(rsdp->Revision == 2) {
         //check second checksum
-        sum = 0;
-        for(int i=0; i<rsdp->Length; i++) {
-            sum += ((uint8_t*)rsdp)[i];
+        assert(matches_checksum(rsdp, rsdp->Length))
+
+        struct XSDT *xsdt = phys_to_hhdm(rsdp->XsdtAddress);
+        assert(memcmp(xsdt->header.Signature, "XSDT", 4) == 0)
+        assert(matches_checksum(xsdt, xsdt->header.Length))
+        
+        uint64_t entries = (xsdt->header.Length - sizeof(xsdt->header)) / 8;
+        for(uint64_t i=0; i<entries; i++) {
+            struct SDT_header *h = phys_to_hhdm(xsdt->entries[i]);
+            handle_acpi_table(h, interrupt_destination_apic_id);
         }
-        assert(sum == 0)
     } else {
-        HCF
+        struct RSDT *rsdt = phys_to_hhdm(rsdp->RsdtAddress);
+        assert(memcmp(rsdt->header.Signature, "RSDT", 4) == 0)
+        assert(matches_checksum(rsdt, rsdt->header.Length))
+
+        uint32_t entries = (rsdt->header.Length - sizeof(rsdt->header)) / 4;
+        for(uint32_t i=0; i<entries; i++) {
+            struct SDT_header *h = phys_to_hhdm(rsdt->entries[i]);
+            handle_acpi_table(h, interrupt_destination_apic_id);
+        }
     }
 }
 
-void apic_init(uint64_t rsdp_response_phys) {
+void apic_init(void *rsdp_response) {
     disable_legacy_pic();
 
     //memory map the local APIC
@@ -141,12 +337,11 @@ void apic_init(uint64_t rsdp_response_phys) {
 
     lapic_registers->lvt_timer.data = 32 | (1 << 17);
 
-    ioapic_init(rsdp_response_phys);
+    ioapic_init(rsdp_response, lapic_registers->lapic_id.data);
 }
 
 void apic_eoi() {
     //end of interrupt
-    tty_write_char('e');
     lapic_registers->end_of_interrupt.data = 0;
 }
 

@@ -12,9 +12,6 @@ extern memory_exception_handle
 extern apic_eoi
 extern handle_incoming_byte
 
-SECTION .data
-total_timer_interrupts dq 0; counts the number of times the timer interrupt has gone off (uint64_t) - This is updated via assembly
-
 section .text
 
 enable_apic:
@@ -53,15 +50,9 @@ vector_32_handler:
     push r13
     push r14
     push r15
-    
-
-    ; increment the total number of timer interrupts
-    mov rax, [total_timer_interrupts]
-    inc rax
-    mov [total_timer_interrupts], rax
 
     mov rdi, 32
-    call apic_eoi; might be to re-enable interrupts?
+    call apic_eoi; re-enable interrupts
 
     mov rax, [rsp + 128]; 8*15 to skip pushed register state, 8 to skip return address, to get cs
     test ax, 3; check if I interrupted a userland process

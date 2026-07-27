@@ -1,6 +1,7 @@
 #include "debugging.h"
 #include "kern_libc.h"
 #include "io.h"
+#include "tty.h"
 
 static const int PORT = 0x3f8;    
 
@@ -34,6 +35,7 @@ void putchar(char a) {
    while (!is_transmit_empty());
 
    out8(PORT,a);
+   tty_write_char(a);
 }
 
 void abort() {

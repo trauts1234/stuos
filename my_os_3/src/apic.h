@@ -3,7 +3,7 @@
 
 #include "uapi/stdint.h"
 
-void apic_init(uint64_t rsdp_response_phys);
+void apic_init(void *rsdp_response_phys);
 
 /// Gets how many milliseconds the OS has been running, by counting the number of timer interrupts that have gone off
 uint64_t get_uptime_ms();

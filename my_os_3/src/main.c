@@ -21,47 +21,49 @@ extern void loop_hlt();
 extern void enable_sse();
 extern void syscall_init();
 
-// Set the base revision to 3
-//this may be required since the rsdp response will then give a physical address?
+// Set the base revision
+#define LIMINE_API_REVISION 6
+
 __attribute__((used, section(".limine_requests")))
-static volatile LIMINE_BASE_REVISION(6);
+static volatile uint64_t limine_base_revision[3] = LIMINE_BASE_REVISION(LIMINE_API_REVISION);
 
 __attribute__((used, section(".limine_requests")))
 static volatile struct limine_framebuffer_request framebuffer_request = {
-    .id = LIMINE_FRAMEBUFFER_REQUEST,
+    .id = LIMINE_FRAMEBUFFER_REQUEST_ID,
     .revision = LIMINE_API_REVISION
 };
 
 __attribute__((used, section(".limine_requests")))
 static volatile struct limine_memmap_request memmap_request =  {
-    .id = LIMINE_MEMMAP_REQUEST,
+    .id = LIMINE_MEMMAP_REQUEST_ID,
     .revision = LIMINE_API_REVISION,
 };
 
 __attribute__((used, section(".limine_requests")))
 static volatile struct limine_hhdm_request hhdm_request = {
-    .id = LIMINE_HHDM_REQUEST,
+    .id = LIMINE_HHDM_REQUEST_ID,
     .revision = LIMINE_API_REVISION
 };
 
 __attribute__((used, section(".limine_requests")))
 static volatile struct limine_rsdp_request rsdp_request = {
-    .id = LIMINE_RSDP_REQUEST,
-    .revision = LIMINE_API_REVISION
+    .id = LIMINE_RSDP_REQUEST_ID,
+    .revision = LIMINE_API_REVISION,
+    .response = NULL,
 };
 
 // Finally, define the start and end markers for the Limine requests.
 
 __attribute__((used, section(".limine_requests_start")))
-static volatile LIMINE_REQUESTS_START_MARKER;
+static volatile uint64_t limine_requests_start_marker[4] = LIMINE_REQUESTS_START_MARKER;
 
 __attribute__((used, section(".limine_requests_end")))
-static volatile LIMINE_REQUESTS_END_MARKER;
+static volatile uint64_t limine_requests_end_marker[4] = LIMINE_REQUESTS_END_MARKER;
 
 // The following will be our kernel's entry point.
 void kmain(void) {
     // Ensure the bootloader actually understands our base revision (see spec).
-    if (LIMINE_BASE_REVISION_SUPPORTED == false) {
+    if (LIMINE_BASE_REVISION_SUPPORTED(limine_base_revision) == false) {
         HCF
     }
 
@@ -93,7 +95,7 @@ void kmain(void) {
     initialise_tty();
     // for(char* c="hello world!";*c; c++) tty_write_char(*c);
     setup_idt();
-    apic_init((uint64_t)rsdp_request.response);
+    apic_init(rsdp_request.response->address);
     devfs_init();
     syscall_init();
     initialise_pci();
