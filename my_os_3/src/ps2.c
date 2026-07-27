@@ -120,6 +120,12 @@ union ControllerConfiguration {
     };
 };
 
+static void silly_delay() {
+    for(int i=0; i<10000000; i++) {
+        __asm("nop");
+    }
+}
+
 //IO COMMAND_PORT
 static union StatusRegister read_status_register() {
     return (union StatusRegister) {.byte = in8(COMMAND_PORT)};
@@ -127,6 +133,7 @@ static union StatusRegister read_status_register() {
 static void send_command(enum ControllerCommand command) {
     if(read_status_register().input_buffer_status) HCF
     out8(COMMAND_PORT, command);
+    silly_delay();
 }
 //IO DATA_PORT
 static uint8_t blocking_read_data() {
@@ -136,6 +143,7 @@ static uint8_t blocking_read_data() {
 static void blocking_write_data(uint8_t data) {
     while(read_status_register().input_buffer_status);// wait for empty buffer
     out8(DATA_PORT, data);
+    silly_delay();
 }
 
 static void send_byte_to_first_ps2(uint8_t data) {
@@ -154,7 +162,10 @@ static void wait_for_fa_aa() {
             first_fa = true;
         }else if(input == 0xAA) {
             first_aa = true;
-        } else HCF
+        } else {
+            printf("invalid byte when getting fa aa: %X", input);
+            HCF
+        }
     }
 }
 
@@ -245,6 +256,7 @@ static struct KeyEvent parse_full_buffer(union BufferData buffer) {
 }
 
 void handle_incoming_byte() {
+    printf("letter typed!\n");
     static int expected_number_of_bytes = 1;
     static union BufferData buffer;
 
@@ -282,23 +294,21 @@ void initialise_ps2() {
         blocking_read_data();
     }
 
-    {
-        //modify controller configuration byte
-        send_command(READ_CONTROLLER_CONFIGURATION);
-        union ControllerConfiguration config = {.byte= blocking_read_data()};
+    //modify controller configuration byte
+    send_command(READ_CONTROLLER_CONFIGURATION);
+    union ControllerConfiguration config = {.byte= blocking_read_data()};
 
-        //don't call interrupts
-        config.first_ps2_interrupt = 0;
-        config.second_ps2_interrupt = 0;
-        // otherwise the port is disabled
-        config.first_ps2_port_clock = 0;
-        config.second_ps2_port_clock = 0;
-        //not sure...
-        config.first_ps2_translation = 0;
+    //call interrupts
+    config.first_ps2_interrupt = 1;
+    config.second_ps2_interrupt = 0;
+    // otherwise the port is disabled
+    config.first_ps2_port_clock = 0;
+    config.second_ps2_port_clock = 0;
+    //not sure...
+    config.first_ps2_translation = 0;
 
-        send_command(WRITE_CONTROLLER_CONFIGURATION);
-        blocking_write_data(config.byte);
-    }
+    send_command(WRITE_CONTROLLER_CONFIGURATION);
+    blocking_write_data(config.byte);
 
     //controller self-test
     send_command(TEST_CONTROLLER);
@@ -337,15 +347,11 @@ void initialise_ps2() {
     //     blocking_read_data();
     // }
 
-    //enable ps2 interrupts
-    {
-        send_command(READ_CONTROLLER_CONFIGURATION);
-        union ControllerConfiguration config = {.byte= blocking_read_data()};
-
-        config.first_ps2_interrupt = 1;
-        config.second_ps2_interrupt = 0;//TODO uses a different irq
-
-        send_command(WRITE_CONTROLLER_CONFIGURATION);
-        blocking_write_data(config.byte);
-    }
+    // printf("polling ps/2\n");
+    // while(1) {
+    //     while(read_status_register().output_buffer_status) {
+    //         printf("polling worked\n");
+    //         handle_incoming_byte();
+    //     }
+    // }
 }

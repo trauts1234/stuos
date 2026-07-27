@@ -90,9 +90,9 @@ void kmain(void) {
 
     debugging_init();
     display_init(framebuffer);
-    initialise_ps2();
     memory_init(memmap_response, hhdm_offset);
     initialise_tty();
+    initialise_ps2();
     // for(char* c="hello world!";*c; c++) tty_write_char(*c);
     setup_idt();
     apic_init(rsdp_request.response->address);
@@ -100,6 +100,10 @@ void kmain(void) {
     syscall_init();
     initialise_pci();
     __asm("sti");
+    for(int i=0; i<100000000; i++) {
+        __asm("nop");
+    }
+    printf("hello world!");
     while(1) {
         __asm("nop");
     }
