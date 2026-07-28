@@ -5,59 +5,64 @@
 #include "kern_libc.h"
 #include "ps2.h"
 
+#define LEFT_SHIFT 0x2A
+#define RIGHT_SHIFT 0x36
+#define CAPS_LOCK 0x3A
 //indexed by [keycode][is_shifted]
 //if [keycode][1] == 0, then use [keycode][0] as there is no shifted key
 //for caps OR shift, apply toupper() afterwards too
 char lookup_nonextended[128][2] = {
-    [0x1C]= {'a'},
-    [0x32]= {'b'},
-    [0x21]= {'c'},
-    [0x23]= {'d'},
-    [0x24]= {'e'},
-    [0x2b]= {'f'},
-    [0x34]= {'g'},
-    [0x33]= {'h'},
-    [0x43]= {'i'},
-    [0x3B]= {'j'},
-    [0x42]= {'k'},
-    [0x4b]= {'l'},
-    [0x3a]= {'m'},
-    [0x31]= {'n'},
-    [0x44]= {'o'},
-    [0x4d]= {'p'},
-
-    [0x15]= {'q'},
-    [0x2d]= {'r'},
-    [0x1b]= {'s'},
-    [0x2c]= {'t'},
-    [0x3c]= {'u'},
-    [0x2a]= {'v'},
-    [0x1d]= {'w'},
-    [0x22]= {'x'},
-    [0x35]= {'y'},
-    [0x1a]= {'z'},
-
-    [0x16]= {'1', '!'},
-    [0x1e]= {'2', '"'},
-    [0x26]= {'3'},
-    [0x25]= {'4', '$'},
-    [0x2e]= {'5', '%'},
-    [0x36]= {'6', '^'},
-    [0x3d]= {'7', '!'},
-    [0x3e]= {'8', '*'},
-    [0x46]= {'9', '('},
-    [0x45]= {'0', ')'},
-    [0x4e]= {'-', '_'},
-
-    [0x5a]= {'\n'},
-    [0x66]= {'\b'},
-    [0x29]= {' '},
-    [0x4a]= {'/', '?'},
-    [0x49]= {'.', '>'},
-    [0x41]= {',', '<'},
-    [0x5d]= {'\\', '|'},
-    [0x4c]= {';', ':'},
-    [0x52]= {'\'', '@'},
+    [0x02] = {'1', '!'},
+    {'2', '"'},
+    {'3'},
+    {'4', '$'},
+    {'5', '%'},
+    {'6', '^'},
+    {'7', '&'},
+    {'8', '*'},
+    {'9', '('},
+    {'0', ')'},
+    {'-','_'},
+    {'=','+'},
+    {'\b'},
+    {'\t'},
+    {'q'},
+    {'w'},
+    {'e'},
+    {'r'},
+    {'t'},
+    {'y'},
+    {'u'},
+    {'i'},
+    {'o'},
+    {'p'},
+    {'[', '{'},
+    {']', '}'},
+    {'\n'},
+    [0x1E] = {'a'},
+    {'s'},
+    {'d'},
+    {'f'},
+    {'g'},
+    {'h'},
+    {'j'},
+    {'k'},
+    {'l'},
+    {';', ':'},
+    {'\'', '@'},
+    {'`'},
+    [0x2B] = {'\\', '|'},
+    {'z'},
+    {'x'},
+    {'c'},
+    {'v'},
+    {'b'},
+    {'n'},
+    {'m'},
+    {',', '<'},
+    {'.', '>'},
+    {'/', '?'},
+    [0x39] = {' '}
 };
 
 #define DATA_PORT 0x60
@@ -85,8 +90,8 @@ enum ControllerCommand {
 
 // To send a command to the keyboard, send to DATA_PORT
 enum KeyboardCommand {
+    KB_SET_GET_SCAN_CODE=0xF0,
     KB_ENABLE_SCANNING=0xF4,
-
     KB_RESTART_AND_TEST=0xFF,
 };
 
@@ -176,64 +181,40 @@ union BufferData {
         uint8_t first_byte;
         //middle byte
         uint8_t second_byte;
-        //most significant
-        uint8_t third_byte;
     };
 };
 
-//returns NULL on an invalid buffer
 static struct KeyEvent parse_full_buffer(union BufferData buffer) {
     static bool capslock = false;
     static bool shift = false;
 
-    if (buffer.data == 0xE11477E1F014E077) {
+    if (buffer.data == 0xE11D45E19DC5) {
         return (struct KeyEvent) {.event_type=KE_PAUSE};
     }
-    if (buffer.data == 0xE012E07C) {
+    if (buffer.data == 0xE02AE037) {
         return (struct KeyEvent) {.event_type=KE_PRINTSCR};
     }
-    if (buffer.data == 0xE0F07CE0F012) {
+    if (buffer.data == 0xE0B7E0AA) {
         return (struct KeyEvent) {.event_type=KE_PRINTSCR, .is_break=true};
     }
     
 
-    //only 0xF0XX, 0xXX, 0xE0F0XX, 0xE0XX exist
+    //only 0xXX, 0xE0XX exist
+    assert(buffer.second_byte == 0xE0 || buffer.second_byte == 0);
+    assert((buffer.data & ~0xFFFF) == 0);
 
-    bool is_break = false, is_extended = false;
+    //highest bit is the "is break" flag
+    bool is_break = buffer.first_byte & 0x80;
+    bool is_extended = buffer.second_byte == 0xE0;
+    uint8_t scan_code = buffer.first_byte & 0x7F;
 
-    if(buffer.third_byte == 0xE0) {
-        //must be 0xE0F0XX
-        if(buffer.second_byte != 0xF0) HCF
-        is_break = true;
-        is_extended = true;
-    } else {
-        if(buffer.third_byte) HCF // since not 0xE0F0XX, third byte must be 0
-
-        //detect what second byte is used
-        switch (buffer.second_byte) {
-            case 0xF0:
-            is_break = true;
-            break;
-            
-            case 0xE0:
-            is_extended = true;
-            break;
-
-            case 0:
-            break;
-
-            default:
-            HCF//second byte wasn't valid
-        }
-    }
-
-    if(!is_extended && buffer.first_byte == 0x58) {
+    if(!is_extended && scan_code == CAPS_LOCK) {
         //capslock toggle
         if(!is_break) capslock ^= true;//toggle capslock on press
 
         return (struct KeyEvent) {.event_type=KE_CAPS, .is_break=is_break};
     }
-    if((buffer.first_byte == 0x12 || buffer.first_byte == 0x59) && !is_extended) {
+    if((scan_code == LEFT_SHIFT || scan_code == RIGHT_SHIFT) && !is_extended) {
         //shift enable/disable
         shift = !is_break;
 
@@ -241,10 +222,8 @@ static struct KeyEvent parse_full_buffer(union BufferData buffer) {
     }
 
     //parse the remaining byte
-    if(buffer.first_byte >= 128) HCF//must be in range
-
-    char value = lookup_nonextended[buffer.first_byte][shift];
-    if(value == 0) value = lookup_nonextended[buffer.first_byte][0];//if there is no value, try the non-shift version
+    char value = lookup_nonextended[scan_code][shift];
+    if(value == 0) value = lookup_nonextended[scan_code][0];//if there is no value, try the non-shift version
     if(value == 0) return (struct KeyEvent) {.event_type=KE_NULL};//still no value, give up
 
     if(shift || capslock) {
@@ -256,7 +235,6 @@ static struct KeyEvent parse_full_buffer(union BufferData buffer) {
 }
 
 void handle_incoming_byte() {
-    printf("letter typed!\n");
     static int expected_number_of_bytes = 1;
     static union BufferData buffer;
 
@@ -335,23 +313,30 @@ void initialise_ps2() {
         blocking_read_data();
     }
 
+    uint8_t response;
+
+    //set scan code
+    send_byte_to_first_ps2(KB_SET_GET_SCAN_CODE);
+    if(blocking_read_data() != 0xFA) HCF
+    blocking_write_data(1);
+    if(blocking_read_data() != 0xFA) HCF
+    //check that the scan code was set (broken on laptop due to hardware bug?)
+    // send_byte_to_first_ps2(KB_SET_GET_SCAN_CODE);
+    // if(blocking_read_data() != 0xFA) HCF
+    // blocking_write_data(0);
+    // if(blocking_read_data() != 0xFA) HCF
+    // printf("got ack\n");
+    // if(blocking_read_data() != 1) HCF
+    // printf("got response\n");
+
     //enable scanning (maybe)
     send_byte_to_first_ps2(KB_ENABLE_SCANNING);
-    uint8_t response = blocking_read_data();
-    if(response != 0xFA) HCF
+    if(blocking_read_data() != 0xFA) HCF
 
     //ensure port is populated and that the controller has a second port first!
     // send_byte_to_second_ps2(0xFF);
     // wait_for_fa_aa();
     // while(read_status_register().input_buffer_status) {
     //     blocking_read_data();
-    // }
-
-    // printf("polling ps/2\n");
-    // while(1) {
-    //     while(read_status_register().output_buffer_status) {
-    //         printf("polling worked\n");
-    //         handle_incoming_byte();
-    //     }
     // }
 }
