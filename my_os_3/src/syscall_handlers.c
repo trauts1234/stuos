@@ -11,6 +11,7 @@
 #include "pipes_and_files.h"
 #include "scheduling.h"
 #include "tty.h"
+#include "apic.h"
 #include "kern_libc.h"
 
 #define DEBUG_SYSCALLS false
@@ -32,8 +33,7 @@ void syscall_halt(struct HaltSyscallData *data, struct ProcessorState* processor
 
 void syscall_get_uptime_ms(struct GetUptimeMsData* data) {
     if(DEBUG_SYSCALLS) printf("%s: \n", __func__);
-    HCF
-    // data->ms = get_uptime_ms();
+    data->ms = get_uptime_ms();
 }
 
 void syscall_request_page(struct RequsetPageData* data) {

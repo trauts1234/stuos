@@ -3,6 +3,7 @@
 #include "io.h"
 #include "physical_slab_allocation.h"
 #include "memory.h"
+#include <uapi/stddef.h>
 
 struct LapicReg {uint32_t data; uint32_t reserved[3];};
 struct PriorityReg {
@@ -55,6 +56,9 @@ static volatile struct {
         reserved_5;
 } *lapic_registers;
 
+static uint32_t pm_timer_port = 0;//if 0, then use mmio
+static uint32_t *pm_timer_mmio = NULL;
+
 extern void enable_apic();
 
 static bool matches_checksum(void* data, uint64_t len) {
@@ -65,56 +69,56 @@ static bool matches_checksum(void* data, uint64_t len) {
     return sum == 0;
 }
 
-struct XSDP_t {
-    char Signature[8];
-    uint8_t Checksum;
-    char OEMID[6];
-    uint8_t Revision;
-    uint32_t RsdtAddress;      // deprecated since version 2.0
+struct RSDP {
+    char signature[8];
+    uint8_t checksum;
+    char oem_id[6];
+    uint8_t revision;
+    uint32_t rsdt_address;      // deprecated since version 2.0
 
-    uint32_t Length;
-    uint64_t XsdtAddress;
-    uint8_t ExtendedChecksum;
+    uint32_t length;
+    uint64_t xsdt_address;
+    uint8_t ext_checksum;
     uint8_t reserved[3];
 } __attribute__ ((packed));
 
-struct SDT_header {
-    char Signature[4];
-    uint32_t Length;
-    uint8_t Revision;
-    uint8_t Checksum;
-    char OEMID[6];
-    char OEMTableID[8];
-    uint32_t OEMRevision;
-    uint32_t CreatorID;
-    uint32_t CreatorRevision;
+struct SDTHeader {
+    char signature[4];
+    uint32_t length;
+    uint8_t revision;
+    uint8_t checksum;
+    char oem_id[6];
+    char oem_table_id[8];
+    uint32_t oem_revision;
+    uint32_t creator_id;
+    uint32_t creator_revision;
 } __attribute__ ((packed));
 
 struct RSDT {
-  struct SDT_header header;
+  struct SDTHeader header;
   uint32_t entries[];//length (header.Length - sizeof(header)) / 4
 } __attribute__ ((packed));
 struct XSDT {
-  struct SDT_header header;
+  struct SDTHeader header;
   uint64_t entries[];//length (header.Length - sizeof(header)) / 8
 } __attribute__ ((packed));
 struct MADT {
-    struct SDT_header header;
+    struct SDTHeader header;
     uint32_t local_apic_address;
     uint32_t flags;
     uint8_t entries[];//starts with [0] entry type, [1] record length, then a struct
 } __attribute__ ((packed));
 struct GenericAddressStructure
 {
-  uint8_t AddressSpace;
-  uint8_t BitWidth;
-  uint8_t BitOffset;
-  uint8_t AccessSize;
-  uint64_t Address;
+  uint8_t address_space;
+  uint8_t bit_width;
+  uint8_t bit_offset;
+  uint8_t access_size;
+  uint64_t address;
 } __attribute__ ((packed));
 struct FADT
 {
-    struct   SDT_header h;
+    struct   SDTHeader h;
     uint32_t FirmwareCtrl;
     uint32_t Dsdt;
 
@@ -210,13 +214,13 @@ struct IOAPICData {
     volatile uint32_t io_win;
 };
 
-static void handle_acpi_table(struct SDT_header* curr, uint8_t interrupt_destination_apic_id) {
+static void handle_acpi_table(struct SDTHeader* curr, uint8_t interrupt_destination_apic_id) {
     //TODO handle revision
-    assert(matches_checksum(curr, curr->Length));
+    assert(matches_checksum(curr, curr->length));
 
-    if(memcmp(curr->Signature, "APIC", 4) == 0) {
+    if(memcmp(curr->signature, "APIC", 4) == 0) {
         struct MADT *madt = (void*)curr;
-        for(uint32_t i=0; 0x2C + i < madt->header.Length; i += madt->entries[i+1]) {
+        for(uint32_t i=0; 0x2C + i < madt->header.length; i += madt->entries[i+1]) {
             switch (madt->entries[i]) {
                 case 0://LAPIC
                 case 2://IOAPIC interrupt source override
@@ -250,45 +254,72 @@ static void handle_acpi_table(struct SDT_header* curr, uint8_t interrupt_destina
                 HCF
             }
         }
-    } else if(memcmp(curr->Signature, "FACP", 4) == 0) {
+    } else if(memcmp(curr->signature, "FACP", 4) == 0) {
         struct FADT *fadt = (void*)curr;
         assert(fadt->PMTimerLength == 4);
+        if(false) {
+            //Xtended (disabled because I don't know when to use this)
+            switch(fadt->X_PMTimerBlock.address_space) {
+                case 0:
+                //mmio
+                pm_timer_mmio = setup_mmio(fadt->X_PMTimerBlock.address, PAGE_SIZE);
+                break;
+                case 1:
+                //port
+                pm_timer_port = fadt->X_PMTimerBlock.address;
+                break;
+                default:
+                HCF
+            }
+        } else {
+            pm_timer_port = fadt->PMTimerBlock;
+        }
     }
 }
 
-static void ioapic_init(struct XSDP_t *rsdp, uint8_t interrupt_destination_apic_id) {
-    // phys_to_hhdm(rsdp_response_phys);
+static void pmtimer_ioapic_init(struct RSDP *rsdp, uint8_t interrupt_destination_apic_id) {
     //check signature
-    assert(memcmp(rsdp->Signature, "RSD PTR ", 8) == 0)
+    assert(memcmp(rsdp->signature, "RSD PTR ", 8) == 0)
 
     //check first checksum
     assert(matches_checksum(rsdp, 20))
 
     //check revision
-    if(rsdp->Revision == 2) {
+    if(rsdp->revision == 2) {
         //check second checksum
-        assert(matches_checksum(rsdp, rsdp->Length))
+        assert(matches_checksum(rsdp, rsdp->length))
 
-        struct XSDT *xsdt = phys_to_hhdm(rsdp->XsdtAddress);
-        assert(memcmp(xsdt->header.Signature, "XSDT", 4) == 0)
-        assert(matches_checksum(xsdt, xsdt->header.Length))
+        struct XSDT *xsdt = phys_to_hhdm(rsdp->xsdt_address);
+        assert(memcmp(xsdt->header.signature, "XSDT", 4) == 0)
+        assert(matches_checksum(xsdt, xsdt->header.length))
         
-        uint64_t entries = (xsdt->header.Length - sizeof(xsdt->header)) / 8;
+        uint64_t entries = (xsdt->header.length - sizeof(xsdt->header)) / 8;
         for(uint64_t i=0; i<entries; i++) {
-            struct SDT_header *h = phys_to_hhdm(xsdt->entries[i]);
+            struct SDTHeader *h = phys_to_hhdm(xsdt->entries[i]);
             handle_acpi_table(h, interrupt_destination_apic_id);
         }
     } else {
-        struct RSDT *rsdt = phys_to_hhdm(rsdp->RsdtAddress);
-        assert(memcmp(rsdt->header.Signature, "RSDT", 4) == 0)
-        assert(matches_checksum(rsdt, rsdt->header.Length))
+        struct RSDT *rsdt = phys_to_hhdm(rsdp->rsdt_address);
+        assert(memcmp(rsdt->header.signature, "RSDT", 4) == 0)
+        assert(matches_checksum(rsdt, rsdt->header.length))
 
-        uint32_t entries = (rsdt->header.Length - sizeof(rsdt->header)) / 4;
+        uint32_t entries = (rsdt->header.length - sizeof(rsdt->header)) / 4;
         for(uint32_t i=0; i<entries; i++) {
-            struct SDT_header *h = phys_to_hhdm(rsdt->entries[i]);
+            struct SDTHeader *h = phys_to_hhdm(rsdt->entries[i]);
             handle_acpi_table(h, interrupt_destination_apic_id);
         }
     }
+}
+
+static uint32_t read_pm_timer() {
+    uint32_t res = 0;
+    if(pm_timer_port) {
+        res = in32(pm_timer_port);
+    } else {
+        res = *pm_timer_mmio;
+    }
+    res &= 0xFFFFFF;
+    return res;
 }
 
 void apic_init(void *rsdp_response) {
@@ -304,12 +335,33 @@ void apic_init(void *rsdp_response) {
 
     lapic_registers->lvt_timer.data = 32 | (1 << 17);
 
-    ioapic_init(rsdp_response, lapic_registers->lapic_id.data);
+    pmtimer_ioapic_init(rsdp_response, lapic_registers->lapic_id.data);
 }
 
+//call to restart interrupts once this one is done
 void apic_eoi() {
     //end of interrupt
     lapic_registers->end_of_interrupt.data = 0;
+}
+
+static uint64_t total_interrupts = 0;
+static uint64_t microseconds_per_interrupt = 0;
+void apic_timer_counter() {
+    static uint32_t training_temp;
+
+    if(total_interrupts == 100) {
+        training_temp = read_pm_timer();
+    }
+    if(total_interrupts == 101) {
+        uint64_t timer_ticks_between_interrupts = read_pm_timer() - training_temp;
+        microseconds_per_interrupt = (1000000ull*timer_ticks_between_interrupts) / 3579545ull;
+        printf("decided that each interrupt occurs %llu microseconds apart\n", microseconds_per_interrupt);
+    }
+
+    total_interrupts++;
+}
+uint64_t get_uptime_ms() {
+    return (total_interrupts*microseconds_per_interrupt) / 1000ull;
 }
 
 /// Handles interrupt 14

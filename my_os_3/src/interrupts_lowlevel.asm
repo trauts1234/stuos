@@ -10,6 +10,7 @@ global enable_apic
 extern run_next_task
 extern memory_exception_handle
 extern apic_eoi
+extern apic_timer_counter
 extern handle_incoming_byte
 
 section .text
@@ -51,7 +52,7 @@ vector_32_handler:
     push r14
     push r15
 
-    mov rdi, 32
+    call apic_timer_counter; do timer things
     call apic_eoi; re-enable interrupts
 
     mov rax, [rsp + 128]; 8*15 to skip pushed register state, 8 to skip return address, to get cs
@@ -100,7 +101,6 @@ vector_33_handler:
     push r14
     push r15
 
-    mov rdi, 32
     call apic_eoi
 
     call handle_incoming_byte

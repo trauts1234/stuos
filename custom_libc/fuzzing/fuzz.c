@@ -1,3 +1,4 @@
+#include <assert.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stddef.h>
@@ -26,16 +27,13 @@ void sleep_uptime_test(uint64_t loops) {
         // printf("on loop %llu\n", i);
         uint64_t delay = rand8();
         uint64_t start = get_uptime_ms();
-        if(start < prev) {abort();}
+        assert(start > prev);
         usleep(delay * 1000);
         uint64_t end = get_uptime_ms();
-        if(start > end) {abort();}
+        assert(start < end);
         int64_t actual = end - start;
 
-        if(actual < 0) {
-            printf("had a negative delay???\n");
-            abort();
-        }
+        assert(actual >= 0);
         if(absolute_difference(actual, delay) > 50) {
             printf("delay: %lld, actual: %lld", delay, actual);
             abort();
