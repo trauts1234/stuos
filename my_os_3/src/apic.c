@@ -57,36 +57,6 @@ static volatile struct {
 
 extern void enable_apic();
 
-static void disable_legacy_pic() {
-    static const uint16_t PIC1_COMMAND = 0x20;
-    static const uint16_t PIC1_DATA = 0x21;
-    static const uint16_t PIC2_COMMAND = 0xA0;
-    static const uint16_t PIC2_DATA = 0xA1;
-    const uint8_t PIC1_OFFSET = 32;
-    const uint8_t PIC2_OFFSET = PIC1_OFFSET + 8;
-    const uint8_t ICW1_ICW4 = 0x01;		/* Indicates that ICW4 will be present */
-    const uint8_t ICW1_INIT = 0x10;		/* Initialization - required! */
-    const uint8_t ICW4_8086 = 0x01;		/* 8086/88 (MCS-80/85) mode */
-    const uint8_t CASCADE_IRQ = 2;
-
-    // starts the initialization sequence (in cascade mode)
-    out8(PIC1_COMMAND, ICW1_INIT | ICW1_ICW4);
-	out8(PIC2_COMMAND, ICW1_INIT | ICW1_ICW4);
-
-    //add an offset to all the PIC interrupt numbers, to make room for error interrupts (0 to 32)
-	out8(PIC1_DATA, PIC1_OFFSET);
-	out8(PIC2_DATA, PIC2_OFFSET);
-	out8(PIC1_DATA, 1 << CASCADE_IRQ);        // ICW3: tell Master PIC that there is a slave PIC at IRQ2
-	out8(PIC2_DATA, 2);                       // ICW3: tell Slave PIC its cascade identity (0000 0010)
-	
-	out8(PIC1_DATA, ICW4_8086);               // ICW4: have the PICs use 8086 mode (and not 8080 mode)
-	out8(PIC2_DATA, ICW4_8086);
-
-	// Mask all interrupts on both PICs.
-	out8(PIC1_DATA, 0xFF);
-	out8(PIC2_DATA, 0xFF);
-}
-
 static bool matches_checksum(void* data, uint64_t len) {
     uint8_t sum = 0;
     for(uint64_t i=0; i<len; i++) {
@@ -258,13 +228,11 @@ static void handle_acpi_table(struct SDT_header* curr, uint8_t interrupt_destina
 
                 case 1://IOAPIC
                 assert(madt->entries[i+1] == 12)
-                printf("IOAPIC: id %d, address %u, interrupt base %u\n", madt->entries[i+2], *(uint32_t*)(madt->entries + i+4), *(uint32_t*)(madt->entries + i+8));
 
                 struct IOAPICData *ioapic = setup_mmio(*(uint32_t*)(madt->entries + i+4), PAGE_SIZE);
 
                 ioapic->io_reg_sel = 1;//IOAPICVER
-                uint8_t max_redirection_entry = ioapic->io_win >> 16;
-                printf("can handle %d irqs\n", max_redirection_entry);
+                // uint8_t max_redirection_entry = ioapic->io_win >> 16; //max irqs
 
                 //write keyboard interrupt
                 union RedirectionEntry ps2_keyboard_entry = {
@@ -284,7 +252,7 @@ static void handle_acpi_table(struct SDT_header* curr, uint8_t interrupt_destina
         }
     } else if(memcmp(curr->Signature, "FACP", 4) == 0) {
         struct FADT *fadt = (void*)curr;
-        printf("PM timer: %d\n", fadt->PMTimerLength);
+        assert(fadt->PMTimerLength == 4);
     }
 }
 
@@ -324,7 +292,6 @@ static void ioapic_init(struct XSDP_t *rsdp, uint8_t interrupt_destination_apic_
 }
 
 void apic_init(void *rsdp_response) {
-    disable_legacy_pic();
 
     //memory map the local APIC
     lapic_registers = setup_mmio(0xFEE00000, PAGE_SIZE);

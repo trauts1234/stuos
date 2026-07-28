@@ -313,8 +313,6 @@ void initialise_ps2() {
         blocking_read_data();
     }
 
-    uint8_t response;
-
     //set scan code
     send_byte_to_first_ps2(KB_SET_GET_SCAN_CODE);
     if(blocking_read_data() != 0xFA) HCF
