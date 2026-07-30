@@ -156,18 +156,18 @@ static void handle_bar(struct PciDevice device, struct PciConfigurationHeader he
     }
 }
 
-// void read_bar(struct BarInfo bar, void* dest, uint64_t offset, uint64_t count) {
-//     if(bar.is_io_bar) {
-//         uint8_t* dest_u8 = dest;
-//         for(uint64_t i=0; i<count; i++) {
-//             if(bar.address + i > 0xFFFF) HCF
-//             uint8_t val = in8(bar.address + i);
-//             *dest_u8++ = val;
-//         }
-//     } else {
-//         memcpy(dest, (const void*)bar.virtual_address + offset, count);//cast away volatile as it is a read?
-//     }
-// }
+void read_bar(struct BarInfo bar, void* dest, uint64_t offset, uint64_t count) {
+    if(bar.is_io_bar) {
+        uint8_t* dest_u8 = dest;
+        for(uint64_t i=0; i<count; i++) {
+            if(bar.address + i > 0xFFFF) HCF
+            uint8_t val = in8(bar.address + i);
+            *dest_u8++ = val;
+        }
+    } else {
+        memcpy(dest, (const void*)bar.virtual_address + offset, count);//cast away volatile as it is a read?
+    }
+}
 
 void initialise_pci() {
     for(unsigned int bus_number = 0; bus_number < 256; bus_number++) {
@@ -186,11 +186,19 @@ void initialise_pci() {
 
                 struct BarInfo bar_list[6];
                 handle_bar(device, header, bar_list);
-                
+
                 if(header.vendor_id == 0x1AF4) {
                     //virtio device
                     initialise_virtio(header, header_buffer, bar_list);
                 }
+
+                printf("cc: %X sc: %X IF: %X\n", header.class_code, header.subclass, header.prog_if);
+
+                if(header.class_code == 0x0C && header.subclass == 0x03 && header.prog_if == 0x20) {
+                    //EHCI USB controller
+                    printf("EHCI found\n");
+                }
+                
             }
         }
     }

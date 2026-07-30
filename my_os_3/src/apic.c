@@ -355,7 +355,6 @@ void apic_timer_counter() {
     if(total_interrupts == 101) {
         uint64_t timer_ticks_between_interrupts = read_pm_timer() - training_temp;
         microseconds_per_interrupt = (1000000ull*timer_ticks_between_interrupts) / 3579545ull;
-        printf("decided that each interrupt occurs %llu microseconds apart\n", microseconds_per_interrupt);
     }
 
     total_interrupts++;
