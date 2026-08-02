@@ -1,4 +1,5 @@
 #include "debugging.h"
+#include "ehci_driver.h"
 #include "io.h"
 #include "kern_libc.h"
 #include "pci.h"
@@ -8,13 +9,6 @@
 
 #define CONFIG_ADDRESS 0xCF8
 #define CONFIG_DATA 0xCFC
-
-//represents a PCI device whose configuration can be read by a port
-struct PciDevice {
-    uint8_t function_number:3;
-    uint8_t device_number:5;
-    uint8_t bus_number;
-};
 
 //what raw data can be sent to a port
 union ConfigAddress {
@@ -37,8 +31,7 @@ static void config_write(union ConfigAddress address, uint32_t value) {
     out32(CONFIG_DATA, value);
 }
 
-// output_buffer must be 256 bytes writeable
-static void read_header(struct PciDevice device, void *output_buffer) {
+void read_header(struct PciDevice device, uint8_t output_buffer[256]) {
     uint32_t *dwords = (uint32_t*)output_buffer;
 
     for(int i=0; i<256; i += 4) {
@@ -50,6 +43,20 @@ static void read_header(struct PciDevice device, void *output_buffer) {
             .enable_bit = 1,
         };
         *dwords++ = config_read(addr);
+    }       
+}
+void write_header(struct PciDevice device, uint8_t input_buffer[256]) {
+    uint32_t *dwords = (uint32_t*)input_buffer;
+
+    for(int i=0; i<256; i += 4) {
+
+        union ConfigAddress addr = {
+            .register_offset = i,
+            .device = device,
+            .reserved = 0,
+            .enable_bit = 1,
+        };
+        config_write(addr, *dwords++);
     }       
 }
 
@@ -156,16 +163,26 @@ static void handle_bar(struct PciDevice device, struct PciConfigurationHeader he
     }
 }
 
-void read_bar(struct BarInfo bar, void* dest, uint64_t offset, uint64_t count) {
+//may do any number of byte reads
+uint32_t read_bar_32(struct BarInfo bar, uint64_t offset) {
+    assert(offset % 4 == 0);
+
     if(bar.is_io_bar) {
-        uint8_t* dest_u8 = dest;
-        for(uint64_t i=0; i<count; i++) {
-            if(bar.address + i > 0xFFFF) HCF
-            uint8_t val = in8(bar.address + i);
-            *dest_u8++ = val;
-        }
+        if(bar.address + offset > 0xFFFF) HCF
+        return in32(bar.address + offset);
     } else {
-        memcpy(dest, (const void*)bar.virtual_address + offset, count);//cast away volatile as it is a read?
+        return *(volatile uint32_t*)(bar.virtual_address + offset);
+    }
+}
+//forces 32 bit read/writes
+void write_bar_32(struct BarInfo bar, uint32_t src, uint64_t offset) {
+    assert(offset % 4 == 0);
+
+    if(bar.is_io_bar) {
+        if(bar.address + offset > 0xFFFF) HCF
+        out32(bar.address + offset, src);
+    } else {
+        *(volatile uint32_t*)(bar.virtual_address + offset) = src;
     }
 }
 
@@ -197,6 +214,7 @@ void initialise_pci() {
                 if(header.class_code == 0x0C && header.subclass == 0x03 && header.prog_if == 0x20) {
                     //EHCI USB controller
                     printf("EHCI found\n");
+                    initialise_ehci(device, bar_list[0]);
                 }
                 
             }

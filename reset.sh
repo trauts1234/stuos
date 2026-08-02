@@ -14,7 +14,7 @@ sudo losetup -D
 rm "${OUTPUT_DISK}" -f
 
 #create new filesystem image and add MBR
-fallocate -l 20M "${OUTPUT_DISK}"
+fallocate -l 10M "${OUTPUT_DISK}"
 sudo parted -s "${OUTPUT_DISK}" \
     mklabel msdos \
     mkpart primary fat16 1M 100% \

@@ -33,8 +33,18 @@ struct BarInfo {
     bool is_io_bar;
 };
 
+//represents a PCI device whose configuration can be read by a port
+struct PciDevice {
+    uint8_t function_number:3;
+    uint8_t device_number:5;
+    uint8_t bus_number;
+};
+
 void initialise_pci();
 
-void read_bar(struct BarInfo bar, void* dest, uint64_t offset, uint64_t count);
+uint32_t read_bar_32(struct BarInfo bar, uint64_t offset);
+void write_bar_32(struct BarInfo bar, uint32_t src, uint64_t offset);
+void read_header(struct PciDevice device, uint8_t output_buffer[256]);
+void write_header(struct PciDevice device, uint8_t input_buffer[256]);
 
 #endif
