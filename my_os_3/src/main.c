@@ -98,10 +98,10 @@ void kmain(void) {
     devfs_init();
     syscall_init();
     initialise_pci();
-    // __asm("sti");
-    // while(1) {
-    //     __asm("nop");
-    // }
+    __asm("sti");
+    while(1) {
+        __asm("nop");
+    }
     mount_fat16(vfs_get("/", "/dev/blkAp1", 0), "fat");
 
     // struct VNode fuzz = vfs_get("/", "testing.out", 0);

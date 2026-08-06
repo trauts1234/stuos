@@ -1,29 +1,32 @@
 #include "ehci_driver.h"
 #include "pci.h"
+#include "physical_slab_allocation.h"
 #include "uapi/stdint.h"
 #include "kern_libc.h"
 #include "debugging.h"
+#include "memory.h"
+#include <uapi/stdbool.h>
 
 //https://www.intel.com/content/dam/www/public/us/en/documents/technical-specifications/ehci-specification-for-usb.pdf
 
 //NOTE: R/WC bits, writing 0 does nothing, and writing 1 sets it to 0 ????!!!!!
 
-// struct USBCommandReg {
-//     uint32_t
-//         run: 1,
-//         host_controller_reset: 1,
-//         programmable_frame_list_size: 2,
-//         periodic_schedule_enable: 1,
-//         async_schedule_enable: 1,
-//         interrupt_on_async_advance_doorbell: 1,//allows software to trigger interrupt
-//         light_host_controller_reset: 1,//resets the controller without affecting connected devices
-//         async_schedule_park_mode_count: 2,
-//         reserved_1: 1,
-//         async_schedule_park_mode_enable: 1,
-//         reserved_2: 4,
-//         interrupt_threshold: 8,
-//         reserved_3: 8;
-// };
+struct USBCommandReg {
+    uint32_t
+        run: 1,
+        host_controller_reset: 1,
+        programmable_frame_list_size: 2,
+        periodic_schedule_enable: 1,
+        async_schedule_enable: 1,
+        interrupt_on_async_advance_doorbell: 1,//allows software to trigger interrupt
+        light_host_controller_reset: 1,//resets the controller without affecting connected devices
+        async_schedule_park_mode_count: 2,
+        reserved_1: 1,
+        async_schedule_park_mode_enable: 1,
+        reserved_2: 4,
+        interrupt_threshold: 8,
+        reserved_3: 8;
+};
 struct USBStatusReg {
     uint32_t
     usb_transfer_interrupt: 1,
@@ -130,6 +133,41 @@ struct USBLegControlStatus {
         smi_on_bar: 1;//R/WC
 };
 
+struct CapabilityRegisters {
+    uint8_t capability_register_length;//CAPLENGTH
+    uint8_t reserved_1;
+    uint16_t interface_version_number;//HCIVERSION
+    struct StructuralParameters structural_parameters;//HCSPARAMS
+    struct CapabilityParameters capability_parameters;//HCCPARAMS
+    uint32_t companion_port_route_description;//HCSP-PORTROUTE (only valid if structural_parameters.port_routing_rules)
+};
+
+struct OperationRegisters {
+    struct USBCommandReg usb_command;//USBCMD
+    struct USBStatusReg usb_status;//USBSTS
+    struct USBInterruptEnableReg usb_interrupt_enable;//USBINTR
+    uint32_t usb_frame_index;//FRINDEX
+    uint32_t segment_selector_4g;//CTRLDSSEGMENT
+    uint32_t frame_list_base_address;//PERIODICLISTBASE
+    uint32_t next_async_list_address;//ASYNCLISTADDR
+    uint8_t padding[36];
+    uint32_t configured_flag_register;//CONFIGFLAG
+    struct PortStatusControlReg port_status_control_register[];//PORTSC - index 0,1,2,...,N_PORTS-1
+
+};
+
+//queue head
+#define QUEUETYPE_QH 0b01
+//stops reading asynchronous queue if this bit is set
+#define ENDPOINT_CHARACTERISTICS_H (1 << 15)
+struct QueueHead {
+    uint32_t horizontal_link_pointer;//bits index 1 and 2 are type, bit 0 is 1 if the link pointer is invalid
+    uint32_t endpoint_characteristics;
+    uint32_t endpoint_capabilities;
+    uint32_t current_td_address;
+    uint32_t other_stuff[8];
+};
+
 //offsets into BAR0
 
 //capability register length (read lowest byte only)
@@ -143,34 +181,20 @@ struct USBLegControlStatus {
 
 #define USBCMD_OFFSET 0
 #define USBSTS_OFFSET 4
+#define CTRLDSSEGMENT_OFFSET 16
+#define ASYNCLISTADDR_OFFSET 24
+#define PORTSC_OFFSET(port_index) (0x44 + 4*(port_index))
 
 #define USBLEGSUP_BIOS_OWNED_SEMAPHORE (1 << 16)
 #define USBLEGSUP_OS_OWNED_SEMAPHORE (1 << 24)
 #define USBSTS_HCHALTED (1 << 12)
 #define USBCMD_HCRESET (1 << 1)
-
-// struct CapabilityRegisters {
-//     uint8_t capability_register_length;//CAPLENGTH
-//     uint8_t reserved_1;
-//     uint16_t interface_version_number;//HCIVERSION
-//     struct StructuralParameters structural_parameters;//HCSPARAMS
-//     struct CapabilityParameters capability_parameters;//HCCPARAMS
-//     uint32_t companion_port_route_description;//HCSP-PORTROUTE (only valid if structural_parameters.port_routing_rules)
-// };
-
-// struct OperationRegisters {
-//     struct USBCommandReg usb_command;//USBCMD
-//     struct USBStatusReg usb_status;//USBSTS
-//     struct USBInterruptEnableReg usb_interrupt_enable;//USBINTR
-//     uint32_t usb_frame_index;//FRINDEX
-//     uint32_t segment_selector_4g;//CTRLDSSEGMENT
-//     uint32_t frame_list_base_address;//PERIODICLISTBASE
-//     uint32_t next_async_list_address;//ASYNCLISTADDR
-//     uint8_t padding[36];
-//     uint32_t configured_flag_register;//CONFIGFLAG
-//     struct PortStatusControlReg port_status_control_register[];//PORTSC - index 0,1,2,...,N_PORTS-1
-
-// };
+#define USBCMD_RS 1
+#define HCCPARAMS_64bit 1
+#define HCSPARAMS_NPORTS_MASK 0xF
+#define HCSPARAMS_PPC (1 << 4)
+#define PORTSC_PP (1 << 12)
+#define PORTSC_CURRENT_CONNECT_STATUS 1
 
 void initialise_ehci(struct PciDevice dev, struct BarInfo bar) {
     uint8_t cap_length = read_bar_32(bar, CAPLENGTH_OFFSET);
@@ -227,29 +251,51 @@ void initialise_ehci(struct PciDevice dev, struct BarInfo bar) {
         ptr = (*usblegsup >> 8) & 0xFF;
     }
 
-    //TODO
-    // if(cap_regs.capability_parameters.is_64_bit) {
-        
-    // } else {
-    //     assert(op_regs.segment_selector_4g == 0);
-    // }
+    if(read_bar_32(bar, HCCPARAMS) & HCCPARAMS_64bit) {
+        assert(read_bar_32(bar, cap_length + CTRLDSSEGMENT_OFFSET) == 0);
+    }
 
     //halt the EHCI chip
     write_bar_32(bar, 0, cap_length + USBCMD_OFFSET);
-    uint32_t usb_sts;
-    do {
-        usb_sts = read_bar_32(bar, cap_length + USBSTS_OFFSET);
-    } while((usb_sts & USBSTS_HCHALTED) == 0);
-
-    printf("success!\n");
+    while((read_bar_32(bar, cap_length + USBSTS_OFFSET) & USBSTS_HCHALTED) == 0);
 
     //reset the EHCI chip
     write_bar_32(bar, USBCMD_HCRESET, cap_length + USBCMD_OFFSET);
-    uint32_t usb_cmd;
-    do {
-        usb_cmd = read_bar_32(bar, cap_length + USBCMD_OFFSET);
-    } while(usb_cmd & USBCMD_HCRESET);
+    while(read_bar_32(bar, cap_length + USBCMD_OFFSET) & USBCMD_HCRESET);
 
-    printf("success2!\n");
+    uint64_t physical_page = malloc4k_phys();
+    assert((physical_page & 0xFFFFFFFF00000000ull) == 0);//EHCI controller might be in 32 bit mode...
+    uint32_t async_list_phys = physical_page;
+    struct QueueHead* async_list_virt = phys_to_hhdm(physical_page);
+    
+    *async_list_virt = (struct QueueHead) {
+        .horizontal_link_pointer = async_list_phys | (QUEUETYPE_QH << 1),
+        .endpoint_characteristics = ENDPOINT_CHARACTERISTICS_H
+    };
+    write_bar_32(bar, async_list_phys, cap_length + ASYNCLISTADDR_OFFSET);
 
+    write_bar_32(bar, USBCMD_RS, cap_length + USBCMD_OFFSET);
+    while((read_bar_32(bar, cap_length + USBSTS_OFFSET) & USBSTS_HCHALTED));
+
+    uint32_t hcsparams = read_bar_32(bar, HCSPARAMS_OFFSET);
+    const uint32_t n_ports = hcsparams & HCSPARAMS_NPORTS_MASK;
+    const bool port_power_control = hcsparams & HCSPARAMS_PPC;
+
+    for(uint32_t port = 0; port < n_ports; port++) {
+        uint32_t portsc = read_bar_32(bar, cap_length + PORTSC_OFFSET(port));
+
+        if(port_power_control) {
+            assert(portsc & PORTSC_PP);//otherwise I will have to power up the port myself
+        } else {
+            assert(portsc & PORTSC_PP);//must already be powered
+        }
+
+        if(portsc & PORTSC_CURRENT_CONNECT_STATUS) {
+            printf("device found on port %u\n", port);
+        } else {
+            printf("nothing on port %u\n", port);
+        }
+    }
+
+    printf("EHCI initialised\n");
 }

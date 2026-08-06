@@ -216,6 +216,9 @@ void initialise_pci() {
                     printf("EHCI found\n");
                     initialise_ehci(device, bar_list[0]);
                 }
+                if(header.class_code == 0x0C && header.subclass == 0x03 && header.prog_if == 0x30) {
+                    printf("xHCI found\n");
+                }
                 
             }
         }
