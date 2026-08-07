@@ -6,6 +6,7 @@
 #include "virtio_driver.h"
 #include <uapi/stdint.h>
 #include "memory.h"
+#include "xhci_driver.h"
 
 #define CONFIG_ADDRESS 0xCF8
 #define CONFIG_DATA 0xCFC
@@ -209,8 +210,6 @@ void initialise_pci() {
                     initialise_virtio(header, header_buffer, bar_list);
                 }
 
-                printf("cc: %X sc: %X IF: %X\n", header.class_code, header.subclass, header.prog_if);
-
                 if(header.class_code == 0x0C && header.subclass == 0x03 && header.prog_if == 0x20) {
                     //EHCI USB controller
                     printf("EHCI found\n");
@@ -218,6 +217,7 @@ void initialise_pci() {
                 }
                 if(header.class_code == 0x0C && header.subclass == 0x03 && header.prog_if == 0x30) {
                     printf("xHCI found\n");
+                    initialise_xhci(device, bar_list[0]);
                 }
                 
             }
