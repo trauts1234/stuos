@@ -202,6 +202,23 @@ void initialise_pci() {
                 if(header.vendor_id == 0xFFFF) continue;//FFFF means no device
                 if(header.header_type != 0) continue;//not a standard PCI device
 
+                if(header.status & (1 << 4)) {
+                    //pointer to capabilities list is stored at index 0x34
+                    printf("capabilities: ");
+                    for(uint8_t capability_pointer = header_buffer[0x34]; capability_pointer; capability_pointer = header_buffer[capability_pointer+1]) {
+                        uint8_t capability_id = header_buffer[capability_pointer];
+                        switch(capability_id) {
+                            case 0x05:
+                            printf("MSI,");break;
+                            case 0x11:
+                            printf("MSI-X,");break;
+                            default:
+                            printf("0x%x,", capability_id);
+                        }
+                    }
+                    printf("\n");
+                }
+
                 struct BarInfo bar_list[6];
                 handle_bar(device, header, bar_list);
 
