@@ -23,30 +23,6 @@ union ConfigAddress {
     };
 };
 
-struct MSIData {
-    //message control
-    uint16_t 
-        enable: 1,
-        multiple_message_capable: 3,
-        multiple_message_enable: 3,
-        is_64_bit: 1,
-        per_vector_masking: 1,
-        reserved_1: 7;
-    uint32_t message_address_lo;
-    uint32_t message_address_hi;
-    //message data
-    uint16_t 
-        vector: 8,
-        delivery_mode: 3,
-        reserved_2: 3,
-        level: 1,
-        trigger_mode: 1;
-    uint16_t reserved_4;
-    //only used if per_vector_masking:
-    // uint32_t mask;//mask message by setting 1<<n
-    // uint32_t pending;//n is pending if 1<<n set
-} __attribute__ ((packed));
-
 static uint32_t config_read(union ConfigAddress address) {
     out32(CONFIG_ADDRESS, address.data);
     return in32(CONFIG_DATA);
@@ -188,17 +164,6 @@ static void handle_bar(struct PciDevice device, struct PciConfigurationHeader he
     }
 }
 
-//don't forget to write back the data!
-static void setup_msi(struct MSIData *data) {
-    assert(!data->enable);
-
-    printf("device supports %u interrupts\n", 1<<data->multiple_message_capable);
-    data->multiple_message_enable = 0;// 1<<0 i.e one interrupt (TODO support as many interrupts as requested)
-
-    data->enable = 1;
-
-}
-
 //may do any number of byte reads
 uint32_t read_bar_32(struct BarInfo bar, uint64_t offset) {
     assert(offset % 4 == 0);
@@ -236,26 +201,6 @@ void initialise_pci() {
                 struct PciConfigurationHeader header = *(struct PciConfigurationHeader*)&header_buffer;
                 if(header.vendor_id == 0xFFFF) continue;//FFFF means no device
                 if(header.header_type != 0) continue;//not a standard PCI device
-
-                if(header.status & (1 << 4)) {
-                    //pointer to capabilities list is stored at index 0x34
-                    printf("capabilities:\n");
-                    for(uint8_t capability_pointer = header_buffer[0x34]; capability_pointer; capability_pointer = header_buffer[capability_pointer+1]) {
-                        uint8_t capability_id = header_buffer[capability_pointer];
-                        switch(capability_id) {
-                            case 0x05:
-                            // setup_msi((struct MSIData *)&header_buffer[capability_pointer+2]);
-                            break;
-
-                            case 0x11:
-                            printf("MSI-X,");break;
-
-                            default:
-                            printf("0x%x,", capability_id);
-                        }
-                    }
-                    printf("\n");
-                }
 
                 struct BarInfo bar_list[6];
                 handle_bar(device, header, bar_list);
