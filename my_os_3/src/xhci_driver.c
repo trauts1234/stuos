@@ -205,10 +205,10 @@ void initialise_xhci(struct PciDevice dev, struct BarInfo bar) {
         dcbaa_virt[0] = 0;
     }
 
-    write_bar_32(bar, dcbaa_phys >> 32, cap_length + DCBAAP_OFFSET + 4);
     write_bar_32(bar, dcbaa_phys & 0xFFFFFFFF, cap_length + DCBAAP_OFFSET);
+    write_bar_32(bar, dcbaa_phys >> 32, cap_length + DCBAAP_OFFSET + 4);
 
-    //set up TRB
+    //set up command ring
     uint64_t trb_phys = malloc4k_phys();
     struct TransferRequestBlock *trb_virt = phys_to_hhdm(trb_phys);
     memset(trb_virt, 0, PAGE_SIZE);
@@ -230,8 +230,8 @@ void initialise_xhci(struct PciDevice dev, struct BarInfo bar) {
         .control = (TRB_TYPE_LINK << 10) | TRB_TC_BIT | ring.command_ring_cycle_state
     };
 
-    write_bar_32(bar, trb_phys >> 32, cap_length + CRCR_OFFSET + 4);
     write_bar_32(bar, (trb_phys & 0xFFFFFFFF) | ring.command_ring_cycle_state, cap_length + CRCR_OFFSET);
+    write_bar_32(bar, trb_phys >> 32, cap_length + CRCR_OFFSET + 4);
 
     //set up runtime registers
     //enable interrupts
@@ -263,18 +263,17 @@ void initialise_xhci(struct PciDevice dev, struct BarInfo bar) {
 
     //update the ERDP
     uint64_t dequeue_addr = event_ring_trb_phys + sizeof(struct TransferRequestBlock) * ring.event_dequeue_idx;
-    write_bar_32(bar, dequeue_addr >> 32, rts_offset + IR_ERDP_OFFSET(0) + 4);
     write_bar_32(bar, dequeue_addr & 0xFFFFFFFF, rts_offset + IR_ERDP_OFFSET(0));
+    write_bar_32(bar, dequeue_addr >> 32, rts_offset + IR_ERDP_OFFSET(0) + 4);
 
     //point to the ERST
-    write_bar_32(bar, event_ring_table_phys >> 32, IR_ERSTBA_OFFSET(0) + rts_offset + 4);
     write_bar_32(bar, event_ring_table_phys & 0xFFFFFFFF, IR_ERSTBA_OFFSET(0) + rts_offset);
+    write_bar_32(bar, event_ring_table_phys >> 32, IR_ERSTBA_OFFSET(0) + rts_offset + 4);
 
     //clear prior interrupts
     ack_irq(bar, cap_length, rts_offset, 0);
 
     //start
-    printf("before: %x\n", read_bar_32(bar, cap_length + USBSTS_OFFSET));
     write_bar_32(bar, USBCMD_RS, cap_length + USBCMD_OFFSET);
     while(1) {
         uint32_t usb_sts = read_bar_32(bar, cap_length + USBSTS_OFFSET);
@@ -283,7 +282,6 @@ void initialise_xhci(struct PciDevice dev, struct BarInfo bar) {
             break;
         }
     }
-    printf("after: %x\n", read_bar_32(bar, cap_length + USBSTS_OFFSET));
 
     for(uint8_t port = 0; port < max_ports; port++) {
         uint32_t portsc = read_bar_32(bar, cap_length + PORTSC_OFFSET(port));
@@ -296,7 +294,9 @@ void initialise_xhci(struct PciDevice dev, struct BarInfo bar) {
         }
     }
 
-    printf("xhci initialised (error flag %d)\n", USBSTS_error(read_bar_32(bar, cap_length + USBSTS_OFFSET)));
+    printf("xhci initialised (CRCR llX) (error flag %d)\n",
+    //     *(uint64_t*)(bar.virtual_address + cap_length + CRCR_OFFSET),
+        USBSTS_error(read_bar_32(bar, cap_length + USBSTS_OFFSET)));
 
     struct TransferRequestBlock send = {};
     send.trb_type = TRB_TYPE_ENABLE_SLOT;
@@ -305,4 +305,5 @@ void initialise_xhci(struct PciDevice dev, struct BarInfo bar) {
     ring_doorbell(&ring, 0, 0);//ring command doorbell
 
     printf("sent trb\n");
+    HCF
 }

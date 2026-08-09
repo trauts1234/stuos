@@ -9,4 +9,5 @@ qemu-system-x86_64 $FLAGS -m 4096M \
   -drive file=filesystem,format=raw,if=none,id=usbstick \
   -device qemu-xhci,id=xhci \
   -device usb-storage,drive=usbstick \
-  -serial stdio -no-reboot -no-shutdown
+  -serial stdio -no-reboot -no-shutdown \
+  -trace usb_xhci_* -D ./qemu-xhci.log
