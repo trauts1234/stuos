@@ -12,22 +12,51 @@
 //mark as link, which points back to the start
 #define TRB_TYPE_LINK 6
 #define TRB_TYPE_ENABLE_SLOT 9
+
+//event ring responses types
+#define TRB_TYPE_TRANSFER 32
+#define TRB_TYPE_CMD_COMPLETION 33
+#define TRB_TYPE_PORT_STS_CHANGE 34
+//optional
+#define TRB_TYPE_BANDWIDTH_REQUEST 35
+//optional
+#define TRB_TYPE_DOORBELL 36
+#define TRB_TYPE_HOST_CONTROLLER 37
+#define TRB_TYPE_DEVICE_NOTIFICATION 38
+#define TRB_TYPE_MFINDEX_WRAP 39
+
 //toggle the internal cycle bit
 #define TRB_TC_BIT (1 << 1)
 
-struct TransferRequestBlock {
-    uint64_t parameter;
-    uint32_t status;
-    union {
-        struct {
-            uint32_t
-            cycle_bit: 1,
-            reserved_0: 9,
-            trb_type: 6,
-            reserved_1: 16;
+union TransferRequestBlock {
+    //basic params
+    struct {
+        uint64_t parameter;
+        uint32_t status;
+        union {
+            struct {
+                uint32_t
+                cycle_bit: 1,
+                reserved_0: 9,
+                trb_type: 6,
+                reserved_1: 16;
+            };
+            uint32_t control;
         };
-        uint32_t control;
     };
+
+    struct CommandCompletionRequestBlock {
+        uint64_t command_trb_pointer;
+        uint32_t 
+        reserved_0: 24,
+        completion_code: 8;
+        uint32_t
+        cycle_bit: 1,
+        reserved_1: 9,
+        trb_type: 6,
+        vfid: 8,
+        slot_id: 8;
+    } command_completion_request_block;
 };
 
 struct EventRingSegmentTableEntry {
@@ -39,13 +68,13 @@ struct EventRingSegmentTableEntry {
 struct xHCIData {
     uint64_t command_trb_count;
     uint64_t command_enqueue_ptr;
-    struct TransferRequestBlock *command_trbs;
+    union TransferRequestBlock *command_trbs;
     uint8_t command_ring_cycle_state;
 
     uint64_t event_trb_count;
     uint64_t event_dequeue_idx;
     uint64_t event_trbs_phys;
-    struct TransferRequestBlock *event_trbs;
+    union TransferRequestBlock *event_trbs;
     uint8_t event_ring_cycle_state;
 
     struct BarInfo bar;
@@ -99,11 +128,17 @@ bool PORTSC_pp(uint32_t portsc) {return portsc & (1 << 9);}
 #define USBSTS_EINT (1 << 3)
 #define USBCMD_HCRST (1 << 1)
 #define USBCMD_RS 1
+//TODO port reset and warm port reset
+#define PORTSC_PR (1 << 4)
+#define PORTSC_CSC (1 << 17)
+#define PORTSC_PEC (1 << 18)
+#define PORTSC_PRC (1 << 21)
+#define PORTSC_WPR (1 << 31)
 #define IMAN_INTERRUPT_ENABLE (1 << 1)
 #define IMAN_INTERRUPT_PENDING 1
 #define ERDP_EHB (1 << 3)
 
-void ack_irq(struct BarInfo bar, uint32_t cap_length, uint32_t rts_offset, uint8_t interrupt_index) {
+static void ack_irq(struct BarInfo bar, uint32_t cap_length, uint32_t rts_offset, uint8_t interrupt_index) {
     uint32_t usbsts = read_bar_32(bar, cap_length + USBSTS_OFFSET);
     usbsts |= USBSTS_EINT;
     write_bar_32(bar, usbsts, cap_length + USBSTS_OFFSET);
@@ -113,7 +148,7 @@ void ack_irq(struct BarInfo bar, uint32_t cap_length, uint32_t rts_offset, uint8
     write_bar_32(bar, iman, rts_offset + IR_IMAN_OFFSET(interrupt_index));
 }
 
-void enqueue_ring(struct xHCIData *ring, struct TransferRequestBlock trb) {
+static void enqueue_ring(struct xHCIData *ring, union TransferRequestBlock trb) {
     trb.cycle_bit = ring->command_ring_cycle_state;
     ring->command_trbs[ring->command_enqueue_ptr] = trb;
 
@@ -127,7 +162,7 @@ void enqueue_ring(struct xHCIData *ring, struct TransferRequestBlock trb) {
 }
 
 //returns 0 on success, -1 if there was nothing to get (trb_out unaffected)
-int dequeue_ring(struct xHCIData *ring, struct TransferRequestBlock *trb_out) {
+static int dequeue_ring(struct xHCIData *ring, union TransferRequestBlock *trb_out) {
     if(ring->event_trbs[ring->event_dequeue_idx].cycle_bit != ring->event_ring_cycle_state) {
         return -1;
     }
@@ -139,15 +174,47 @@ int dequeue_ring(struct xHCIData *ring, struct TransferRequestBlock *trb_out) {
         ring->event_ring_cycle_state ^= 1;
     }
 
-    uint64_t erdp = ERDP_EHB | (ring->event_trbs_phys + sizeof(struct TransferRequestBlock) * ring->event_dequeue_idx);
+    uint64_t erdp = ERDP_EHB | (ring->event_trbs_phys + sizeof(union TransferRequestBlock) * ring->event_dequeue_idx);
     write_bar_32(ring->bar, erdp >> 32, ring->rts_offset + IR_ERDP_OFFSET(0) + 4);
     write_bar_32(ring->bar, erdp & 0xFFFFFFFF, ring->rts_offset + IR_ERDP_OFFSET(0));
 
     return 0;
 }
 
-void ring_doorbell(struct xHCIData *ring, uint8_t doorbell, uint8_t target) {
+static void ring_doorbell(struct xHCIData *ring, uint8_t doorbell, uint8_t target) {
     write_bar_32(ring->bar, target, ring->db_offset + DOORBELL_OFFSET(doorbell));
+}
+
+void xhci_handle_responses(struct xHCIData *data) {
+    //try and read some data
+    union TransferRequestBlock recv = {};
+    while(dequeue_ring(data, &recv) == 0) {
+        switch(recv.trb_type) {
+            case TRB_TYPE_TRANSFER:
+            printf("type transfer event\n");break;
+
+            case TRB_TYPE_CMD_COMPLETION:
+            // printf("completion event: code 0x%x slot %u\n", recv.command_completion_request_block.completion_code, recv.command_completion_request_block.slot_id);
+            break;
+
+            case TRB_TYPE_PORT_STS_CHANGE:
+            case TRB_TYPE_BANDWIDTH_REQUEST:
+            break;//optional
+
+            case TRB_TYPE_DOORBELL:
+            printf("doorbell event\n");break;
+            case TRB_TYPE_HOST_CONTROLLER:
+            printf("host controller event\n");break;
+            case TRB_TYPE_DEVICE_NOTIFICATION:
+            printf("device notification event\n");break;
+            case TRB_TYPE_MFINDEX_WRAP:
+            printf("mfindex wrap event\n");break;
+            
+            default:
+            printf("WARN: unknown trb type 0x%x\n", recv.trb_type);
+            break;
+        }
+    }
 }
 
 void initialise_xhci(struct PciDevice dev, struct BarInfo bar) {
@@ -210,11 +277,11 @@ void initialise_xhci(struct PciDevice dev, struct BarInfo bar) {
 
     //set up command ring
     uint64_t trb_phys = malloc4k_phys();
-    struct TransferRequestBlock *trb_virt = phys_to_hhdm(trb_phys);
+    union TransferRequestBlock *trb_virt = phys_to_hhdm(trb_phys);
     memset(trb_virt, 0, PAGE_SIZE);
 
     struct xHCIData ring = {
-        .command_trb_count = PAGE_SIZE / sizeof(struct TransferRequestBlock),
+        .command_trb_count = PAGE_SIZE / sizeof(union TransferRequestBlock),
         .command_enqueue_ptr = 0,
         .command_ring_cycle_state = 1,
         .command_trbs = trb_virt,
@@ -225,7 +292,7 @@ void initialise_xhci(struct PciDevice dev, struct BarInfo bar) {
     };
 
     //set last element to a link, which points back to the start again
-    ring.command_trbs[ring.command_trb_count-1] = (struct TransferRequestBlock) {
+    ring.command_trbs[ring.command_trb_count-1] = (union TransferRequestBlock) {
         .parameter = trb_phys,
         .control = (TRB_TYPE_LINK << 10) | TRB_TC_BIT | ring.command_ring_cycle_state
     };
@@ -241,11 +308,11 @@ void initialise_xhci(struct PciDevice dev, struct BarInfo bar) {
 
     //set up event ring
     uint64_t event_ring_trb_phys = malloc4k_phys();//this is the actual queue
-    struct TransferRequestBlock *event_ring_trb_virt = phys_to_hhdm(event_ring_trb_phys);
+    union TransferRequestBlock *event_ring_trb_virt = phys_to_hhdm(event_ring_trb_phys);
     uint64_t event_ring_table_phys = malloc4k_phys();//this contains fat pointers to several event rings (in our case, one)
     struct EventRingSegmentTableEntry *event_ring_table_virt = phys_to_hhdm(event_ring_table_phys);
 
-    uint16_t trb_count = PAGE_SIZE / sizeof(struct TransferRequestBlock);
+    uint16_t trb_count = PAGE_SIZE / sizeof(union TransferRequestBlock);
     event_ring_table_virt[0] = (struct EventRingSegmentTableEntry) {
         .ring_segment_base_address = event_ring_trb_phys,
         .ring_segment_size = trb_count,
@@ -262,7 +329,7 @@ void initialise_xhci(struct PciDevice dev, struct BarInfo bar) {
     write_bar_32(bar, 1, IR_ERSTSZ_OFFSET(0) + rts_offset);
 
     //update the ERDP
-    uint64_t dequeue_addr = event_ring_trb_phys + sizeof(struct TransferRequestBlock) * ring.event_dequeue_idx;
+    uint64_t dequeue_addr = event_ring_trb_phys + sizeof(union TransferRequestBlock) * ring.event_dequeue_idx;
     write_bar_32(bar, dequeue_addr & 0xFFFFFFFF, rts_offset + IR_ERDP_OFFSET(0));
     write_bar_32(bar, dequeue_addr >> 32, rts_offset + IR_ERDP_OFFSET(0) + 4);
 
@@ -283,27 +350,51 @@ void initialise_xhci(struct PciDevice dev, struct BarInfo bar) {
         }
     }
 
-    for(uint8_t port = 0; port < max_ports; port++) {
-        uint32_t portsc = read_bar_32(bar, cap_length + PORTSC_OFFSET(port));
-        assert(PORTSC_pp(portsc));//must already be powered
+    printf("xhci initialised (error flag %d)\n", USBSTS_error(read_bar_32(bar, cap_length + USBSTS_OFFSET)));
 
-        if(PORTSC_ccs(portsc)) {
-            printf("device found on port %u\n", port);
-        } else {
-            printf("nothing on port %u\n", port);
-        }
+    for(uint64_t i=0;i<3000;i++) {
+        __asm("nop");
     }
 
-    printf("xhci initialised (CRCR llX) (error flag %d)\n",
-    //     *(uint64_t*)(bar.virtual_address + cap_length + CRCR_OFFSET),
-        USBSTS_error(read_bar_32(bar, cap_length + USBSTS_OFFSET)));
+    for(int i=0; i<max_ports; i++) {
+        union TransferRequestBlock send = {};
+        send.trb_type = TRB_TYPE_ENABLE_SLOT;
+        enqueue_ring(&ring, send);
+        for(uint64_t i=0;i<3000;i++) {
+            __asm("nop");
+        }
+        ring_doorbell(&ring, 0, 0);//ring command doorbell
+        for(uint64_t i=0;i<3000;i++) {
+            __asm("nop");
+        }
+    }
+    
+    for(uint64_t i=0;i<3000;i++) {
+        __asm("nop");
+    }
+    
+    xhci_handle_responses(&ring);
 
-    struct TransferRequestBlock send = {};
-    send.trb_type = TRB_TYPE_ENABLE_SLOT;
+    printf("scanning %d ports\n", max_ports);
+    for(uint8_t port = 0; port < max_ports; port++) {
+        uint32_t portsc = read_bar_32(bar, cap_length + PORTSC_OFFSET(port));
+        assert(PORTSC_pp(portsc));//TODO power on the port if it isn't already
 
-    enqueue_ring(&ring, send);
-    ring_doorbell(&ring, 0, 0);//ring command doorbell
+        //write to clear some status bits
+        portsc |= PORTSC_CSC | PORTSC_PEC | PORTSC_PRC;
+        write_bar_32(bar, portsc, cap_length + PORTSC_OFFSET(port));
+        for(uint64_t i=0;i<1000;i++) {
+            __asm("nop");
+        }
+        portsc = read_bar_32(bar, cap_length + PORTSC_OFFSET(port));
 
-    printf("sent trb\n");
-    HCF
+        if(PORTSC_ccs(portsc)) {
+            printf("(ccs) device found on port %u\n", port);
+        }
+        if(portsc & PORTSC_CSC) {
+            printf("(csc) device found on port %u\n", port);
+        }
+
+    }
+
 }
