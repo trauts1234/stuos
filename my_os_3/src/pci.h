@@ -47,4 +47,18 @@ void write_bar_32(struct BarInfo bar, uint32_t src, uint64_t offset);
 void read_header(struct PciDevice device, uint8_t output_buffer[256]);
 void write_header(struct PciDevice device, uint8_t input_buffer[256]);
 
+//what raw data can be sent to a port
+union ConfigAddress {
+    uint32_t data;
+
+    struct {
+        uint8_t register_offset;
+        struct PciDevice device;
+        uint8_t reserved:7;
+        uint8_t enable_bit:1;
+    };
+};
+void config_write(union ConfigAddress address, uint32_t value);
+uint32_t config_read(union ConfigAddress address);
+
 #endif

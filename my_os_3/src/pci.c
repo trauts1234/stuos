@@ -11,23 +11,11 @@
 #define CONFIG_ADDRESS 0xCF8
 #define CONFIG_DATA 0xCFC
 
-//what raw data can be sent to a port
-union ConfigAddress {
-    uint32_t data;
-
-    struct {
-        uint8_t register_offset;
-        struct PciDevice device;
-        uint8_t reserved:7;
-        uint8_t enable_bit:1;
-    };
-};
-
-static uint32_t config_read(union ConfigAddress address) {
+uint32_t config_read(union ConfigAddress address) {
     out32(CONFIG_ADDRESS, address.data);
     return in32(CONFIG_DATA);
 }
-static void config_write(union ConfigAddress address, uint32_t value) {
+void config_write(union ConfigAddress address, uint32_t value) {
     out32(CONFIG_ADDRESS, address.data);
     out32(CONFIG_DATA, value);
 }
@@ -217,6 +205,7 @@ void initialise_pci() {
                 }
                 if(header.class_code == 0x0C && header.subclass == 0x03 && header.prog_if == 0x30) {
                     printf("xHCI found\n");
+                    printf("vendor id: %d device id: %d subsystem vendor id: %d\n", header.vendor_id, header.device_id, header.subsystem_vendor_id);
                     initialise_xhci(device, bar_list[0]);
                 }
                 
