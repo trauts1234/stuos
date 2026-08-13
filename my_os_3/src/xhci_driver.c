@@ -7,6 +7,9 @@
 #include "memory.h"
 #include <uapi/stdbool.h>
 
+//store TRBs in a list after they have been dequeued
+#define TRB_LIST_LEN 64
+
 //https://www.intel.com/content/dam/www/public/us/en/documents/technical-specifications/extensible-host-controler-interface-usb-xhci.pdf
 
 //mark as link, which points back to the start
@@ -82,6 +85,9 @@ struct xHCIData {
     uint32_t db_offset;
 
     bool is_usb3[64];
+    //I've taken these from the event TRBs
+    //trb type 0 indicates an empty slot
+    union TransferRequestBlock unhandled_command_completion[TRB_LIST_LEN];
 };
 
 //offsets into BAR0
@@ -248,6 +254,25 @@ static void ring_doorbell(struct xHCIData *ring, uint8_t doorbell, uint8_t targe
     write_bar_32(ring->bar, target, ring->db_offset + DOORBELL_OFFSET(doorbell));
 }
 
+static void insert_to_list(union TransferRequestBlock list[TRB_LIST_LEN], union TransferRequestBlock to_insert) {
+    for(int i=0;;i++) {
+        assert(i < TRB_LIST_LEN)
+        if(list[i].trb_type == 0) {
+            list[i] = to_insert;
+            return;
+        }
+    }
+}
+//returns {} on failure
+static union TransferRequestBlock extract_from_list(union TransferRequestBlock list[TRB_LIST_LEN]) {
+    for(int i=0; i<TRB_LIST_LEN ;i++) {
+        if(list[i].trb_type != 0) {
+            return list[i];
+        }
+    }
+    return (union TransferRequestBlock) {};
+}
+
 void xhci_handle_responses(struct xHCIData *data) {
     //try and read some data
     union TransferRequestBlock recv = {};
@@ -257,7 +282,7 @@ void xhci_handle_responses(struct xHCIData *data) {
             printf("type transfer event\n");break;
 
             case TRB_TYPE_CMD_COMPLETION:
-            printf("completion event: code 0x%x slot %u\n", recv.command_completion_request_block.completion_code, recv.command_completion_request_block.slot_id);
+            insert_to_list(data->unhandled_command_completion, recv);
             break;
 
             case TRB_TYPE_PORT_STS_CHANGE:
@@ -466,20 +491,6 @@ void initialise_xhci(struct PciDevice dev, struct BarInfo bar) {
 
     debug_regs(bar, cap_length, rts_offset);
 
-    // for(int i=0; i<max_ports; i++) {
-    //     union TransferRequestBlock send = {};
-    //     send.trb_type = TRB_TYPE_ENABLE_SLOT;
-    //     enqueue_ring(&ring, send);
-    //     for(uint64_t i=0;i<10000;i++) {
-    //         __asm("nop");
-    //     }
-    //     ring_doorbell(&ring, 0, 0);//ring command doorbell
-    //     for(uint64_t i=0;i<10000;i++) {
-    //         __asm("nop");
-    //     }
-    //     xhci_handle_responses(&ring);
-    // }
-
     printf("scanning %d ports\n", max_ports);
     for(uint8_t port = 0; port < max_ports; port++) {
         uint32_t portsc = read_bar_32(bar, cap_length + PORTSC_OFFSET(port));
@@ -521,6 +532,17 @@ void initialise_xhci(struct PciDevice dev, struct BarInfo bar) {
             portsc = read_bar_32(bar, cap_length + PORTSC_OFFSET(port));
             assert(portsc & PORTSC_PED);
             printf("success\n");
+
+            // TODO what do I do next?
+            //get a device slot
+            union TransferRequestBlock send = {};
+            send.trb_type = TRB_TYPE_ENABLE_SLOT;
+            enqueue_ring(&ring, send);
+            ring_doorbell(&ring, 0, 0);//ring command doorbell
+            xhci_handle_responses(&ring);
+            union TransferRequestBlock recv = extract_from_list(ring.unhandled_command_completion);
+            assert(recv.trb_type != 0);
+            printf("completion event: code 0x%x slot %u\n", recv.command_completion_request_block.completion_code, recv.command_completion_request_block.slot_id);
         }
 
     }
