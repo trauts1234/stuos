@@ -123,3 +123,11 @@ int toupper(int c) {
 
     return c;
 }
+int tolower(int c) {
+    unsigned char uc = (unsigned char)c;
+
+    if (uc >= 'A' && uc <= 'Z')
+        return (int)(uc + 32);
+
+    return c; 
+}

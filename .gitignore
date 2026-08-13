@@ -1,8 +1,8 @@
 stuos_libc/
 stuos_image.iso
 .vscode/
-filesystem
-filesystem_mnt/
+filesystem.img
+sysroot/
 put_in_filesystem/
 limine/
 .clangd

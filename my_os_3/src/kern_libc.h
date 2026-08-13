@@ -17,6 +17,7 @@ size_t strlen(const char* str);
 int strncmp(const char *s1, const char *s2, size_t n);
 
 int toupper(int c);
+int tolower(int c);
 
 void* malloc(size_t size);
 void free(void* ptr);
