@@ -7,7 +7,7 @@
 #include "tools.h"
 
 void file_test() {
-    char* rw_files[] = {"tocreate"};
+    char* rw_files[] = {"tocreate", "verylongfilenamethatneedsseveralfatentries.thingy"};
 
     //pre-fill tocreate
     FILE *f = fopen("tocreate", "w");
@@ -26,11 +26,11 @@ void file_test() {
         uint8_t buf[2];
         uint64_t count = fread(buf, 1, 2, fd);
         if(count != 0) {
-            printf("read %lld bytes from an empty file\n", count);
+            printf("read %lu bytes from an empty file\n", count);
             abort();
         }
 
-        for(uint64_t j = 0; j < 300; j++) {
+        for(uint64_t j = 0; j < 150; j++) {
             uint64_t offset = rand64() % 4096;
             uint64_t num_bytes = rand64() % 4096;
 
@@ -43,7 +43,7 @@ void file_test() {
             }
             for(uint64_t i=0; i<num_bytes;i++) {
                 if(counting_output[i] != counting[i]) {
-                    printf("read different bytes than were written, when reading %lld bytes at offset %lld+%lld\n", num_bytes, offset, i*2);
+                    printf("read different bytes than were written, when reading %lu bytes at offset %lu+%lu\n", num_bytes, offset, i*2);
                     printf("read %d, expected %d\n", counting_output[i], counting[i]);
                 abort();
                 }

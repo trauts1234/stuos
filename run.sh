@@ -2,10 +2,11 @@
 
 FLAGS=""
 if [[ "$1" == "debug" ]]; then
-    FLAGS="-S -s -d cpu_reset,int"
+    FLAGS="-S -s"
 fi
 
 #-trace usb_xhci_* -D ./qemu-xhci.log
+#-d cpu_reset,int
 
 # qemu-system-x86_64 $FLAGS -m 4096M \
 #   -drive file=filesystem,format=raw,if=none,id=usbstick \

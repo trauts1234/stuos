@@ -403,6 +403,54 @@ struct DirentAndVnode {
     struct VNode vnode;
 };
 
+static void debug_dir(struct Fat16DirectoryEntry *arr) {
+    for(uint64_t dir_idx=0; ; dir_idx++) {
+        char file_name[256] = {};
+        char *curr = file_name;
+        if(arr[dir_idx].attributes & 0b11000000) HCF
+        //empty entry
+        if(arr[dir_idx].filename[0] == (char)0xE5) continue;
+        if(arr[dir_idx].filename[0] == 0) {
+            printf("end\n\n");
+            return;
+        }
+        if(arr[dir_idx].attributes == FILE_ATTRIBUTES_LFN) {
+            struct Fat16LFNEntry *ent = (void*)(arr + dir_idx);
+
+            bool found_zero = false;
+            for(int i=0; i<5 && !found_zero; i++) {
+                uint16_t c = ent->unicode_name_1[i];
+                if(c & 0xFF00) HCF//unicode... weird.
+                *curr++ = (char)c;
+                found_zero = c==0;
+            }
+            for(int i=0; i<6 && !found_zero; i++) {
+                uint16_t c = ent->unicode_name_2[i];
+                if(c & 0xFF00) HCF//unicode... weird.
+                *curr++ = (char)c;
+                found_zero = c==0;
+            }
+            for(int i=0; i<2 && !found_zero; i++) {
+                uint16_t c = ent->unicode_name_3[i];
+                if(c & 0xFF00) HCF//unicode... weird.
+                *curr++ = (char)c;
+                found_zero = c==0;
+            }
+
+            printf("lfn in seq %d (is_last %d) with name %s\n", ent->sequence_number, ent->is_last_in_sequence, file_name);
+        } else {
+            for(int i=0; i < 8 && arr[dir_idx].filename[i] != ' '; i++) {
+                *curr++ = tolower(arr[dir_idx].filename[i]);
+            }
+            if(arr[dir_idx].filename[8] != ' ') *curr++ = '.';
+            for(int i=8; i<11 && arr[dir_idx].filename[i] != ' '; i++) {
+                *curr++ = tolower(arr[dir_idx].filename[i]);
+            }
+            printf("entry to a %ub entry at cluster number %u with name %s\n", arr[dir_idx].file_size_bytes, arr[dir_idx].cluster_number, file_name);
+        }
+    }
+}
+
 static uint64_t read_dirents(struct VNodeData inode_num, uint64_t dirent_index, struct dirent* dirent_buf, struct VNode* vnode_buf, uint64_t dirent_count) {
     struct Fat16Volume vol = all_fat_mounts[inode_num.mount_id];
     uint64_t entries_read = 0;
@@ -617,7 +665,6 @@ static int create_inode(struct VNodeData parent_inode_num, mode_t new_inode_type
 
     //63 LFN values, 1 entry, and a 0 entry
     struct Fat16DirectoryEntry entries_to_insert[65];
-    uint64_t next_free_entry_idx = 0;
 
     //used to create a unique short filename 
     static uint32_t create_idx = 0;
@@ -631,35 +678,33 @@ static int create_inode(struct VNodeData parent_inode_num, mode_t new_inode_type
     create_idx++;
 
     //create LFN entries
-    bool name_is_done = false;
 
     if(strlen(name) >= CHARS_PER_LFN*65) HCF//filename too long
-    uint8_t sequence_number = (strlen(name) + CHARS_PER_LFN-1) / CHARS_PER_LFN;
+    const uint8_t lfn_entry_count = (strlen(name) + CHARS_PER_LFN) / CHARS_PER_LFN;//-1 +1 in the brackets since strlen excludes \0 but I want to round up
+    const uint8_t total_added_entry_count = lfn_entry_count+2;//since I need the actual entry and a blank entry
 
-    HCF
-
-    while(!name_is_done) {
-        struct Fat16LFNEntry *lfn = (struct Fat16LFNEntry*)(entries_to_insert + next_free_entry_idx++);
+    for(int64_t seq=lfn_entry_count-1; seq >= 0; seq--) {
+        struct Fat16LFNEntry *lfn = (struct Fat16LFNEntry*)(entries_to_insert + seq);
         *lfn = (struct Fat16LFNEntry) {
-            .sequence_number = sequence_number,
-            .is_last_in_sequence = sequence_number == 1,
+            .sequence_number = lfn_entry_count-seq,
+            .is_last_in_sequence = seq == 1,
             .unicode_name_1 = {0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF},
             .attributes = FILE_ATTRIBUTES_LFN,
             .checksum = checksum(short_file_name),
             .unicode_name_2 = {0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF},
             .unicode_name_3 = {0xFFFF, 0xFFFF},
         };
-        sequence_number--;
-        for(int i=0; i<5 && !name_is_done; i++) {
-            if(*name == '\0') name_is_done = true;
+        bool done = false;
+        for(int i=0; i<5 && !done; i++) {
+            done = *name=='\0';
             lfn->unicode_name_1[i] = *name++;
         }
-        for(int i=0; i<6 && !name_is_done; i++) {
-            if(*name == '\0') name_is_done = true;
+        for(int i=0; i<6 && !done; i++) {
+            done = *name=='\0';
             lfn->unicode_name_2[i] = *name++;
         }
-        for(int i=0; i<2 && !name_is_done; i++) {
-            if(*name == '\0') name_is_done = true;
+        for(int i=0; i<2 && !done; i++) {
+            done = *name=='\0';
             lfn->unicode_name_3[i] = *name++;
         }
     }
@@ -685,8 +730,8 @@ static int create_inode(struct VNodeData parent_inode_num, mode_t new_inode_type
     };
     memcpy(dirent.filename, short_file_name, 11);
 
-    entries_to_insert[next_free_entry_idx++] = dirent;
-    entries_to_insert[next_free_entry_idx++] = (struct Fat16DirectoryEntry) {};
+    entries_to_insert[lfn_entry_count] = dirent;
+    entries_to_insert[lfn_entry_count+1] = (struct Fat16DirectoryEntry) {};
 
     if(parent_inode_num.inode == I_AM_ROOT_DIR) {
         // find location of end sentinel
@@ -698,18 +743,18 @@ static int create_inode(struct VNodeData parent_inode_num, mode_t new_inode_type
             offset += sizeof(struct Fat16DirectoryEntry);
         }
         //overwrite with my data
-        write_to_root_dir(&vol, offset, entries_to_insert, sizeof(struct Fat16DirectoryEntry) * next_free_entry_idx);
+        write_to_root_dir(&vol, offset, entries_to_insert, sizeof(struct Fat16DirectoryEntry) * total_added_entry_count);
     } else {
 
         struct Fat16DirectoryEntry entry_in_parent = read_parent_dirent(&vol, parent_inode_num.inode);
         uint32_t offset = entry_in_parent.file_size_bytes - sizeof(struct Fat16DirectoryEntry);//subtract the zero entry at the end that I will overwrite
-        entry_in_parent.file_size_bytes += sizeof(struct Fat16DirectoryEntry)*(next_free_entry_idx-1);//add number of new entries (excluding the already-existing zero entry)
+        entry_in_parent.file_size_bytes += sizeof(struct Fat16DirectoryEntry)*(total_added_entry_count-1);//add number of new entries (excluding the already-existing zero entry)
         
         //update directory entry in parent's parent
         write_parent_dirent(&vol, parent_inode_num.inode, entry_in_parent);
         
         //write the new directory entries
-        write_to_cluster_chain(&vol, entry_in_parent.cluster_number, offset, entries_to_insert, sizeof(struct Fat16DirectoryEntry)*next_free_entry_idx);
+        write_to_cluster_chain(&vol, entry_in_parent.cluster_number, offset, entries_to_insert, sizeof(struct Fat16DirectoryEntry)*total_added_entry_count);
     }
 
     return 0;

@@ -19,7 +19,7 @@ all: $(OUTPUT_DISK)
 #creates MBR with a partition at 1MB offset
 $(OUTPUT_DISK): $(OUTPUT_SYSROOT)
 	rm $@ -f
-	fallocate -l 10M $@
+	fallocate -l 15M $@
 	$(PARTED) -s $@ \
 		mklabel msdos \
 		mkpart primary fat16 1M 100% \
