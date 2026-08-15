@@ -31,35 +31,85 @@
 //toggle the internal cycle bit
 #define TRB_TC_BIT (1 << 1)
 
-union TransferRequestBlock {
-    //basic params
-    struct {
+struct TransferRequestBlock {
+    union {
         uint64_t parameter;
-        uint32_t status;
-        union {
-            struct {
-                uint32_t
-                cycle_bit: 1,
-                reserved_0: 9,
-                trb_type: 6,
-                reserved_1: 16;
-            };
-            uint32_t control;
-        };
+
+        struct {
+            uint64_t
+                bm_request_type: 8,
+                b_request: 8,
+                w_value: 16,
+                w_index: 16,
+                w_length: 16;
+        } setup_stage;
+
+        struct {
+            uint64_t data_buffer_pointer;
+        } data_stage;
+
+        struct {
+            //note that trb_transfer_length, td_size are also reserved in this configuration
+            uint64_t reserved_0;
+        } status_stage;
+
+        struct {
+            //note that trb_transfer_length, td_size, interrupt_on_short_packet, no_snoop, immediate_data, block_event_interrupt are also reserved in this configuration
+            uint64_t reserved_0;
+        } link;
+
+        struct {
+            //note that trb_transfer_length, td_size, interrupt_on_short_packet, no_snoop, immediate_data are reserved in this configuration
+            uint64_t event_data;//this value is put on the event ring, so can be added to the end of a queue for a "this queue is complete" signal
+        } event_data;
     };
 
-    struct CommandCompletionRequestBlock {
-        uint64_t command_trb_pointer;
-        uint32_t 
-        reserved_0: 24,
-        completion_code: 8;
-        uint32_t
+    //status
+    uint32_t
+        trb_transfer_length: 17,
+        td_size: 5,
+        interrupter_target: 10;
+    uint32_t
         cycle_bit: 1,
-        reserved_1: 9,
+        evaluate_next_trb: 1,
+        interrupt_on_short_packet: 1,
+        no_snoop: 1,
+        chain_bit: 1,
+        interrupt_on_completion: 1,
+        // the parameter field is the data, not a pointer to the data
+        immediate_data: 1,
+        reserved_0: 2,
+        block_event_interrupt: 1,
         trb_type: 6,
-        vfid: 8,
+        reserved_1: 16;
+};
+//shares some fields with struct TransferRequestBlock
+struct CommandCompletionTRB {
+    uint64_t command_trb_pointer;//bottom nibble is reserved
+    uint32_t
+        reserved: 24,
+        completion_code: 8;
+    uint32_t
+        cycle_bit: 1,
+        reserved_0: 9,
+        trb_type: 6,
+        vf_id: 8,
         slot_id: 8;
-    } command_completion_request_block;
+};
+struct TransferEventTRB {
+    uint64_t event_data;//either value or pointer to TRB
+    uint32_t
+        trb_transfer_length: 24,
+        completion_code: 8;
+    uint32_t
+        cycle_bit: 1,
+        reserved_0: 1,
+        ed: 1,
+        reserved_1: 7,
+        trb_type: 6,
+        endpoint_id: 5,
+        reserved_2: 3,
+        slot_id: 8;
 };
 
 struct EventRingSegmentTableEntry {
@@ -68,26 +118,96 @@ struct EventRingSegmentTableEntry {
     uint16_t reserved_0[3];
 };
 
-struct xHCIData {
-    uint64_t command_trb_count;
-    uint64_t command_enqueue_ptr;
-    union TransferRequestBlock *command_trbs;
-    uint8_t command_ring_cycle_state;
+struct Ring {
+    uint64_t count;
+    uint64_t idx;
+    uint64_t trbs_phys;
+    struct TransferRequestBlock *trbs;
+    uint8_t ring_cycle_state;
+};
 
-    uint64_t event_trb_count;
-    uint64_t event_dequeue_idx;
-    uint64_t event_trbs_phys;
-    union TransferRequestBlock *event_trbs;
-    uint8_t event_ring_cycle_state;
+struct xHCIData {
+    struct Ring command_ring;
+    struct Ring event_ring;
 
     struct BarInfo bar;
     uint32_t rts_offset;
     uint32_t db_offset;
 
-    bool is_usb3[64];
+    struct PerPortxHCIData {
+        bool is_usb3;
+        struct Ring transfer_ring;
+    } dev_data[64];
+
     //I've taken these from the event TRBs
     //trb type 0 indicates an empty slot
-    union TransferRequestBlock unhandled_command_completion[TRB_LIST_LEN];
+    struct CommandCompletionTRB unhandled_command_completion[TRB_LIST_LEN];
+};
+
+struct DeviceContext {
+    //control context
+    uint32_t drop_flags;//bottom 2 bits are reserved, 1 means disabled
+    uint32_t add_flags;
+    uint32_t reserved_0[5];
+    uint32_t
+        configuration_value: 8,
+        interface_number: 8,
+        alternate_setting: 8,
+        reserved_1: 8;
+
+    //first entry is common information about the device (slot context)
+    uint32_t
+        route_string: 20,
+        speed: 4,
+        reserved_2: 1,
+        mtt: 1,
+        hub: 1,
+        context_entries: 5;
+    uint32_t
+        max_exit_latency: 16,
+        root_hub_port_num: 8,
+        number_of_ports: 8;
+    uint32_t
+        tt_hub_slot_id: 8,
+        tt_port_num: 8,
+        ttt: 2,
+        reserved_3: 4,
+        interrupt_target: 10;
+    uint32_t
+        device_address: 8,
+        reserved_4: 19,
+        slot_state: 5;
+    uint32_t reserved_5[4];
+
+    //endpoint context
+    struct EndpointContext {
+        uint32_t
+            ep_state: 3,
+            reserved_0: 5,
+            mult: 2,
+            max_p_streams: 5,
+            lsa: 1,
+            interval: 8,
+            max_esit_payload_hi: 8;
+        uint32_t
+            reserved_1: 1,
+            cerr: 2,
+            ep_type: 3,
+            reserved_2: 1,
+            hid: 1,
+            max_burst_size: 8,
+            max_packet_size: 16;
+        uint32_t
+            dcs: 1,
+            reserved_3: 3,
+            tr_dequeue_pointer_lo: 28;//shift off the low 4 bits before putting in here
+        uint32_t tr_dequeue_pointer_hi;
+        uint32_t
+            average_trb_length: 16,
+            max_esit_payload_lo: 16;
+        uint32_t reserved_4[3];
+
+    } endpoint_context[31];
 };
 
 //offsets into BAR0
@@ -105,6 +225,7 @@ uint16_t HCSPARAMS2_required_scratchpad_buffers(uint32_t hcsparams2) {return ((h
 #define HCCPARAMS1_OFFSET 0x10
 uint32_t HCCPARAMS1_xecp(uint32_t hccparams1) {return (hccparams1 >> 16) << 2;}
 bool HCCPARAMS1_64BIT(uint32_t hccparams1) {return hccparams1 & 1;}
+bool HCCPARAMS1_csz(uint32_t hccparams1) {return hccparams1 & (1<<2);}
 #define DBOFF 0x14
 #define RTSOFF_OFFSET 0x18
 
@@ -119,6 +240,7 @@ bool USBSTS_cnr(uint32_t usbsts) {return usbsts & (1 << 11);}
 #define CONFIG_OFFSET 0x38
 #define DCBAAP_OFFSET 0x30
 #define PORTSC_OFFSET(port_index) (0x400 + 0x10*(port_index))
+uint8_t PORTSC_speed(uint32_t portsc) {return (portsc >> 10) & 0xF;}
 
 //offsets into BAR0 + RTSOFF
 #define IR_IMAN_OFFSET(interrupt_index) (0x20 + 32*interrupt_index)
@@ -217,44 +339,48 @@ static void ack_irq(struct BarInfo bar, uint32_t cap_length, uint32_t rts_offset
     write_bar_32(bar, iman, rts_offset + IR_IMAN_OFFSET(interrupt_index));
 }
 
-static void enqueue_ring(struct xHCIData *ring, union TransferRequestBlock trb) {
-    trb.cycle_bit = ring->command_ring_cycle_state;
-    ring->command_trbs[ring->command_enqueue_ptr] = trb;
+static void enqueue_ring(struct Ring *ring, struct TransferRequestBlock trb) {
+    trb.cycle_bit = ring->ring_cycle_state;
+    ring->trbs[ring->idx] = trb;
 
-    ring->command_enqueue_ptr++;
-    if(ring->command_enqueue_ptr == ring->command_trb_count-1) {
+    ring->idx++;
+    if(ring->idx == ring->count-1) {
         //now pointing to link element, so update the cycle bit and loop round
-        ring->command_trbs[ring->command_enqueue_ptr].cycle_bit ^= 1;
-        ring->command_enqueue_ptr = 0;
-        ring->command_ring_cycle_state ^= 1;
+        ring->trbs[ring->idx].cycle_bit ^= 1;
+        ring->idx = 0;
+        ring->ring_cycle_state ^= 1;
     }
 }
 
 //returns 0 on success, -1 if there was nothing to get (trb_out unaffected)
-static int dequeue_ring(struct xHCIData *ring, union TransferRequestBlock *trb_out) {
-    if(ring->event_trbs[ring->event_dequeue_idx].cycle_bit != ring->event_ring_cycle_state) {
+static int dequeue_ring(struct Ring *ring, struct TransferRequestBlock *trb_out) {
+    if(ring->trbs[ring->idx].cycle_bit != ring->ring_cycle_state) {
         return -1;
     }
 
-    *trb_out = ring->event_trbs[ring->event_dequeue_idx];
-    ring->event_dequeue_idx++;
-    if(ring->event_dequeue_idx == ring->event_trb_count) {
-        ring->event_dequeue_idx = 0;
-        ring->event_ring_cycle_state ^= 1;
+    *trb_out = ring->trbs[ring->idx];
+    ring->idx++;
+    if(ring->idx == ring->count) {
+        ring->idx = 0;
+        ring->ring_cycle_state ^= 1;
     }
 
-    uint64_t erdp = ERDP_EHB | (ring->event_trbs_phys + sizeof(union TransferRequestBlock) * ring->event_dequeue_idx);
-    write_bar_32(ring->bar, erdp >> 32, ring->rts_offset + IR_ERDP_OFFSET(0) + 4);
-    write_bar_32(ring->bar, erdp & 0xFFFFFFFF, ring->rts_offset + IR_ERDP_OFFSET(0));
-
     return 0;
+}
+
+//sets the event ring dequeue pointer to its new value, so that the xHCI controller can write new TRBs
+//do this after dequeueing from the event ring
+static void update_erdp(struct xHCIData *data) {
+    uint64_t erdp = ERDP_EHB | (data->event_ring.trbs_phys + sizeof(struct TransferRequestBlock) * data->event_ring.idx);
+    write_bar_32(data->bar, erdp & 0xFFFFFFFF, data->rts_offset + IR_ERDP_OFFSET(0));
+    write_bar_32(data->bar, erdp >> 32, data->rts_offset + IR_ERDP_OFFSET(0) + 4);
 }
 
 static void ring_doorbell(struct xHCIData *ring, uint8_t doorbell, uint8_t target) {
     write_bar_32(ring->bar, target, ring->db_offset + DOORBELL_OFFSET(doorbell));
 }
 
-static void insert_to_list(union TransferRequestBlock list[TRB_LIST_LEN], union TransferRequestBlock to_insert) {
+static void insert_to_list(struct CommandCompletionTRB list[TRB_LIST_LEN], struct CommandCompletionTRB to_insert) {
     for(int i=0;;i++) {
         assert(i < TRB_LIST_LEN)
         if(list[i].trb_type == 0) {
@@ -264,31 +390,55 @@ static void insert_to_list(union TransferRequestBlock list[TRB_LIST_LEN], union 
     }
 }
 //returns {} on failure
-static union TransferRequestBlock extract_from_list(union TransferRequestBlock list[TRB_LIST_LEN]) {
+static struct CommandCompletionTRB extract_from_list(struct CommandCompletionTRB list[TRB_LIST_LEN]) {
     for(int i=0; i<TRB_LIST_LEN ;i++) {
         if(list[i].trb_type != 0) {
             return list[i];
         }
     }
-    return (union TransferRequestBlock) {};
+    return (struct CommandCompletionTRB) {};
+}
+
+static struct Ring create_ring() {
+    const uint64_t count = PAGE_SIZE / sizeof(struct TransferRequestBlock);
+    uint64_t trb_phys = malloc4k_phys();
+    struct TransferRequestBlock *trb_virt = phys_to_hhdm(trb_phys);
+    memset(trb_virt, 0, PAGE_SIZE);
+
+    //set last element to a link, which points back to the start again
+    trb_virt[count-1] = (struct TransferRequestBlock) {
+        .parameter = trb_phys,
+        .trb_type = TRB_TYPE_LINK,
+        .evaluate_next_trb = 1,
+        .cycle_bit = 1
+    };
+
+    return (struct Ring) {
+        .count = count,
+        .idx = 0,
+        .trbs_phys = trb_phys,
+        .trbs = trb_virt,
+        .ring_cycle_state = 1
+    };
 }
 
 void xhci_handle_responses(struct xHCIData *data) {
     //try and read some data
-    union TransferRequestBlock recv = {};
-    while(dequeue_ring(data, &recv) == 0) {
+    struct TransferRequestBlock recv = {};
+    while(dequeue_ring(&data->event_ring, &recv) == 0) {
+        update_erdp(data);
         switch(recv.trb_type) {
             case TRB_TYPE_TRANSFER:
             printf("type transfer event\n");break;
 
             case TRB_TYPE_CMD_COMPLETION:
-            insert_to_list(data->unhandled_command_completion, recv);
+            insert_to_list(data->unhandled_command_completion, *(struct CommandCompletionTRB*)&recv);
             break;
 
             case TRB_TYPE_PORT_STS_CHANGE:
+            printf("port status event\n");break;
             case TRB_TYPE_BANDWIDTH_REQUEST:
             break;//optional
-
             case TRB_TYPE_DOORBELL:
             printf("doorbell event\n");break;
             case TRB_TYPE_HOST_CONTROLLER:
@@ -346,7 +496,7 @@ void initialise_xhci(struct PciDevice dev, struct BarInfo bar) {
             uint8_t port_count = (third_dword >> 8) & 0xFF;
             printf("found range of usb%d.%d ports\n", usb_maj, usb_min);
             for(uint8_t i=port_index; i<port_index+port_count; i++) {
-                ring.is_usb3[i] = (usb_maj == 3);
+                ring.dev_data[i].is_usb3 = (usb_maj == 3);
             }
 
             default:
@@ -361,6 +511,8 @@ void initialise_xhci(struct PciDevice dev, struct BarInfo bar) {
 
     //only got code for 64 bit
     assert(HCCPARAMS1_64BIT(hccparams1));
+    //only got code for 32 byte context data structs
+    assert(!HCCPARAMS1_csz(hccparams1));
 
     //halt the xhci chip
     write_bar_32(bar, 0, cap_length + USBCMD_OFFSET);
@@ -377,6 +529,7 @@ void initialise_xhci(struct PciDevice dev, struct BarInfo bar) {
 
     assert(max_ports*sizeof(uint64_t) < PAGE_SIZE);
     uint64_t dcbaa_phys = malloc4k_phys();
+    //array of pointers TODO should I allocate some DCBA structs and point to them?
     uint64_t *dcbaa_virt = phys_to_hhdm(dcbaa_phys);
     memset(dcbaa_virt, 0, PAGE_SIZE);
 
@@ -403,23 +556,9 @@ void initialise_xhci(struct PciDevice dev, struct BarInfo bar) {
     write_bar_32(bar, dcbaa_phys >> 32, cap_length + DCBAAP_OFFSET + 4);
 
     //set up command ring
-    uint64_t trb_phys = malloc4k_phys();
-    union TransferRequestBlock *trb_virt = phys_to_hhdm(trb_phys);
-    memset(trb_virt, 0, PAGE_SIZE);
-
-    ring.command_trb_count = PAGE_SIZE / sizeof(union TransferRequestBlock);
-    ring.command_enqueue_ptr = 0;
-    ring.command_ring_cycle_state = 1;
-    ring.command_trbs = trb_virt;
-
-    //set last element to a link, which points back to the start again
-    ring.command_trbs[ring.command_trb_count-1] = (union TransferRequestBlock) {
-        .parameter = trb_phys,
-        .control = (TRB_TYPE_LINK << 10) | TRB_TC_BIT | ring.command_ring_cycle_state
-    };
-
-    write_bar_32(bar, (trb_phys & 0xFFFFFFFF) | ring.command_ring_cycle_state, cap_length + CRCR_OFFSET);
-    write_bar_32(bar, trb_phys >> 32, cap_length + CRCR_OFFSET + 4);
+    ring.command_ring = create_ring();
+    write_bar_32(bar, (ring.command_ring.trbs_phys & 0xFFFFFFFF) | ring.command_ring.ring_cycle_state, cap_length + CRCR_OFFSET);
+    write_bar_32(bar, ring.command_ring.trbs_phys >> 32, cap_length + CRCR_OFFSET + 4);
 
     //set up runtime registers
     //enable interrupts
@@ -428,33 +567,20 @@ void initialise_xhci(struct PciDevice dev, struct BarInfo bar) {
     write_bar_32(bar, iman, IR_IMAN_OFFSET(0) + rts_offset);
 
     //set up event ring
-    uint64_t event_ring_trb_phys = malloc4k_phys();//this is the actual queue
-    union TransferRequestBlock *event_ring_trb_virt = phys_to_hhdm(event_ring_trb_phys);
-    memset(event_ring_trb_virt, 0, PAGE_SIZE);
+    ring.event_ring = create_ring();
+
     uint64_t event_ring_table_phys = malloc4k_phys();//this contains fat pointers to several event rings (in our case, one)
     struct EventRingSegmentTableEntry *event_ring_table_virt = phys_to_hhdm(event_ring_table_phys);
     memset(event_ring_table_virt, 0, PAGE_SIZE);
-
-    uint16_t trb_count = PAGE_SIZE / sizeof(union TransferRequestBlock);
     event_ring_table_virt[0] = (struct EventRingSegmentTableEntry) {
-        .ring_segment_base_address = event_ring_trb_phys,
-        .ring_segment_size = trb_count,
+        .ring_segment_base_address = ring.event_ring.trbs_phys,
+        .ring_segment_size = ring.event_ring.count,
     };
-
-    //add event ring info to ring
-    ring.event_ring_cycle_state = 1;
-    ring.event_dequeue_idx = 0;
-    ring.event_trb_count = trb_count;
-    ring.event_trbs_phys = event_ring_trb_phys;
-    ring.event_trbs = event_ring_trb_virt;
 
     //set ERST size
     write_bar_32(bar, 1, IR_ERSTSZ_OFFSET(0) + rts_offset);
 
-    //update the ERDP
-    uint64_t dequeue_addr = event_ring_trb_phys + sizeof(union TransferRequestBlock) * ring.event_dequeue_idx;
-    write_bar_32(bar, dequeue_addr & 0xFFFFFFFF, rts_offset + IR_ERDP_OFFSET(0));
-    write_bar_32(bar, dequeue_addr >> 32, rts_offset + IR_ERDP_OFFSET(0) + 4);
+    update_erdp(&ring);//TODO original implementation didn't add ERDP_EHB
 
     //point to the ERST
     write_bar_32(bar, event_ring_table_phys & 0xFFFFFFFF, IR_ERSTBA_OFFSET(0) + rts_offset);
@@ -499,7 +625,7 @@ void initialise_xhci(struct PciDevice dev, struct BarInfo bar) {
 
         if((portsc & PORTSC_CCS) && (portsc & PORTSC_CSC)) {
             printf("device found on port %u\n", port); 
-            bool is_usb3 = ring.is_usb3[port];
+            bool is_usb3 = ring.dev_data[port].is_usb3;
             //write to clear some status bits?
             portsc |= PORTSC_CSC | PORTSC_PEC | PORTSC_PRC;
             //reset or warm port reset
@@ -531,18 +657,53 @@ void initialise_xhci(struct PciDevice dev, struct BarInfo bar) {
 
             portsc = read_bar_32(bar, cap_length + PORTSC_OFFSET(port));
             assert(portsc & PORTSC_PED);
-            printf("success\n");
 
-            // TODO what do I do next?
             //get a device slot
-            union TransferRequestBlock send = {};
-            send.trb_type = TRB_TYPE_ENABLE_SLOT;
-            enqueue_ring(&ring, send);
+            struct TransferRequestBlock send = {
+                .trb_type = TRB_TYPE_ENABLE_SLOT
+            };
+            enqueue_ring(&ring.command_ring, send);
             ring_doorbell(&ring, 0, 0);//ring command doorbell
             xhci_handle_responses(&ring);
-            union TransferRequestBlock recv = extract_from_list(ring.unhandled_command_completion);
+            struct CommandCompletionTRB recv = extract_from_list(ring.unhandled_command_completion);
             assert(recv.trb_type != 0);
-            printf("completion event: code 0x%x slot %u\n", recv.command_completion_request_block.completion_code, recv.command_completion_request_block.slot_id);
+            assert(recv.completion_code == 1);
+            assert(recv.slot_id != 0);
+
+            const char* speed_str = 
+                (const char*[]){
+                    "invalid",
+                    "full speed usb 2",
+                    "low speed usb 2",
+                    "high speed usb 2",
+                    "super speed usb 3",
+                    "super speed plus usb 3.1"
+                }
+                [PORTSC_speed(portsc)];
+            printf("speed: %s\n", speed_str);
+
+            //set up DCBAA
+            ring.dev_data[port].transfer_ring = create_ring();
+            uint64_t transfer_phys = ring.dev_data[port].transfer_ring.trbs_phys;
+            uint64_t device_context_phys = malloc4k_phys();
+            struct DeviceContext *device_context = phys_to_hhdm(device_context_phys);
+            memset(device_context, 0, sizeof(struct DeviceContext));
+            dcbaa_virt[recv.slot_id] = device_context_phys;
+            device_context->add_flags |= 0b11;//enable the slot context and control EP0
+            //set up the mandatory endpoint context zero
+            device_context->endpoint_context[0] = (struct EndpointContext) {
+                .ep_type = 4,
+                .cerr = 3,
+                .max_packet_size = (const uint16_t[]) {8,64,8, 64,512,512}[PORTSC_speed(portsc)],
+                .tr_dequeue_pointer_lo = transfer_phys >> 4,
+                .tr_dequeue_pointer_hi = transfer_phys >> 32,
+                .dcs = 1,//should it be 1???
+                .average_trb_length = 8,
+                .max_esit_payload_lo = 0,
+                .max_esit_payload_hi = 0,
+
+            };
+            //TODO need a new ring (transfer ring)            
         }
 
     }
