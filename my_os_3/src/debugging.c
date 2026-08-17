@@ -35,7 +35,7 @@ void putchar(char a) {
    while (!is_transmit_empty());
 
    out8(PORT,a);
-   tty_write_char(a);
+//    tty_write_char(a);
 }
 
 void abort() {
