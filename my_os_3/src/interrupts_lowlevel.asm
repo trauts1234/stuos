@@ -1,17 +1,30 @@
 bits 64
 
 global total_timer_interrupts
-global vector_32_handler
-global vector_33_handler
-global vector_14_handler
 global start_userland
 global enable_apic
+global vector_n_handlers
 
 extern run_next_task
 extern memory_exception_handle
 extern apic_eoi
 extern apic_timer_counter
 extern handle_incoming_byte
+extern general_purpose_interrupt_handlers
+
+section .data
+
+; the error handlers, vector 32 is the timer interrupt, and then general purpose interrupts
+vector_n_handlers:
+    resq 14
+    dq vector_14_handler
+    resq 17
+    dq vector_32_handler
+    %assign i 33
+    %rep 222
+    dq vector_%+i%+_handler
+    %assign i i+1
+    %endrep
 
 section .text
 
@@ -83,7 +96,10 @@ vector_32_handler:
     mov rdi, rsp
     call run_next_task; this should never return
 
-vector_33_handler:
+; create a stub for each interrupt from 33 onwards
+%assign i 33
+%rep 222
+vector_%+i%+_handler:
     ; push the remaining registers to form a full processor state (certain registers have already been pushed)
     push rax
     push rbx
@@ -101,9 +117,10 @@ vector_33_handler:
     push r14
     push r15
 
+    mov rax, [general_purpose_interrupt_handlers + 8 * %[i]]
+    mov rdi, %[i]
+    call rax
     call apic_eoi
-
-    call handle_incoming_byte
 
     pop r15
     pop r14
@@ -121,6 +138,8 @@ vector_33_handler:
     pop rbx
     pop rax
     iretq
+%assign i i+1
+%endrep
 
 ; RDI - pointer to interrupt context struct
 start_userland:

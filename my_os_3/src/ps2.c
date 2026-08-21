@@ -234,7 +234,8 @@ static struct KeyEvent parse_full_buffer(union BufferData buffer) {
 
 }
 
-void handle_incoming_byte() {
+void handle_incoming_byte(int interrupt_num) {
+    assert(interrupt_num == 33);
     static int expected_number_of_bytes = 1;
     static union BufferData buffer;
 

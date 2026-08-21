@@ -2,6 +2,7 @@
 #define PS2_H
 
 #include <uapi/stdbool.h>
+#include <uapi/stdint.h>
 
 struct KeyEvent {
     enum {
@@ -21,6 +22,6 @@ struct KeyEvent {
 
 void initialise_ps2();
 //run in interrupt 33
-void handle_incoming_byte();
+void handle_incoming_byte(int);
 
 #endif
