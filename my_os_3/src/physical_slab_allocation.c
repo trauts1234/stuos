@@ -63,6 +63,12 @@ uint64_t malloc_contiguous_phys(uint64_t num_pages) {
     return 0;//out of memory
 }
 
+void free_contiguous_phys(uint64_t phys_addr, uint64_t num_pages) {
+    for(uint64_t i=0; i<num_pages; i++) {
+        free4k_phys(phys_addr + PAGE_SIZE*i);
+    }
+}
+
 void free4k_phys(uint64_t phys_addr) {
     if(phys_addr % PAGE_SIZE != 0) {
         HCF//not the start of a page - but it should be

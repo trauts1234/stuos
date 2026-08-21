@@ -5,6 +5,7 @@
 #define PAGE_SIZE 4096
 #define PAGE_MASK (PAGE_SIZE-1)
 
+//returns the number of pages required to store that many bytes
 uint64_t round_up_pages(uint64_t num_bytes);
 
 /// Sets up pages by reserving memory to store whether physical pages are used
@@ -20,5 +21,6 @@ void free4k_phys(uint64_t phys_addr);
 
 // like malloc4k_phys, but allocates contigously
 uint64_t malloc_contiguous_phys(uint64_t num_pages);
+void free_contiguous_phys(uint64_t phys_addr, uint64_t num_pages);
 
 #endif

@@ -35,7 +35,7 @@ void putchar(char a) {
    while (!is_transmit_empty());
 
    out8(PORT,a);
-//    tty_write_char(a);
+   tty_write_char(a);
 }
 
 void abort() {
@@ -45,6 +45,6 @@ void abort() {
 __attribute__((noreturn)) extern void loop_hlt();
 
 __attribute__((noreturn)) void __debugging_hcf(int line, char* file) {
-    printf("halt and catch fire!\nline: %d\nfile: %s\n", line, file);
+    printf("halt and catch fire! %s:%d\n", file, line);
     loop_hlt();
 }
