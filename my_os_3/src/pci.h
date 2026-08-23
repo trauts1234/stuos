@@ -33,6 +33,12 @@ struct BarInfo {
     bool is_io_bar;
 };
 
+struct PciData {
+    struct BarInfo bar_list[6];
+    //0 is NULL
+    int allocated_interrupt;
+};
+
 //represents a PCI device whose configuration can be read by a port
 struct PciDevice {
     uint8_t function_number:3;

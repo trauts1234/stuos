@@ -3,6 +3,8 @@
 
 #include "uapi/stdint.h"
 
+#define LAPIC_PHYS_ADDR 0xFEE00000ull
+
 void apic_init(void *rsdp_response_phys);
 
 /// Gets how many milliseconds the OS has been running, by counting the number of timer interrupts that have gone off

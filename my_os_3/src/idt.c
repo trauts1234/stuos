@@ -65,6 +65,7 @@ void setup_idt() {
 
 int allocate_free_idt_entry() {
     for(int i=33; i<256; i++) {
+        assert(general_purpose_interrupt_handlers[i] != 0);
         if(general_purpose_interrupt_handlers[i] == unused_general_purpose_slot) {
             general_purpose_interrupt_handlers[i] = allocated_general_purpose_slot;
             return i;

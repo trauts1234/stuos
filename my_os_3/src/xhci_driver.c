@@ -283,24 +283,14 @@ static void xhci_handle_responses(struct xHCIData *data) {
         update_erdp(data);
         switch(recv.status.trb_type) {
             case TRB_TYPE_TRANSFER:
-            printf("type transfer event\n");break;
-
             case TRB_TYPE_CMD_COMPLETION:
-            printf("cmd completion event\n");
-            break;
-
             case TRB_TYPE_PORT_STS_CHANGE:
-            printf("port status event\n");break;
             case TRB_TYPE_BANDWIDTH_REQUEST:
-            break;//optional
             case TRB_TYPE_DOORBELL:
-            printf("doorbell event\n");break;
             case TRB_TYPE_HOST_CONTROLLER:
-            printf("host controller event\n");break;
             case TRB_TYPE_DEVICE_NOTIFICATION:
-            printf("device notification event\n");break;
             case TRB_TYPE_MFINDEX_WRAP:
-            printf("mfindex wrap event\n");break;
+            break;
             
             default:
             printf("ERR: unknown trb type 0x%x\n", recv.status.trb_type);
@@ -403,14 +393,11 @@ static void send_control_transfer(struct xHCIData *xhci, uint8_t slot_id, uint8_
         }
     });
     ring_control_doorbell(xhci, slot_id);
+    for(uint64_t i=0;i<30000;i++) {
+        __asm("nop");
+    }
     xhci_handle_responses(xhci);
     struct TRB recv = extract_from_list(xhci->unhandled_events, TRB_TYPE_TRANSFER);
-    if(recv.status.type_transfer.trb_type == 0) {
-        printf("failed\n");
-        while(1) {
-            xhci_handle_responses(xhci);
-        }
-    }
     assert(recv.status.type_transfer.trb_type != 0);
     // assert(recv.status.type_transfer.trb_transfer_length == num_bytes);
     assert(recv.status.type_transfer.completion_code == 1);
@@ -580,36 +567,36 @@ static void initialise_port(struct BarInfo bar, struct xHCIData *xhci, uint64_t 
 
     assert(data_buffer.device_class == 0);//unknown type
 
-    printf("Device Descriptor:\n"
-       "  bLength:            0x%02X\n"
-       "  bDescriptorType:    0x%02X\n"
-       "  bcdUSB:             %02X.%02X\n"
-       "  bDeviceClass:       0x%02X\n"
-       "  bDeviceSubClass:    0x%02X\n"
-       "  bDeviceProtocol:    0x%02X\n"
-       "  bMaxPacketSize0:    %u\n"
-       "  idVendor:           0x%04X\n"
-       "  idProduct:          0x%04X\n"
-       "  bcdDevice:          0x%04X\n"
-       "  iManufacturer:      %u\n"
-       "  iProduct:           %u\n"
-       "  iSerialNumber:      %u\n"
-       "  bNumConfigurations: %u\n",
-       data_buffer.length,
-       data_buffer.type,
-       data_buffer.release_bcd_maj,
-       data_buffer.release_bcd_min,
-       data_buffer.device_class,
-       data_buffer.sub_class,
-       data_buffer.protocol,
-       data_buffer.max_packet_size,
-       data_buffer.vendor_id,
-       data_buffer.product_id,
-       data_buffer.device_release,
-       data_buffer.manufacturer,
-       data_buffer.product,
-       data_buffer.serial_num,
-       data_buffer.configurations);
+    // printf("Device Descriptor:\n"
+    //    "  bLength:            0x%02X\n"
+    //    "  bDescriptorType:    0x%02X\n"
+    //    "  bcdUSB:             %02X.%02X\n"
+    //    "  bDeviceClass:       0x%02X\n"
+    //    "  bDeviceSubClass:    0x%02X\n"
+    //    "  bDeviceProtocol:    0x%02X\n"
+    //    "  bMaxPacketSize0:    %u\n"
+    //    "  idVendor:           0x%04X\n"
+    //    "  idProduct:          0x%04X\n"
+    //    "  bcdDevice:          0x%04X\n"
+    //    "  iManufacturer:      %u\n"
+    //    "  iProduct:           %u\n"
+    //    "  iSerialNumber:      %u\n"
+    //    "  bNumConfigurations: %u\n",
+    //    data_buffer.length,
+    //    data_buffer.type,
+    //    data_buffer.release_bcd_maj,
+    //    data_buffer.release_bcd_min,
+    //    data_buffer.device_class,
+    //    data_buffer.sub_class,
+    //    data_buffer.protocol,
+    //    data_buffer.max_packet_size,
+    //    data_buffer.vendor_id,
+    //    data_buffer.product_id,
+    //    data_buffer.device_release,
+    //    data_buffer.manufacturer,
+    //    data_buffer.product,
+    //    data_buffer.serial_num,
+    //    data_buffer.configurations);
     
     if(data_buffer.product) {
         read_string_descriptor(xhci, slot_id, data_buffer.product, ep0_transfer);
@@ -619,7 +606,7 @@ static void initialise_port(struct BarInfo bar, struct xHCIData *xhci, uint64_t 
     }
 
     free4k_phys(input_context_phys);
-    //337, 377
+    //337, 383
 }
 
 void initialise_xhci(struct PciDevice dev, struct BarInfo bar) {

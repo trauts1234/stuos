@@ -1,5 +1,6 @@
+#include "apic.h"
 #include "debugging.h"
-#include "ehci_driver.h"
+#include "idt.h"
 #include "io.h"
 #include "kern_libc.h"
 #include "pci.h"
@@ -10,6 +11,40 @@
 
 #define CONFIG_ADDRESS 0xCF8
 #define CONFIG_DATA 0xCFC
+
+//this is _after_ the capability ID and next pointer
+struct MSIData {
+    //message control
+    uint16_t
+        enable: 1,
+        multiple_message_capable: 3,
+        multiple_message_enable: 3,
+        is_64_bit: 1,
+        per_vector_masking: 1,
+        reserved_1: 7;
+    uint64_t message_address;
+    //message data
+    uint16_t 
+        vector: 8,
+        delivery_mode: 3,
+        reserved_2: 3,
+        level: 1,
+        trigger_mode: 1;
+    uint16_t reserved_4;
+    //only used if per_vector_masking:
+    // uint32_t mask;//mask message by setting 1<<n
+    // uint32_t pending;//n is pending if 1<<n set
+} __attribute__ ((packed));
+
+struct MSIXData {
+    uint16_t
+        table_size: 11,
+        reserved_0: 3,
+        function_mask: 1,
+        enable: 1;
+    uint32_t table_address; // &0b111 = bar number, &~0b111 = offset in BAR
+    uint32_t pending_bit; //&0b111 = pending bar number, &~0b111 = pending bit offset
+} __attribute__ ((packed));
 
 uint32_t config_read(union ConfigAddress address) {
     out32(CONFIG_ADDRESS, address.data);
@@ -78,32 +113,32 @@ static uint64_t get_bar_size_64(uint32_t original_bar_low, uint32_t original_bar
 }
 
 static void handle_bar(struct PciDevice device, struct PciConfigurationHeader header, struct BarInfo output_bar_list[6]) {
-    int bar_number=0;
-    while (bar_number < 6) {
+    int index_in_config=0;
+    while (index_in_config < 6) {
         union ConfigAddress addr_low = {
-            .register_offset = 0x10 + 4 * bar_number,
+            .register_offset = 0x10 + 4 * index_in_config,
             .device = device,
             .reserved = 0,
             .enable_bit = 1
         };
         union ConfigAddress addr_high = {
-            .register_offset = 0x14 + 4 * bar_number,
+            .register_offset = 0x14 + 4 * index_in_config,
             .device = device,
             .reserved = 0,
             .enable_bit = 1
         };
 
-        uint32_t bar_val_low = header.BAR[bar_number];
+        uint32_t bar_val_low = header.BAR[index_in_config];
         if(bar_val_low & 1) {
             //uses IN/OUT to write, as this is an IO space BAR
-
-            output_bar_list[bar_number] = (struct BarInfo) {
+            printf("BAR %d is an IO bar (size %u)\n", index_in_config, get_bar_size_32(bar_val_low, addr_low));
+            output_bar_list[index_in_config] = (struct BarInfo) {
                 .bar_size = get_bar_size_32(bar_val_low, addr_low),
                 .address = bar_val_low & ~0xFul,
                 .is_io_bar = true
             };
 
-            bar_number += 1;
+            index_in_config += 1;
         } else {
             switch ((bar_val_low >> 1) & 0b11) {
                 case 0:
@@ -112,15 +147,15 @@ static void handle_bar(struct PciDevice device, struct PciConfigurationHeader he
                     uint64_t address = bar_val_low & ~0xFul;
 
                     void* virtual_address = setup_mmio(address, bar_size);
-
-                    output_bar_list[bar_number] = (struct BarInfo) {
+                    printf("BAR %d is a 32 bit bar at %u (size %llu)\n", index_in_config, bar_val_low, bar_size);
+                    output_bar_list[index_in_config] = (struct BarInfo) {
                         .bar_size = bar_size,
                         .address = address,
                         .virtual_address = virtual_address,
                         .is_io_bar = false,
                     };
 
-                    bar_number += 1;
+                    index_in_config += 1;
                     break;
                 }
 
@@ -131,20 +166,20 @@ static void handle_bar(struct PciDevice device, struct PciConfigurationHeader he
                 case 2:
                 // 64 bit address
                 {
-                    uint32_t bar_val_high = header.BAR[bar_number + 1];
+                    uint32_t bar_val_high = header.BAR[index_in_config + 1];
                     uint64_t bar_size = get_bar_size_64(bar_val_low, bar_val_high, addr_low, addr_high);
                     uint64_t address = ((uint64_t)bar_val_high << 32) | (bar_val_low & ~0xFul);
 
                     void* virtual_address = setup_mmio(address, bar_size);
-
-                    output_bar_list[bar_number + 1] = output_bar_list[bar_number] = (struct BarInfo) {
+                    printf("BAR %d and %d are a 64 bit bar (size %llu)\n", index_in_config, index_in_config+1, bar_size);
+                    output_bar_list[index_in_config + 1] = output_bar_list[index_in_config] = (struct BarInfo) {
                         .bar_size = bar_size,
                         .address = address,
                         .virtual_address = virtual_address,
                         .is_io_bar = false,
                     };
 
-                    bar_number += 2;
+                    index_in_config += 2;
                     break;
                 }
             }
@@ -190,23 +225,90 @@ void initialise_pci() {
                 if(header.vendor_id == 0xFFFF) continue;//FFFF means no device
                 if(header.header_type != 0) continue;//not a standard PCI device
 
-                struct BarInfo bar_list[6];
-                handle_bar(device, header, bar_list);
+                struct PciData dev = {};
+
+                handle_bar(device, header, dev.bar_list);
+
+                if(header.status & (1 << 4)) {
+                    //pointer to capabilities list is stored at index 0x34
+                    uint8_t msi_idx=0, msix_idx=0;
+                    for(uint8_t capability_pointer = header_buffer[0x34]; capability_pointer; capability_pointer = header_buffer[capability_pointer+1]) {
+                        uint8_t capability_id = header_buffer[capability_pointer];
+                        switch(capability_id) {
+                            case 0x05:
+                            msi_idx = capability_pointer+2;
+                            break;
+                            
+                            case 0x11:
+                            msix_idx = capability_pointer+2;
+                            break;
+                            
+                            default:
+                            break;//unknown
+                        }
+                    }
+                    assert((msi_idx && msi_idx) == 0);//can't have both
+                    if(msi_idx) {
+                        struct MSIData *data = (struct MSIData *)&header_buffer[msi_idx];
+                        assert(!data->enable);
+                        assert(data->is_64_bit);
+                        printf("device supports %u interrupts\n", 1<<data->multiple_message_capable);
+                        data->multiple_message_enable = 0;// enables 1<<0 messages
+                        data->enable = 1;
+
+                        data->message_address = LAPIC_PHYS_ADDR;//there are some flags here, but they are zeroed (page 3605 of the intel combined volumes)
+                        int allocated_vec = allocate_free_idt_entry();
+                        data->vector = allocated_vec;
+                        write_header(device, header_buffer);
+
+                        dev.allocated_interrupt = allocated_vec;
+                    }
+                    if(msix_idx) {
+                        struct MSIXData *data = (struct MSIXData *)&header_buffer[msi_idx];
+                        assert(!data->enable);
+                        uint32_t table_size = data->table_size+1;
+                        data->enable = 1;
+                        
+                        int bar_number = data->table_address & 0b111;
+                        uint64_t table_addr = data->table_address & ~0b111;
+                        
+                        printf("device supports %u interrupts, BAR %d (size %llu) offset %p\n", table_size, bar_number, dev.bar_list[bar_number].bar_size, dev.bar_list[bar_number].virtual_address + table_addr);
+
+                        for(uint64_t i=0; i<table_size; i++) {
+                            uint64_t offset = table_addr + i*4ull;
+                            //message address
+                            write_bar_32(dev.bar_list[bar_number], LAPIC_PHYS_ADDR & 0xFFFFFFFF, offset);
+                            write_bar_32(dev.bar_list[bar_number], LAPIC_PHYS_ADDR >> 32, offset+4);
+                            //message data
+                            write_bar_32(dev.bar_list[bar_number], 0, offset+8);
+                            //vector control
+                            write_bar_32(dev.bar_list[bar_number], 1, offset+12);//disable
+                        }
+
+                        int allocated_vec = allocate_free_idt_entry();
+                        //message data
+                        write_bar_32(dev.bar_list[bar_number], allocated_vec, table_addr + 8);
+                        //vector control
+                        write_bar_32(dev.bar_list[bar_number], 0, table_addr + 12);//enable
+
+                        write_header(device, header_buffer);
+                        dev.allocated_interrupt = allocated_vec;
+                    }
+                }
 
                 if(header.vendor_id == 0x1AF4) {
                     //virtio device
-                    initialise_virtio(header, header_buffer, bar_list);
+                    initialise_virtio(header, header_buffer, dev.bar_list);
                 }
 
                 if(header.class_code == 0x0C && header.subclass == 0x03 && header.prog_if == 0x20) {
                     //EHCI USB controller
-                    printf("EHCI found\n");
+                    // printf("EHCI found\n");
                     // initialise_ehci(device, bar_list[0]);
                 }
                 if(header.class_code == 0x0C && header.subclass == 0x03 && header.prog_if == 0x30) {
                     printf("xHCI found\n");
-                    printf("vendor id: %d device id: %d subsystem vendor id: %d\n", header.vendor_id, header.device_id, header.subsystem_vendor_id);
-                    initialise_xhci(device, bar_list[0]);
+                    initialise_xhci(device, dev.bar_list[0]);
                 }
                 
             }

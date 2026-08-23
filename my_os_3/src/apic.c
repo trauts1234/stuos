@@ -1,3 +1,4 @@
+#include "apic.h"
 #include "debugging.h"
 #include "kern_libc.h"
 #include "io.h"
@@ -325,7 +326,7 @@ static uint32_t read_pm_timer() {
 void apic_init(void *rsdp_response) {
 
     //memory map the local APIC
-    lapic_registers = setup_mmio(0xFEE00000, PAGE_SIZE);
+    lapic_registers = setup_mmio(LAPIC_PHYS_ADDR, PAGE_SIZE);
     enable_apic();
     //Set the Spurious Interrupt Vector Register bit 8 to start receiving interrupts
     lapic_registers->spurious_interrupt_vector.data |= 0x100;
