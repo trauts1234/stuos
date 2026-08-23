@@ -264,7 +264,7 @@ void initialise_pci() {
                         dev.allocated_interrupt = allocated_vec;
                     }
                     if(msix_idx) {
-                        struct MSIXData *data = (struct MSIXData *)&header_buffer[msi_idx];
+                        struct MSIXData *data = (struct MSIXData *)&header_buffer[msix_idx];
                         assert(!data->enable);
                         uint32_t table_size = data->table_size+1;
                         data->enable = 1;
