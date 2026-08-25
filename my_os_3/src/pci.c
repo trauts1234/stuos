@@ -131,7 +131,6 @@ static void handle_bar(struct PciDevice device, struct PciConfigurationHeader he
         uint32_t bar_val_low = header.BAR[index_in_config];
         if(bar_val_low & 1) {
             //uses IN/OUT to write, as this is an IO space BAR
-            printf("BAR %d is an IO bar (size %u)\n", index_in_config, get_bar_size_32(bar_val_low, addr_low));
             output_bar_list[index_in_config] = (struct BarInfo) {
                 .bar_size = get_bar_size_32(bar_val_low, addr_low),
                 .address = bar_val_low & ~0xFul,
@@ -147,7 +146,6 @@ static void handle_bar(struct PciDevice device, struct PciConfigurationHeader he
                     uint64_t address = bar_val_low & ~0xFul;
 
                     void* virtual_address = setup_mmio(address, bar_size);
-                    printf("BAR %d is a 32 bit bar at %u (size %llu)\n", index_in_config, bar_val_low, bar_size);
                     output_bar_list[index_in_config] = (struct BarInfo) {
                         .bar_size = bar_size,
                         .address = address,
@@ -171,7 +169,6 @@ static void handle_bar(struct PciDevice device, struct PciConfigurationHeader he
                     uint64_t address = ((uint64_t)bar_val_high << 32) | (bar_val_low & ~0xFul);
 
                     void* virtual_address = setup_mmio(address, bar_size);
-                    printf("BAR %d and %d are a 64 bit bar (size %llu)\n", index_in_config, index_in_config+1, bar_size);
                     output_bar_list[index_in_config + 1] = output_bar_list[index_in_config] = (struct BarInfo) {
                         .bar_size = bar_size,
                         .address = address,
@@ -252,7 +249,7 @@ void initialise_pci() {
                         struct MSIData *data = (struct MSIData *)&header_buffer[msi_idx];
                         assert(!data->enable);
                         assert(data->is_64_bit);
-                        printf("device supports %u interrupts\n", 1<<data->multiple_message_capable);
+                        printf("device supports %u MSI interrupts\n", 1<<data->multiple_message_capable);
                         data->multiple_message_enable = 0;// enables 1<<0 messages
                         data->enable = 1;
 
@@ -272,24 +269,20 @@ void initialise_pci() {
                         int bar_number = data->table_address & 0b111;
                         uint64_t table_addr = data->table_address & ~0b111;
                         
-                        printf("device supports %u interrupts, BAR %d (size %llu) offset %p\n", table_size, bar_number, dev.bar_list[bar_number].bar_size, dev.bar_list[bar_number].virtual_address + table_addr);
+                        printf("device supports %u MSI-X interrupts (bar %d offset 0x%llx)\n", table_size, bar_number, table_addr);
+                        int allocated_vec = allocate_free_idt_entry();
 
+                        //point all interrupts to one handler for now
                         for(uint64_t i=0; i<table_size; i++) {
-                            uint64_t offset = table_addr + i*4ull;
+                            uint64_t offset = table_addr + i*16ull;
                             //message address
                             write_bar_32(dev.bar_list[bar_number], LAPIC_PHYS_ADDR & 0xFFFFFFFF, offset);
                             write_bar_32(dev.bar_list[bar_number], LAPIC_PHYS_ADDR >> 32, offset+4);
                             //message data
-                            write_bar_32(dev.bar_list[bar_number], 0, offset+8);
+                            write_bar_32(dev.bar_list[bar_number], allocated_vec, offset+8);
                             //vector control
-                            write_bar_32(dev.bar_list[bar_number], 1, offset+12);//disable
+                            write_bar_32(dev.bar_list[bar_number], 0, offset+12);//enable
                         }
-
-                        int allocated_vec = allocate_free_idt_entry();
-                        //message data
-                        write_bar_32(dev.bar_list[bar_number], allocated_vec, table_addr + 8);
-                        //vector control
-                        write_bar_32(dev.bar_list[bar_number], 0, table_addr + 12);//enable
 
                         write_header(device, header_buffer);
                         dev.allocated_interrupt = allocated_vec;
@@ -308,7 +301,7 @@ void initialise_pci() {
                 }
                 if(header.class_code == 0x0C && header.subclass == 0x03 && header.prog_if == 0x30) {
                     printf("xHCI found\n");
-                    initialise_xhci(device, dev.bar_list[0]);
+                    initialise_xhci(device, &dev);
                 }
                 
             }

@@ -7,3 +7,4 @@ put_in_filesystem/
 limine/
 .clangd
 *.log
+.bochsrc

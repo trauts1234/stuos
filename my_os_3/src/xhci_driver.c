@@ -175,7 +175,7 @@ uint8_t PORTSC_speed(uint32_t portsc) {return (portsc >> 10) & 0xF;}
 
 //offsets into BAR0 + RTSOFF
 #define IR_IMAN_OFFSET(interrupt_index) (0x20 + 32*interrupt_index)
-#define IR_IMOD_OFFSET(interrupt_index) (024 + 32*interrupt_index)
+#define IR_IMOD_OFFSET(interrupt_index) (0x24 + 32*interrupt_index)
 #define IR_ERSTSZ_OFFSET(interrupt_index) (0x28 + 32*interrupt_index)
 //64 bit!
 #define IR_ERSTBA_OFFSET(interrupt_index) (0x30 + 32*interrupt_index)
@@ -186,8 +186,9 @@ uint8_t PORTSC_speed(uint32_t portsc) {return (portsc >> 10) & 0xF;}
 #define DOORBELL_OFFSET(doorbell_index) (4*doorbell_index)
 
 #define USBSTS_EINT (1 << 3)
-#define USBCMD_HCRST (1 << 1)
 #define USBCMD_RS 1
+#define USBCMD_HCRST (1 << 1)
+#define USBCMD_IE (1 << 2)
 #define PORTSC_CCS 1
 #define PORTSC_PED (1 << 1)
 #define PORTSC_PR (1 << 4)
@@ -204,44 +205,48 @@ uint8_t PORTSC_speed(uint32_t portsc) {return (portsc >> 10) & 0xF;}
 #define USBLEGSUP_BIOS_OWNED_SEMAPHORE (1 << 16)
 #define USBLEGSUP_OS_OWNED_SEMAPHORE (1 << 24)
 
-static void ack_irq(struct BarInfo bar, uint32_t cap_length, uint32_t rts_offset, uint8_t interrupt_index) {
-    uint32_t usbsts = read_bar_32(bar, cap_length + USBSTS_OFFSET);
-    usbsts |= USBSTS_EINT;
-    write_bar_32(bar, usbsts, cap_length + USBSTS_OFFSET);
+static void delay() {
+    __asm__ volatile("mfence" ::: "memory");
+    for(uint64_t i=0;i<30000;i++) {
+        __asm("nop");
+    }
+}
 
-    uint32_t iman = read_bar_32(bar, rts_offset + IR_IMAN_OFFSET(interrupt_index));
+static void ack_irq(struct xHCIData *data, uint8_t interrupt_index) {
+    uint32_t usbsts = read_bar_32(data->bar, data->cap_length + USBSTS_OFFSET);
+    usbsts |= USBSTS_EINT;
+    write_bar_32(data->bar, usbsts, data->cap_length + USBSTS_OFFSET);
+
+    uint32_t iman = read_bar_32(data->bar, data->rts_offset + IR_IMAN_OFFSET(interrupt_index));
     iman |= IMAN_INTERRUPT_PENDING;//write 1 to reset the bit to a 0
-    write_bar_32(bar, iman, rts_offset + IR_IMAN_OFFSET(interrupt_index));
+    write_bar_32(data->bar, iman, data->rts_offset + IR_IMAN_OFFSET(interrupt_index));
 }
 
 //sets the event ring dequeue pointer to its new value, so that the xHCI controller can write new TRBs
 //do this after dequeueing from the event ring
-static void update_erdp(struct xHCIData *data) {
-    uint64_t erdp = ERDP_EHB | (data->event_ring.trbs_phys + sizeof(struct TRB) * data->event_ring.idx);
+static void update_erdp(struct xHCIData *data, bool clear_ehb) {
+    uint64_t erdp = (clear_ehb ? ERDP_EHB : 0ull) | (data->event_ring.trbs_phys + sizeof(struct TRB) * data->event_ring.idx);
     write_bar_32(data->bar, erdp & 0xFFFFFFFF, data->rts_offset + IR_ERDP_OFFSET(0));
     write_bar_32(data->bar, erdp >> 32, data->rts_offset + IR_ERDP_OFFSET(0) + 4);
+    delay();
+
+    // assert((read_bar_32(data->bar, data->rts_offset + IR_ERDP_OFFSET(0)) & ERDP_EHB) == 0);
 }
 
 //endpoint index 0 => EP 1
 // static void ring_doorbell(struct xHCIData *ring, uint8_t port, uint8_t endpoint_index, bool is_out_ep) {
 //     write_bar_32(ring->bar, 2 + (endpoint_index*2) + (is_out_ep ? 0 : 1), ring->db_offset + DOORBELL_OFFSET(port));
-//     for(uint64_t i=0;i<3000;i++) {
-//         __asm("nop");
-//     }
+//     delay();
 // }
 
 static void ring_control_doorbell(struct xHCIData *data, uint8_t port) {
     write_bar_32(data->bar, 1, data->db_offset + DOORBELL_OFFSET(port));
-    for(uint64_t i=0;i<30000;i++) {
-        __asm("nop");
-    }
+    delay();
 }
 
 static void ring_command_doorbell(struct xHCIData *data) {
     write_bar_32(data->bar, 0, data->db_offset + DOORBELL_OFFSET(0));
-    for(uint64_t i=0;i<30000;i++) {
-        __asm("nop");
-    }
+    delay();
 }
 
 static void insert_to_list(struct TRB list[TRB_LIST_LEN], struct TRB to_insert) {
@@ -280,7 +285,7 @@ static void xhci_handle_responses(struct xHCIData *data) {
     //try and read some data
     struct TRB recv = {};
     while(dequeue_ring(&data->event_ring, &recv) == 0) {
-        update_erdp(data);
+        update_erdp(data, true);
         switch(recv.status.trb_type) {
             case TRB_TYPE_TRANSFER:
             case TRB_TYPE_CMD_COMPLETION:
@@ -309,7 +314,7 @@ static void set_input_context(struct xHCIData *xhci, uint8_t slot_id, uint64_t i
         .status.set_address = {
             .block_set_address_request = 0,
             .trb_type = TRB_TYPE_SET_ADDRESS,
-            .slot_id = slot_id
+            .slot_id = slot_id,
         }
     });
     ring_command_doorbell(xhci);
@@ -368,7 +373,7 @@ static void send_control_transfer(struct xHCIData *xhci, uint8_t slot_id, uint8_
         .status.data_stage = {
             .trb_transfer_length = num_bytes,
             .td_size = 0,
-            .interrupter_target = 0,
+            .interrupter_target = 0,//this is an IR_IMOD index, not an IDT index
             .evaluate_next_trb = 1,
             .chain_bit = 1,
             .trb_type = TRB_TYPE_DATA_STAGE,
@@ -393,9 +398,7 @@ static void send_control_transfer(struct xHCIData *xhci, uint8_t slot_id, uint8_
         }
     });
     ring_control_doorbell(xhci, slot_id);
-    for(uint64_t i=0;i<30000;i++) {
-        __asm("nop");
-    }
+    delay();
     xhci_handle_responses(xhci);
     struct TRB recv = extract_from_list(xhci->unhandled_events, TRB_TYPE_TRANSFER);
     assert(recv.status.type_transfer.trb_type != 0);
@@ -451,18 +454,14 @@ static void initialise_port(struct BarInfo bar, struct xHCIData *xhci, uint64_t 
     portsc |= is_usb3 ? PORTSC_WPR : PORTSC_PR;
     write_bar_32(bar, portsc, xhci->cap_length + PORTSC_OFFSET(port_idx));
 
-    for(uint64_t i=0;i<3000;i++) {
-        __asm("nop");
-    }
+    delay();
     portsc = read_bar_32(bar, xhci->cap_length + PORTSC_OFFSET(port_idx));
     //wait for reset completion
     while((is_usb3 && !(portsc & PORTSC_WRC)) || (!is_usb3 && !(portsc & PORTSC_PRC))) {
         portsc = read_bar_32(bar, xhci->cap_length + PORTSC_OFFSET(port_idx));
     }
 
-    for(uint64_t i=0;i<3000;i++) {
-        __asm("nop");
-    }
+    delay();
 
     //write to reset some flags
     portsc |= PORTSC_PRC | PORTSC_WRC | PORTSC_CSC | PORTSC_PEC;
@@ -470,9 +469,7 @@ static void initialise_port(struct BarInfo bar, struct xHCIData *xhci, uint64_t 
     portsc &= ~(uint32_t)PORTSC_PED;
     write_bar_32(bar, portsc, xhci->cap_length + PORTSC_OFFSET(port_idx));
 
-    for(uint64_t i=0;i<3000;i++) {
-        __asm("nop");
-    }
+    delay();
 
     portsc = read_bar_32(bar, xhci->cap_length + PORTSC_OFFSET(port_idx));
     assert(portsc & PORTSC_PED);
@@ -519,7 +516,7 @@ static void initialise_port(struct BarInfo bar, struct xHCIData *xhci, uint64_t 
     input_context->device_context.context_entries = 1;
     input_context->device_context.speed = PORTSC_speed(portsc);
     input_context->device_context.root_hub_port_num = port_idx+1;
-    input_context->device_context.interrupt_target = 0;//?
+    input_context->device_context.interrupt_target = 0;//interrupt IR_IMOD index zero
     //set up the mandatory endpoint context zero
     input_context->device_context.endpoint_context[0] = (struct EndpointContext) {
         .ep_type = 4,
@@ -609,7 +606,8 @@ static void initialise_port(struct BarInfo bar, struct xHCIData *xhci, uint64_t 
     //337, 383
 }
 
-void initialise_xhci(struct PciDevice dev, struct BarInfo bar) {
+void initialise_xhci(struct PciDevice dev, struct PciData *dev_data) {
+    struct BarInfo bar = dev_data->bar_list[0];
     uint8_t cap_length = CAPLENGTH_CAPLENGTH(read_bar_32(bar, CAPLENGTH_AND_VERSION_OFFSET));
     uint32_t rts_offset = read_bar_32(bar, RTSOFF_OFFSET);
     uint32_t db_offset = read_bar_32(bar, DBOFF);
@@ -649,6 +647,7 @@ void initialise_xhci(struct PciDevice dev, struct BarInfo bar) {
             uint8_t usb_min = (data >> 16) & 0xFF;
             uint8_t port_index = (third_dword & 0xFF)-1;//port offset starts at 1 for some reason
             uint8_t port_count = (third_dword >> 8) & 0xFF;
+            printf("found %d usb %d.%d slots at index %d and onward\n", port_count, usb_maj, usb_min, port_index);
             for(uint8_t i=port_index; i<port_index+port_count; i++) {
                 xhci.dev_data[i].is_usb3 = (usb_maj == 3);
             }
@@ -659,9 +658,6 @@ void initialise_xhci(struct PciDevice dev, struct BarInfo bar) {
 
         xecp = ((data >> 8) & 0xFF) << 2;
     }
-
-    uint8_t pci_config[256];
-    read_header(dev, pci_config);
 
     //only got code for 64 bit
     assert(HCCPARAMS1_64BIT(hccparams1));
@@ -677,7 +673,7 @@ void initialise_xhci(struct PciDevice dev, struct BarInfo bar) {
     while(read_bar_32(bar, cap_length + USBCMD_OFFSET) & USBCMD_HCRST);
 
     //enable all notifications
-    write_bar_32(bar, 0xFFFF, cap_length + DNCTRL_OFFSET);
+    write_bar_32(bar, 0x0002, cap_length + DNCTRL_OFFSET);//some suggest 0xFFFF, but standard says 0x2
     //set max ports to the max number of ports?
     write_bar_32(bar, max_ports, cap_length + CONFIG_OFFSET);
 
@@ -719,6 +715,7 @@ void initialise_xhci(struct PciDevice dev, struct BarInfo bar) {
     uint32_t iman = read_bar_32(bar, IR_IMAN_OFFSET(0) + rts_offset);
     iman |= IMAN_INTERRUPT_ENABLE;
     write_bar_32(bar, iman, IR_IMAN_OFFSET(0) + rts_offset);
+    write_bar_32(bar, 0, IR_IMOD_OFFSET(0) + rts_offset);
 
     //set up event ring
     xhci.event_ring = create_ring();
@@ -734,15 +731,14 @@ void initialise_xhci(struct PciDevice dev, struct BarInfo bar) {
     //set ERST size
     write_bar_32(bar, 1, IR_ERSTSZ_OFFSET(0) + rts_offset);
 
-    update_erdp(&xhci);//TODO original implementation didn't add ERDP_EHB
+    update_erdp(&xhci, false);//TODO original implementation didn't add ERDP_EHB
 
     //point to the ERST
     write_bar_32(bar, event_ring_table_phys & 0xFFFFFFFF, IR_ERSTBA_OFFSET(0) + rts_offset);
     write_bar_32(bar, event_ring_table_phys >> 32, IR_ERSTBA_OFFSET(0) + rts_offset + 4);
 
     //clear prior interrupts
-    ack_irq(bar, cap_length, rts_offset, 0);
-
+    ack_irq(&xhci, 0);
 
     //intel 7 series C210 series chipset magic?
     union ConfigAddress addr = {
@@ -756,7 +752,7 @@ void initialise_xhci(struct PciDevice dev, struct BarInfo bar) {
     config_write(addr, 0xFFFFFFFF);
 
     //start
-    write_bar_32(bar, USBCMD_RS, cap_length + USBCMD_OFFSET);
+    write_bar_32(bar, USBCMD_RS | USBCMD_IE, cap_length + USBCMD_OFFSET);
     while(1) {
         uint32_t usb_sts = read_bar_32(bar, cap_length + USBSTS_OFFSET);
         if(!USBSTS_hchalted(usb_sts) && !USBSTS_cnr(usb_sts)) {
@@ -765,11 +761,10 @@ void initialise_xhci(struct PciDevice dev, struct BarInfo bar) {
         }
     }
 
-    for(uint64_t i=0;i<3000;i++) {
-        __asm("nop");
-    }
+    delay();
 
     printf("scanning %d ports\n", max_ports);
+    xhci_handle_responses(&xhci);
     for(uint8_t port_idx = 0; port_idx < max_ports; port_idx++) {
         initialise_port(bar, &xhci, dcbaa_virt, port_idx);
     }

@@ -3,6 +3,6 @@
 
 #include "pci.h"
 
-void initialise_xhci(struct PciDevice dev, struct BarInfo bar);
+void initialise_xhci(struct PciDevice dev, struct PciData *dev_data);
 
 #endif
