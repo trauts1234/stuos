@@ -12,6 +12,8 @@
 #define CONFIG_ADDRESS 0xCF8
 #define CONFIG_DATA 0xCFC
 
+#define USE_MSI_MSIX false
+
 //this is _after_ the capability ID and next pointer
 struct MSIData {
     //message control
@@ -244,8 +246,8 @@ void initialise_pci() {
                             break;//unknown
                         }
                     }
-                    assert((msi_idx && msi_idx) == 0);//can't have both
-                    if(msi_idx) {
+                    // assert((msi_idx && msix_idx) == 0);//can't have both?
+                    if(msi_idx && USE_MSI_MSIX) {
                         struct MSIData *data = (struct MSIData *)&header_buffer[msi_idx];
                         assert(!data->enable);
                         assert(data->is_64_bit);
@@ -260,7 +262,7 @@ void initialise_pci() {
 
                         dev.allocated_interrupt = allocated_vec;
                     }
-                    if(msix_idx) {
+                    if(msix_idx && USE_MSI_MSIX) {
                         struct MSIXData *data = (struct MSIXData *)&header_buffer[msix_idx];
                         assert(!data->enable);
                         uint32_t table_size = data->table_size+1;

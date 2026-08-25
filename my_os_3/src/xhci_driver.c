@@ -307,6 +307,14 @@ static void xhci_handle_responses(struct xHCIData *data) {
     }
 }
 
+static struct TRB fetch_and_extract(struct xHCIData *data, uint8_t requested_trb_type) {
+    struct TRB result;
+    while((result = extract_from_list(data->unhandled_events, requested_trb_type)).status.trb_type == 0) {
+        xhci_handle_responses(data);
+    }
+    return result;
+}
+
 //calls SET_ADDRESS with the block bit zeroed
 static void set_input_context(struct xHCIData *xhci, uint8_t slot_id, uint64_t input_context_phys) {
     enqueue_ring(&xhci->command_ring, (struct TRB) {
@@ -318,8 +326,7 @@ static void set_input_context(struct xHCIData *xhci, uint8_t slot_id, uint64_t i
         }
     });
     ring_command_doorbell(xhci);
-    xhci_handle_responses(xhci);
-    struct TRB recv = extract_from_list(xhci->unhandled_events, TRB_TYPE_CMD_COMPLETION);
+    struct TRB recv = fetch_and_extract(xhci, TRB_TYPE_CMD_COMPLETION);
     assert(recv.status.command_completion.trb_type != 0);
     assert(recv.status.command_completion.completion_code == 1);
     assert(recv.status.command_completion.slot_id == slot_id);
@@ -336,8 +343,7 @@ static void update_input_context(struct xHCIData *xhci, uint8_t slot_id, uint64_
         }
     });
     ring_command_doorbell(xhci);
-    xhci_handle_responses(xhci);
-    struct TRB recv = extract_from_list(xhci->unhandled_events, TRB_TYPE_CMD_COMPLETION);
+    struct TRB recv = fetch_and_extract(xhci, TRB_TYPE_CMD_COMPLETION);
     assert(recv.status.command_completion.trb_type != 0);
     assert(recv.status.command_completion.completion_code == 1);
 }
@@ -399,8 +405,7 @@ static void send_control_transfer(struct xHCIData *xhci, uint8_t slot_id, uint8_
     });
     ring_control_doorbell(xhci, slot_id);
     delay();
-    xhci_handle_responses(xhci);
-    struct TRB recv = extract_from_list(xhci->unhandled_events, TRB_TYPE_TRANSFER);
+    struct TRB recv = fetch_and_extract(xhci, TRB_TYPE_TRANSFER);
     assert(recv.status.type_transfer.trb_type != 0);
     // assert(recv.status.type_transfer.trb_transfer_length == num_bytes);
     assert(recv.status.type_transfer.completion_code == 1);
@@ -479,8 +484,7 @@ static void initialise_port(struct BarInfo bar, struct xHCIData *xhci, uint64_t 
         .status.trb_type = TRB_TYPE_ENABLE_SLOT
     });
     ring_command_doorbell(xhci);
-    xhci_handle_responses(xhci);
-    struct TRB recv = extract_from_list(xhci->unhandled_events, TRB_TYPE_CMD_COMPLETION);
+    struct TRB recv = fetch_and_extract(xhci, TRB_TYPE_CMD_COMPLETION);
     assert(recv.status.command_completion.trb_type != 0);
     assert(recv.status.command_completion.completion_code == 1);
     const uint8_t slot_id = recv.status.command_completion.slot_id;
@@ -540,8 +544,7 @@ static void initialise_port(struct BarInfo bar, struct xHCIData *xhci, uint64_t 
         }
     });
     ring_command_doorbell(xhci);
-    xhci_handle_responses(xhci);
-    recv = extract_from_list(xhci->unhandled_events, TRB_TYPE_CMD_COMPLETION);
+    recv = fetch_and_extract(xhci, TRB_TYPE_CMD_COMPLETION);
     assert(recv.status.command_completion.trb_type != 0);
     assert(recv.status.command_completion.completion_code == 1);
     assert(recv.status.command_completion.slot_id == slot_id);
@@ -764,7 +767,6 @@ void initialise_xhci(struct PciDevice dev, struct PciData *dev_data) {
     delay();
 
     printf("scanning %d ports\n", max_ports);
-    xhci_handle_responses(&xhci);
     for(uint8_t port_idx = 0; port_idx < max_ports; port_idx++) {
         initialise_port(bar, &xhci, dcbaa_virt, port_idx);
     }

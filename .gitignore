@@ -8,3 +8,4 @@ limine/
 .clangd
 *.log
 .bochsrc
+write_to_usb.sh
