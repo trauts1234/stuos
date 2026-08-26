@@ -298,17 +298,36 @@ static void update_input_context(struct xHCIData *xhci, uint8_t slot_id, uint64_
     assert(recv.status.command_completion.completion_code == 1);
 }
 
-static void send_control_transfer(struct xHCIData *xhci, uint8_t slot_id, uint8_t descriptor_type, uint8_t descriptor_index, struct Ring *ep0_transfer, void *output, uint64_t num_bytes) {
+struct RequestTemplate {
+    uint8_t slot_id;
+
+    enum {HostToDevice=0,DeviceToHost=1} direction;
+    enum {RequestTypeStandard=0, RequestTypeClass=1, RequestTypeVendor=2} request_type;
+    enum {RecipientDevice=0, RecipientInterface=1, RecipientEndpoint=2, RecipientOther=3} recipient;
+    enum {GET_DESCRIPTOR=6, SET_CONFIGURATION=9} request;
+    union {
+        uint16_t value;
+        struct {
+            uint8_t
+                descriptor_index,
+            //1=>DEVICE, 2=>configuration, 3=>string, 4=>interface, 5=>endpoint, 6=>device qualifier, 7=>other speed configuration, 8=>interface power
+                descriptor_type;
+        };
+    };
+    uint16_t index;
+    uint16_t length;
+};
+
+static void make_request(struct xHCIData *xhci, struct Ring *ep0_transfer, void *output, struct RequestTemplate request) {
     enqueue_ring(ep0_transfer, (struct TRB) {
         .parameter.device_request = {
-            .recipient = 0,
-            .type = 0,
-            .direction = 1,
-            .request = 6,
-            .descriptor_type = descriptor_type,
-            .descriptor_index = descriptor_index,
-            .index = 0,
-            .length = num_bytes
+            .recipient = request.recipient,
+            .type = request.request_type,
+            .direction = request.direction,
+            .request = request.request,
+            .value = request.value,
+            .index = request.length,
+            .length = request.length
         },
         .status.device_request = {
             .trb_transfer_length = 8,
@@ -320,14 +339,14 @@ static void send_control_transfer(struct xHCIData *xhci, uint8_t slot_id, uint8_
         }
     });
     //data stage
-    uint64_t num_pages = round_up_pages(num_bytes);
+    uint64_t num_pages = round_up_pages(request.length);
     uint64_t data_buffer_phys = malloc_contiguous_phys(num_pages);
     void *data_buffer_virt = phys_to_hhdm(data_buffer_phys);
-    memset(data_buffer_virt, 0, PAGE_SIZE);
+    memset(data_buffer_virt, 0, PAGE_SIZE);//todo * num_pages ?
     enqueue_ring(ep0_transfer, (struct TRB) {
         .parameter.raw = data_buffer_phys,
         .status.data_stage = {
-            .trb_transfer_length = num_bytes,
+            .trb_transfer_length = request.length,
             .td_size = 0,
             .interrupter_target = 0,//this is an IR_IMOD index, not an IDT index
             .evaluate_next_trb = 1,
@@ -353,18 +372,35 @@ static void send_control_transfer(struct xHCIData *xhci, uint8_t slot_id, uint8_
             .trb_type = TRB_TYPE_EVENT_DATA
         }
     });
-    ring_control_doorbell(xhci, slot_id);
+    ring_control_doorbell(xhci, request.slot_id);
     delay();
     struct TRB recv = fetch_and_extract(xhci, TRB_TYPE_TRANSFER);
     assert(recv.status.type_transfer.trb_type != 0);
     // assert(recv.status.type_transfer.trb_transfer_length == num_bytes);
     assert(recv.status.type_transfer.completion_code == 1);
-    assert(recv.status.type_transfer.slot_id == slot_id);
+    assert(recv.status.type_transfer.slot_id == request.slot_id);
     assert(recv.status.type_transfer.event_data);//ensures that paramater contains raw data
     assert(recv.parameter.raw == 0xBEEFBEEFBEEFBEEF);
 
-    memcpy(output, data_buffer_virt, num_bytes);
+    memcpy(output, data_buffer_virt, request.length);
     free_contiguous_phys(data_buffer_phys, num_pages);
+}
+
+static void send_control_transfer(struct xHCIData *xhci, uint8_t slot_id, uint8_t descriptor_type, uint8_t descriptor_index, struct Ring *ep0_transfer, void *output, uint64_t num_bytes) {
+    struct RequestTemplate rq = {
+        .slot_id = slot_id,
+
+        .direction = 1,
+        .request_type = RequestTypeStandard,
+        .recipient = RecipientDevice,
+        .request = GET_DESCRIPTOR,
+        .descriptor_index = descriptor_index,
+        .descriptor_type = descriptor_type,
+        .index = 0,
+        .length = num_bytes
+    };
+
+    make_request(xhci, ep0_transfer, output, rq);
 }
 
 static void read_string_descriptor(struct xHCIData *xhci, uint8_t slot_id, uint8_t string_index, struct Ring *ep0_transfer) {
@@ -426,8 +462,9 @@ static struct ExternConfigDesc read_configuration_descriptor(struct xHCIData *xh
                 printf("endpoint index %d of %d\n", endpoint_index, curr_interface->num_endpoints);
                 assert(endpoint_index < curr_interface->num_endpoints);
                 result.interfaces[curr_interface->interface_num].endpoints[endpoint_index++] = (struct ExternEpDesc) {
-                    .address = curr_endpoint->address,
-                    .attributes = curr_endpoint->attributes,
+                    .endpoint_num = curr_endpoint->endpoint_num,
+                    .is_in = curr_endpoint->direction,//1 means in
+                    .transfer_type = curr_endpoint->transfer_type,
                     .max_packet_size = curr_endpoint->max_packet_size
                 };
             }
@@ -488,17 +525,17 @@ static void initialise_port(struct xHCIData *xhci, uint64_t *dcbaa_virt, uint8_t
     const uint8_t slot_id = recv.status.command_completion.slot_id;
     assert(slot_id != 0);
 
-    const char* speed_str = 
-        (const char*[]){
-            "invalid",
-            "full speed usb 2",
-            "low speed usb 2",
-            "high speed usb 2",
-            "super speed usb 3",
-            "super speed plus usb 3.1"
-        }
-        [PORTSC_speed(portsc)];
-    printf("speed: %s\n", speed_str);
+    // const char* speed_str = 
+    //     (const char*[]){
+    //         "invalid",
+    //         "full speed usb 2",
+    //         "low speed usb 2",
+    //         "high speed usb 2",
+    //         "super speed usb 3",
+    //         "super speed plus usb 3.1"
+    //     }
+    //     [PORTSC_speed(portsc)];
+    // printf("speed: %s\n", speed_str);
 
     //create a ring for this port's endpoint 0
     xhci->dev_data[port_idx].ep0_transfer = create_ring();
@@ -564,37 +601,6 @@ static void initialise_port(struct xHCIData *xhci, uint64_t *dcbaa_virt, uint8_t
     send_control_transfer(xhci, slot_id, 1, 0, ep0_transfer, &device_descriptor, 18);
 
     assert(device_descriptor.device_class == 0);//unknown type
-
-    // printf("Device Descriptor:\n"
-    //    "  bLength:            0x%02X\n"
-    //    "  bDescriptorType:    0x%02X\n"
-    //    "  bcdUSB:             %02X.%02X\n"
-    //    "  bDeviceClass:       0x%02X\n"
-    //    "  bDeviceSubClass:    0x%02X\n"
-    //    "  bDeviceProtocol:    0x%02X\n"
-    //    "  bMaxPacketSize0:    %u\n"
-    //    "  idVendor:           0x%04X\n"
-    //    "  idProduct:          0x%04X\n"
-    //    "  bcdDevice:          0x%04X\n"
-    //    "  iManufacturer:      %u\n"
-    //    "  iProduct:           %u\n"
-    //    "  iSerialNumber:      %u\n"
-    //    "  bNumConfigurations: %u\n",
-    //    data_buffer.length,
-    //    data_buffer.type,
-    //    data_buffer.release_bcd_maj,
-    //    data_buffer.release_bcd_min,
-    //    data_buffer.device_class,
-    //    data_buffer.sub_class,
-    //    data_buffer.protocol,
-    //    data_buffer.max_packet_size,
-    //    data_buffer.vendor_id,
-    //    data_buffer.product_id,
-    //    data_buffer.device_release,
-    //    data_buffer.manufacturer,
-    //    data_buffer.product,
-    //    data_buffer.serial_num,
-    //    data_buffer.configurations);
     
     if(device_descriptor.product) {
         read_string_descriptor(xhci, slot_id, device_descriptor.product, ep0_transfer);

@@ -59,11 +59,13 @@ struct ExternConfigDesc {
     uint8_t num_interfaces;
     struct ExternIfDesc{
         uint8_t num_endpoints;
-        uint8_t sub_class;
-        uint8_t protocol;
+        enum {ExternIfClassMSD=0x08} class_code;
+        enum {ExternIfSubClassSCSI=0x06} sub_class;
+        enum {ExternIfProtocolBulkOnly=0x50} protocol;
         struct ExternEpDesc{
-            uint8_t address;
-            uint8_t attributes;
+            uint8_t endpoint_num;
+            bool is_in;//1=>in, 0=>out
+            enum {EPTransferControl=0b00, EpTransferIsochronous=0b01, EpTransferBulk=0b10, EpTransferInterrupt=0b11} transfer_type;
             uint16_t max_packet_size;
         } endpoints[16];//TODO is 16 right?
     } interfaces[256];
@@ -96,8 +98,11 @@ struct EndpointDescriptor {
     uint8_t
         length,
         type,
-        address,
-        attributes;
+        endpoint_num: 4,
+        reserved_0: 3,
+        direction: 1,
+        transfer_type: 2,
+        reserved_1: 6;
     uint16_t max_packet_size;
     uint8_t interval;
 } __attribute__((packed));
