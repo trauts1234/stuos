@@ -5,13 +5,11 @@
 #include "kern_libc.h"
 #include "debugging.h"
 #include "memory.h"
+#include "xhci_msd.h"
 #include "xhci_trb.h"
 #include <uapi/stdbool.h>
 
 //TODO I am missing tons of volatile in here!!!!!
-
-//store TRBs in a list after they have been dequeued
-#define TRB_LIST_LEN 64
 
 //https://www.intel.com/content/dam/www/public/us/en/documents/technical-specifications/extensible-host-controler-interface-usb-xhci.pdf
 
@@ -19,54 +17,6 @@ struct EventRingSegmentTableEntry {
     uint64_t ring_segment_base_address;
     uint16_t ring_segment_size;
     uint16_t reserved_0[3];
-};
-
-struct DeviceDescriptor {
-    uint8_t
-    //0x12
-        length,
-    //0x01
-        type,
-    //for example 0x0200 is usb 02.00
-        release_bcd_min, release_bcd_maj,
-    //0x00, indicates to use the class code in the interface descriptor
-        device_class,
-        sub_class,
-        protocol,
-        max_packet_size;
-
-    //this is after the first 8 bytes!
-    uint16_t
-        vendor_id,
-        product_id,
-        device_release;
-    uint8_t
-        manufacturer,
-        //index of string descriptor
-        product,
-        //index of serial number descriptor
-        serial_num,
-        configurations;
-};
-
-struct xHCIData {
-    struct Ring command_ring;
-    struct Ring event_ring;
-
-    struct BarInfo bar;
-    uint8_t cap_length;
-    uint32_t rts_offset;
-    uint32_t db_offset;
-    
-    //indexed by port index
-    struct XHCIDevice {
-        bool is_usb3;
-        struct Ring ep0_transfer;
-    } dev_data[64];
-
-    //I've taken these from the event TRBs
-    //trb type 0 indicates an empty slot
-    struct TRB unhandled_events[TRB_LIST_LEN];
 };
 
 struct DeviceContext {
@@ -431,7 +381,7 @@ static void read_string_descriptor(struct xHCIData *xhci, uint8_t slot_id, uint8
     send_control_transfer(xhci, slot_id, DESCRIPTOR_TYPE_STRING, string_index, ep0_transfer, &str, 2);
     assert(str.length % 2 == 0);
     assert(str.length >= 2);
-    assert(str.type == 0x03);
+    assert(str.type == DESCRIPTOR_TYPE_STRING);
     //read whole string
     send_control_transfer(xhci, slot_id, DESCRIPTOR_TYPE_STRING, string_index, ep0_transfer, &str, str.length);
 
@@ -443,10 +393,58 @@ static void read_string_descriptor(struct xHCIData *xhci, uint8_t slot_id, uint8
     }
     printf("string descriptor %d: %s\n", string_index, ascii);
 }
+static struct ExternConfigDesc read_configuration_descriptor(struct xHCIData *xhci, uint8_t slot_id, uint8_t configuration_index, struct Ring *ep0_transfer) {
+    struct ExternConfigDesc result = {};
+    
+    struct ConfigurationDescriptor initial_config;
+    //read initial fields (9 bytes)
+    send_control_transfer(xhci, slot_id, DESCRIPTOR_TYPE_CONFIGURATION, configuration_index, ep0_transfer, &initial_config, sizeof(initial_config));
+    assert(initial_config.length == sizeof(initial_config));
+    assert(initial_config.type == DESCRIPTOR_TYPE_CONFIGURATION);
+    assert(initial_config.total_length >= initial_config.length);
+    result.num_interfaces = initial_config.num_interfaces;
+
+    void *data = malloc(initial_config.total_length);
+    const void *end = data + initial_config.total_length;
+    //read the rest
+    send_control_transfer(xhci, slot_id, DESCRIPTOR_TYPE_CONFIGURATION, configuration_index, ep0_transfer, data, initial_config.total_length);
+    struct InterfaceDescriptor *curr_interface = data + initial_config.length;//this pointer is always valid
+    while((void*)curr_interface + 2 < end) {
+        assert(curr_interface->type == DESCRIPTOR_TYPE_INTERFACE);
+        assert(curr_interface->num_endpoints <= 16);
+        result.interfaces[curr_interface->interface_num] = (struct ExternIfDesc) {
+            .num_endpoints = curr_interface->num_endpoints,
+            .sub_class = curr_interface->sub_class,
+            .protocol = curr_interface->protocol
+        };
+
+        uint8_t endpoint_index = 0;
+        struct EndpointDescriptor *curr_endpoint = (void*)curr_interface + curr_interface->length;//immediately after
+        while((void*)curr_endpoint + 2 < end && curr_endpoint->type != DESCRIPTOR_TYPE_INTERFACE) {
+            if(curr_endpoint->type == DESCRIPTOR_TYPE_ENDPOINT) {
+                assert(curr_endpoint->interval == 0);//means no polling needed
+                printf("endpoint index %d of %d\n", endpoint_index, curr_interface->num_endpoints);
+                assert(endpoint_index < curr_interface->num_endpoints);
+                result.interfaces[curr_interface->interface_num].endpoints[endpoint_index++] = (struct ExternEpDesc) {
+                    .address = curr_endpoint->address,
+                    .attributes = curr_endpoint->attributes,
+                    .max_packet_size = curr_endpoint->max_packet_size
+                };
+            }
+
+            curr_endpoint = (void*)curr_endpoint + curr_endpoint->length;
+        }
+
+        curr_interface = (void*)curr_endpoint;
+    }
+    free(data);
+
+    return result;
+}
 
 //does nothing if port is empty
-static void initialise_port(struct BarInfo bar, struct xHCIData *xhci, uint64_t *dcbaa_virt, uint8_t port_idx) {
-    uint32_t portsc = read_bar_32(bar, xhci->cap_length + PORTSC_OFFSET(port_idx));
+static void initialise_port(struct xHCIData *xhci, uint64_t *dcbaa_virt, uint8_t port_idx) {
+    uint32_t portsc = read_bar_32(xhci->bar, xhci->cap_length + PORTSC_OFFSET(port_idx));
     assert(portsc & PORTSC_PP);//TODO power on the port if it isn't already
 
     if(!((portsc & PORTSC_CCS) && (portsc & PORTSC_CSC))) return;//port is empty
@@ -457,13 +455,13 @@ static void initialise_port(struct BarInfo bar, struct xHCIData *xhci, uint64_t 
     portsc |= PORTSC_CSC | PORTSC_PEC | PORTSC_PRC;
     //reset or warm port reset
     portsc |= is_usb3 ? PORTSC_WPR : PORTSC_PR;
-    write_bar_32(bar, portsc, xhci->cap_length + PORTSC_OFFSET(port_idx));
+    write_bar_32(xhci->bar, portsc, xhci->cap_length + PORTSC_OFFSET(port_idx));
 
     delay();
-    portsc = read_bar_32(bar, xhci->cap_length + PORTSC_OFFSET(port_idx));
+    portsc = read_bar_32(xhci->bar, xhci->cap_length + PORTSC_OFFSET(port_idx));
     //wait for reset completion
     while((is_usb3 && !(portsc & PORTSC_WRC)) || (!is_usb3 && !(portsc & PORTSC_PRC))) {
-        portsc = read_bar_32(bar, xhci->cap_length + PORTSC_OFFSET(port_idx));
+        portsc = read_bar_32(xhci->bar, xhci->cap_length + PORTSC_OFFSET(port_idx));
     }
 
     delay();
@@ -472,11 +470,11 @@ static void initialise_port(struct BarInfo bar, struct xHCIData *xhci, uint64_t 
     portsc |= PORTSC_PRC | PORTSC_WRC | PORTSC_CSC | PORTSC_PEC;
     //writing 1 would clear this flag, so we write 0
     portsc &= ~(uint32_t)PORTSC_PED;
-    write_bar_32(bar, portsc, xhci->cap_length + PORTSC_OFFSET(port_idx));
+    write_bar_32(xhci->bar, portsc, xhci->cap_length + PORTSC_OFFSET(port_idx));
 
     delay();
 
-    portsc = read_bar_32(bar, xhci->cap_length + PORTSC_OFFSET(port_idx));
+    portsc = read_bar_32(xhci->bar, xhci->cap_length + PORTSC_OFFSET(port_idx));
     assert(portsc & PORTSC_PED);
 
     //get a device slot
@@ -555,17 +553,17 @@ static void initialise_port(struct BarInfo bar, struct xHCIData *xhci, uint64_t 
     set_input_context(xhci, slot_id, input_context_phys);
     assert(device_context->slot_state == 2);
 
-    struct DeviceDescriptor data_buffer;// = get_device_descriptor(xhci, slot_id, ep0_transfer, 8);
-    send_control_transfer(xhci, slot_id, 1, 0, ep0_transfer, &data_buffer, 8);
+    struct DeviceDescriptor device_descriptor;// = get_device_descriptor(xhci, slot_id, ep0_transfer, 8);
+    send_control_transfer(xhci, slot_id, 1, 0, ep0_transfer, &device_descriptor, 8);
     input_context->device_context.endpoint_context[0] = device_context->endpoint_context[0];
     input_context->add_flags = 0b10;
-    input_context->device_context.endpoint_context[0].max_packet_size = (data_buffer.release_bcd_maj >= 0x03) ? (1<<data_buffer.max_packet_size) : data_buffer.max_packet_size;//usb 3 decided to be special and think that 9 equals 512
+    input_context->device_context.endpoint_context[0].max_packet_size = (device_descriptor.release_bcd_maj >= 0x03) ? (1<<device_descriptor.max_packet_size) : device_descriptor.max_packet_size;//usb 3 decided to be special and think that 9 equals 512
     update_input_context(xhci, slot_id, input_context_phys);
     //read the full data buffer
-    assert(data_buffer.length == 18);
-    send_control_transfer(xhci, slot_id, 1, 0, ep0_transfer, &data_buffer, 18);
+    assert(device_descriptor.length == 18);
+    send_control_transfer(xhci, slot_id, 1, 0, ep0_transfer, &device_descriptor, 18);
 
-    assert(data_buffer.device_class == 0);//unknown type
+    assert(device_descriptor.device_class == 0);//unknown type
 
     // printf("Device Descriptor:\n"
     //    "  bLength:            0x%02X\n"
@@ -598,15 +596,30 @@ static void initialise_port(struct BarInfo bar, struct xHCIData *xhci, uint64_t 
     //    data_buffer.serial_num,
     //    data_buffer.configurations);
     
-    if(data_buffer.product) {
-        read_string_descriptor(xhci, slot_id, data_buffer.product, ep0_transfer);
+    if(device_descriptor.product) {
+        read_string_descriptor(xhci, slot_id, device_descriptor.product, ep0_transfer);
     }
-    if(data_buffer.serial_num) {
-        read_string_descriptor(xhci, slot_id, data_buffer.serial_num, ep0_transfer);
+    if(device_descriptor.serial_num) {
+        read_string_descriptor(xhci, slot_id, device_descriptor.serial_num, ep0_transfer);
     }
 
-    free4k_phys(input_context_phys);
+    free4k_phys(input_context_phys);//? should I do this
     //337, 383
+
+    assert(device_descriptor.configurations == 1);// only handle situations with one configuration for now
+    const struct ExternConfigDesc config_descriptor = read_configuration_descriptor(xhci, slot_id, 0, ep0_transfer);
+
+    if (
+        config_descriptor.num_interfaces == 1
+    ) {
+        const struct ExternIfDesc desc = config_descriptor.interfaces[0];
+
+        //.protocol: 0x0=>CBI with command completion interrupt, 0x1=>CBI, 0x50=>bulk only
+        //.sub_class: 0x6=>SCSI transparent command set
+        if(desc.protocol == 0x50 && desc.sub_class == 0x06) {
+            initialise_msd(xhci, config_descriptor);
+        }
+    }
 }
 
 void initialise_xhci(struct PciDevice dev, struct PciData *dev_data) {
@@ -768,7 +781,7 @@ void initialise_xhci(struct PciDevice dev, struct PciData *dev_data) {
 
     printf("scanning %d ports\n", max_ports);
     for(uint8_t port_idx = 0; port_idx < max_ports; port_idx++) {
-        initialise_port(bar, &xhci, dcbaa_virt, port_idx);
+        initialise_port(&xhci, dcbaa_virt, port_idx);
     }
 
 }
