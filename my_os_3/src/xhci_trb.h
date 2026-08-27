@@ -51,10 +51,7 @@ struct TRB {
             direction: 1,
             //see appendix G on the USB book. 6=>get descriptor
             request: 8,
-            descriptor_index: 8,
-            //1=>DEVICE, 2=>configuration, 3=>string, 4=>interface, 5=>endpoint, 6=>device qualifier, 7=>other speed configuration, 8=>interface power
-            descriptor_type: 8,
-            // value: 16,
+            value: 16,
             index: 16,
             //if a data phase, num of bytes to transfer
             length: 16;
