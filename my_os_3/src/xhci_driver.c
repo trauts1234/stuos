@@ -450,6 +450,7 @@ static struct ExternConfigDesc read_configuration_descriptor(struct xHCIData *xh
         assert(curr_interface->num_endpoints <= 16);
         result.interfaces[curr_interface->interface_num] = (struct ExternIfDesc) {
             .num_endpoints = curr_interface->num_endpoints,
+            .class_code = curr_interface->class_code,
             .sub_class = curr_interface->sub_class,
             .protocol = curr_interface->protocol
         };
@@ -620,9 +621,7 @@ static void initialise_port(struct xHCIData *xhci, uint64_t *dcbaa_virt, uint8_t
     ) {
         const struct ExternIfDesc desc = config_descriptor.interfaces[0];
 
-        //.protocol: 0x0=>CBI with command completion interrupt, 0x1=>CBI, 0x50=>bulk only
-        //.sub_class: 0x6=>SCSI transparent command set
-        if(desc.protocol == 0x50 && desc.sub_class == 0x06) {
+        if(desc.protocol == ExternIfProtocolBulkOnly && desc.sub_class == ExternIfSubClassSCSI) {
             initialise_msd(xhci, config_descriptor);
         }
     }
