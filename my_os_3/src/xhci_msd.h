@@ -3,6 +3,6 @@
 
 #include "xhci_driver.h"
 
-void initialise_msd(struct xHCIData *xhci, struct ExternConfigDesc config_descriptor);
+void initialise_msd(struct xHCIData *xhci, uint8_t slot_number, struct ExternConfigDesc config_descriptor);
 
 #endif

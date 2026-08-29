@@ -3,7 +3,7 @@
 
 #include "uapi/stdint.h"
 
-//transfer ring
+#define TRB_TYPE_NORMAL 1
 #define TRB_TYPE_SETUP_STAGE 2
 #define TRB_TYPE_DATA_STAGE 3
 #define TRB_TYPE_STATUS_STAGE 4
@@ -11,6 +11,9 @@
 #define TRB_TYPE_EVENT_DATA 7
 #define TRB_TYPE_ENABLE_SLOT 9
 #define TRB_TYPE_SET_ADDRESS 11
+//adds or removes endpoints, but can't modify existing ones
+#define TRB_TYPE_CONFIGURE_ENDPOINT 12
+//changes the settings of an already-configured endpoint (cannot be used to create/delete endpoints)
 #define TRB_TYPE_EVALUATE_CONTEXT 13
 
 //event ring responses types
@@ -69,6 +72,24 @@ struct TRB {
             trb_type: 6,
             reserved_2: 16;
         };
+
+        struct NormalTRB {
+            uint64_t
+            trb_transfer_length: 16,
+            td_size:5,
+            interrupter_target: 10,
+            cycle_bit: 1,
+            evaluate_next_trb: 1,
+            interrupt_on_short_packet: 1,
+            no_snoop: 1,
+            chain_bit: 1,
+            interrupt_on_completion: 1,
+            immediate_data: 1,
+            reserved_0: 2,
+            block_event_interrupt: 1,
+            trb_type: 6,
+            reserved_1: 16;
+        } normal;
 
         struct LinkTRBSts {
             uint64_t
@@ -193,6 +214,7 @@ struct Ring {
     uint64_t count;
     uint64_t idx;
     uint64_t trbs_phys;
+    // NULL indicates an uninitialised ring
     struct TRB *trbs;
     uint8_t ring_cycle_state;
 };
