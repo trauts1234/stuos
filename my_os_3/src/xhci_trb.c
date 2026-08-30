@@ -2,6 +2,7 @@
 #include "physical_slab_allocation.h"
 #include "memory.h"
 #include "kern_libc.h"
+#include "debugging.h"
 
 struct Ring create_ring() {
     const uint64_t count = PAGE_SIZE / sizeof(struct TRB);
@@ -29,6 +30,7 @@ struct Ring create_ring() {
 }
 
 void enqueue_ring(struct Ring *ring, struct TRB trb) {
+    assert(ring->trbs);
     trb.status.cycle_bit = ring->ring_cycle_state;
     ring->trbs[ring->idx] = trb;
 

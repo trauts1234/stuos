@@ -212,7 +212,7 @@ static void xhci_handle_responses(struct xHCIData *data) {
     }
 }
 
-static struct TRB fetch_and_extract(struct xHCIData *data, uint8_t requested_trb_type) {
+struct TRB fetch_and_extract(struct xHCIData *data, uint8_t requested_trb_type) {
     struct TRB result;
     while((result = extract_from_list(data->unhandled_events, requested_trb_type)).status.trb_type == 0) {
         xhci_handle_responses(data);
@@ -329,8 +329,8 @@ void set_context_entries(struct DeviceContext *device_context) {
         index_of_last_valid_entry--;//found an empty slot
     }
 
-    device_context->context_entries = index_of_last_valid_entry+1;
-    printf("set context entries %d\n", index_of_last_valid_entry+1);
+    device_context->context_entries = index_of_last_valid_entry;
+    printf("set context entries %d\n", index_of_last_valid_entry);
 }
 
 static void send_control_transfer(struct xHCIData *xhci, uint8_t slot_number, uint8_t descriptor_type, uint8_t descriptor_index, void *output, uint64_t num_bytes) {
@@ -480,6 +480,7 @@ static void initialise_port(struct xHCIData *xhci, uint64_t *dcbaa_virt, uint8_t
     //create device context
     uint64_t device_context_phys = malloc4k_phys();
     struct DeviceContext *device_context = phys_to_hhdm(device_context_phys);
+    curr_device->device_context = device_context;
     memset(device_context, 0, sizeof(struct DeviceContext));
     dcbaa_virt[slot_number] = device_context_phys;
 
@@ -487,8 +488,8 @@ static void initialise_port(struct xHCIData *xhci, uint64_t *dcbaa_virt, uint8_t
     uint64_t input_context_phys = malloc4k_phys();
     struct InputContext *input_context = phys_to_hhdm(input_context_phys);
     memset(input_context, 0, sizeof(struct InputContext));
-    xhci->slots[slot_number].input_context = input_context;
-    xhci->slots[slot_number].input_context_phys = input_context_phys;
+    curr_device->input_context = input_context;
+    curr_device->input_context_phys = input_context_phys;
 
     input_context->add_flags |= 0b11;//enable the slot context and control EP0
     input_context->device_context.speed = PORTSC_speed(portsc);

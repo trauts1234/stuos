@@ -75,7 +75,7 @@ struct TRB {
 
         struct NormalTRB {
             uint64_t
-            trb_transfer_length: 16,
+            trb_transfer_length: 17,
             td_size:5,
             interrupter_target: 10,
             cycle_bit: 1,

@@ -13,6 +13,6 @@ qemu-system-x86_64 $FLAGS -m 4096M \
   -device qemu-xhci,id=xhci \
   -device usb-storage,drive=usbstick \
   -serial stdio -no-reboot -no-shutdown \
-  -trace msix* -trace usb_xhci_* -D ./qemu.log
+  -trace 'usb_*' -trace 'scsi_*' -D ./qemu.log
 
 # qemu-system-x86_64 $FLAGS -m 4096M -drive if=virtio,file=filesystem.img,format=raw -serial stdio -no-reboot -no-shutdown

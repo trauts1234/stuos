@@ -29,6 +29,15 @@ struct CommandStatusWrapper {
     uint8_t status;
 } __attribute__((packed));
 
+static void debug_ring(const struct Ring *ring) {
+    //print some of the preceeding items
+    for(uint64_t i=0; i<ring->idx; i++) {
+        struct TRB *x = &ring->trbs[i];
+        printf("TRB: p %llu s %llu type %d cycle %d\n", x->parameter.raw, x->status.raw, x->status.trb_type, x->status.cycle_bit);
+    }
+    printf("\n");
+}
+
 void initialise_msd(struct xHCIData *xhci, uint8_t slot_number, struct ExternConfigDesc config_descriptor) {
     printf("initialising MSD:\n");
 
@@ -54,14 +63,21 @@ void initialise_msd(struct xHCIData *xhci, uint8_t slot_number, struct ExternCon
     assert(!out.is_in);
     assert(in.transfer_type = EpTransferBulk);
     assert(out.transfer_type = EpTransferBulk);
+    printf("MSD out is endpoint %d\nMSD in is endpoint %d\n", out.endpoint_num, in.endpoint_num);
     //enable the endpoints
     int in_index = calculate_endpoint_index(in.endpoint_num, true);
+    device->endpoint_rings[in_index] = create_ring();
     struct Ring *in_ring = &device->endpoint_rings[in_index];
+
     int out_index = calculate_endpoint_index(out.endpoint_num, false);
+    device->endpoint_rings[out_index] = create_ring();
     struct Ring *out_ring = &device->endpoint_rings[out_index];
-    device->input_context->add_flags = ((1 << in_index) | (1 << out_index)) << 1;//shift by 1 to skip the slot context?
+    device->input_context->add_flags = 
+        1 | 
+        (1 << (in_index+1)) |
+        (1 << (out_index+1));//+1 to skip the slot context?
     device->input_context->device_context.endpoint_context[in_index] = (struct EndpointContext) {
-        .ep_type = 2,//?
+        .ep_type = 6,
         .cerr = 3,
         .max_packet_size = in.max_packet_size,
         .tr_dequeue_pointer_lo = in_ring->trbs_phys >> 4,
@@ -70,16 +86,21 @@ void initialise_msd(struct xHCIData *xhci, uint8_t slot_number, struct ExternCon
         .average_trb_length = 8,
     };
     device->input_context->device_context.endpoint_context[out_index] = (struct EndpointContext) {
-        .ep_type = 6,//?
+        .ep_type = 2,
         .cerr = 3,
         .max_packet_size = in.max_packet_size,
         .tr_dequeue_pointer_lo = out_ring->trbs_phys >> 4,
         .tr_dequeue_pointer_hi = out_ring->trbs_phys >> 32,
         .dcs = 1,
         .average_trb_length = 8,
+        // .lsa = 1,
     };
     set_context_entries(&device->input_context->device_context);
     update_input_context(xhci, slot_number, false);
+    assert(device->device_context->endpoint_context[in_index].ep_state == 1);
+    assert(device->device_context->endpoint_context[in_index].dcs == 1);
+    assert(device->device_context->endpoint_context[out_index].ep_state == 1);
+    assert(device->device_context->endpoint_context[out_index].dcs == 1);
 
     //TODO page 385 requests we fetch a different device qualifier, so that we know settings for the USB drive when it is in full and high speed
 
@@ -112,8 +133,10 @@ void initialise_msd(struct xHCIData *xhci, uint8_t slot_number, struct ExternCon
     max_lun++;//since zero based, add one
     assert(max_lun == 1);
 
+    printf("doing inquiry\n");
+
     uint64_t inquiry_phys = malloc4k_phys();
-    struct CommandBlockWrapper *inquiry = phys_to_hhdm(inquiry_phys);
+    volatile struct CommandBlockWrapper *inquiry = phys_to_hhdm(inquiry_phys);
     *inquiry = (struct CommandBlockWrapper) {
         .signature=0x43425355,
         .tag = next_free_tag++,
@@ -132,18 +155,18 @@ void initialise_msd(struct xHCIData *xhci, uint8_t slot_number, struct ExternCon
     };
 
     uint64_t inquiry_response_phys = malloc4k_phys();
+    volatile void *inquiry_response = phys_to_hhdm(inquiry_response_phys);
     uint64_t inquiry_status_phys = malloc4k_phys();
+    volatile struct CommandStatusWrapper *inquiry_status = phys_to_hhdm(inquiry_status_phys);
 
     //ask for an inquiry
     enqueue_ring(out_ring, (struct TRB) {
         .parameter.raw = inquiry_phys,
         .status.normal = {
-            .trb_transfer_length = sizeof(struct CommandBlockWrapper),
+            .trb_transfer_length = 31,
             .trb_type = TRB_TYPE_NORMAL
         }
     });
-    ring_doorbell(xhci, device->one_based_root_port, out_index);
-    delay();
     //here is where to put the response
     enqueue_ring(in_ring, (struct TRB) {
         .parameter.raw = inquiry_response_phys,
@@ -152,18 +175,35 @@ void initialise_msd(struct xHCIData *xhci, uint8_t slot_number, struct ExternCon
             .trb_type = TRB_TYPE_NORMAL
         }
     });
-    ring_doorbell(xhci, device->one_based_root_port, in_index);
-    delay();
     //here is where to put the CSW
     enqueue_ring(in_ring, (struct TRB) {
         .parameter.raw = inquiry_status_phys,
         .status.normal = {
-            .trb_transfer_length = sizeof(struct CommandStatusWrapper),
+            .trb_transfer_length = 13,
             .trb_type = TRB_TYPE_NORMAL
         }
     });
-    ring_doorbell(xhci, device->one_based_root_port, in_index);
+
+    printf("out ring\n");
+    debug_ring(out_ring);
+    printf("in ring\n");
+    debug_ring(in_ring);
+
+    assert(device->device_context->endpoint_context[in_index].ep_state == 1);
+    assert(device->device_context->endpoint_context[in_index].dcs == 1);
+    assert(device->device_context->endpoint_context[out_index].ep_state == 1);
+    assert(device->device_context->endpoint_context[out_index].dcs == 1);
+
+    ring_doorbell(xhci, slot_number, out_index);
+    ring_doorbell(xhci, slot_number, in_index);
     delay();
+    printf("inquiry complete\n");
+
+    printf("inquiry status: 0x%x\n", inquiry_status->signature);
+    assert(inquiry_status->signature == 0x53425355);
+    assert(inquiry_status->tag == inquiry->tag);
+    assert(inquiry_status->data_residue == 0);//hope
+    assert(inquiry_status->status == 0);
 
     //394
 }

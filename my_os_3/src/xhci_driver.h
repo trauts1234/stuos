@@ -47,7 +47,7 @@ struct DeviceContext {
         uint32_t
             reserved_1: 1,
             cerr: 2,
-            //1=>isoch out, 2=>bulk out, 3=>interrupt out, 4=>control, 5=>isoch in, 6=>bulk in, 7=>interrupt in
+            /// 1=>isoch out, 2=>bulk out, 3=>interrupt out, 4=>control, 5=>isoch in, 6=>bulk in, 7=>interrupt in
             ep_type: 3,
             reserved_2: 1,
             hid: 1,
@@ -95,6 +95,7 @@ struct xHCIData {
         struct Ring endpoint_rings[15];
         uint64_t input_context_phys;
         struct InputContext *input_context;
+        struct DeviceContext *device_context;
         //root port number (0 as a null sentinel if the slot is unused)
         uint8_t one_based_root_port;
     } slots[256];
@@ -183,6 +184,7 @@ void set_context_entries(struct DeviceContext *device_context);
 void ring_doorbell(struct xHCIData *data, uint8_t port, uint8_t endpoint_index);
 //memory fence + nops
 void delay();
+struct TRB fetch_and_extract(struct xHCIData *data, uint8_t requested_trb_type);
 
 void initialise_xhci(struct PciDevice dev, struct PciData *dev_data);
 
