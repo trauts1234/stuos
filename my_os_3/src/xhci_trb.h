@@ -154,7 +154,6 @@ struct TRB {
             immediate_data: 1,
             reserved_2: 3,
             trb_type: 6,
-            //0=>no data stage, 2=>OUT data stage, 3=>IN data stage
             transfer_type: 2,
             reserved_3: 14;
         } device_request;
@@ -173,7 +172,6 @@ struct TRB {
             immediate_data: 1,
             reserved_0: 3,
             trb_type: 6,
-            //(unsure) 1=>to OS, 2=>from OS
             direction: 1,
             reserved_1: 15;
         } data_stage;
