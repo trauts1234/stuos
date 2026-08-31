@@ -29,14 +29,42 @@ struct CommandStatusWrapper {
     uint8_t status;
 } __attribute__((packed));
 
-static void debug_ring(const struct Ring *ring) {
-    //print some of the preceeding items
-    for(uint64_t i=0; i<ring->idx; i++) {
-        struct TRB *x = &ring->trbs[i];
-        printf("TRB: p %llu s %llu type %d cycle %d\n", x->parameter.raw, x->status.raw, x->status.trb_type, x->status.cycle_bit);
-    }
-    printf("\n");
-}
+struct InquiryReturn {
+    uint8_t
+        //0=>direct access block device, 5=>cd-rom
+        peripheral_device_type: 5,
+        peripheral_qualifier: 3,
+        reserved_0: 7,
+        removable: 1,
+        version,//0 (but it isn't in QEMU?)
+        response_data_format: 4,
+        hisup: 1,
+        norm_aca: 1,
+        reserved_1: 2,
+        additional_length,//how many additional bytes are in this data block
+        prot: 1,
+        reserved_2: 2,
+        pc_3: 1,
+        tpgs: 2,
+        acc: 1,
+        sccs: 1,
+        addr_16: 1,
+        reserved_3: 3,
+        multi_p: 1,
+        vs_0: 1,
+        enc_serv: 1,
+        resv: 1,
+        vs_1: 1,
+        command_queue: 1,
+        reserved_4: 2,
+        sync: 1,
+        wbus_16: 1,
+        reserved_5: 2;
+    uint64_t
+        vendor_information,//ASCII
+        product_identification[2];//ASCII
+    uint32_t product_revision_level;
+} __attribute__((packed));
 
 void initialise_msd(struct xHCIData *xhci, uint8_t slot_number, struct ExternConfigDesc config_descriptor) {
     printf("initialising MSD:\n");
@@ -63,7 +91,6 @@ void initialise_msd(struct xHCIData *xhci, uint8_t slot_number, struct ExternCon
     assert(!out.is_in);
     assert(in.transfer_type = EpTransferBulk);
     assert(out.transfer_type = EpTransferBulk);
-    printf("MSD out is endpoint %d\nMSD in is endpoint %d\n", out.endpoint_num, in.endpoint_num);
     //enable the endpoints
     int in_index = calculate_endpoint_index(in.endpoint_num, true);
     device->endpoint_rings[in_index] = create_ring();
@@ -133,8 +160,6 @@ void initialise_msd(struct xHCIData *xhci, uint8_t slot_number, struct ExternCon
     max_lun++;//since zero based, add one
     assert(max_lun == 1);
 
-    printf("doing inquiry\n");
-
     uint64_t inquiry_phys = malloc4k_phys();
     volatile struct CommandBlockWrapper *inquiry = phys_to_hhdm(inquiry_phys);
     *inquiry = (struct CommandBlockWrapper) {
@@ -155,7 +180,7 @@ void initialise_msd(struct xHCIData *xhci, uint8_t slot_number, struct ExternCon
     };
 
     uint64_t inquiry_response_phys = malloc4k_phys();
-    volatile void *inquiry_response = phys_to_hhdm(inquiry_response_phys);
+    volatile struct InquiryReturn *inquiry_response = phys_to_hhdm(inquiry_response_phys);
     uint64_t inquiry_status_phys = malloc4k_phys();
     volatile struct CommandStatusWrapper *inquiry_status = phys_to_hhdm(inquiry_status_phys);
 
@@ -184,26 +209,21 @@ void initialise_msd(struct xHCIData *xhci, uint8_t slot_number, struct ExternCon
         }
     });
 
-    printf("out ring\n");
-    debug_ring(out_ring);
-    printf("in ring\n");
-    debug_ring(in_ring);
-
-    assert(device->device_context->endpoint_context[in_index].ep_state == 1);
-    assert(device->device_context->endpoint_context[in_index].dcs == 1);
-    assert(device->device_context->endpoint_context[out_index].ep_state == 1);
-    assert(device->device_context->endpoint_context[out_index].dcs == 1);
-
     ring_doorbell(xhci, slot_number, out_index);
     ring_doorbell(xhci, slot_number, in_index);
     delay();
-    printf("inquiry complete\n");
 
-    printf("inquiry status: 0x%x\n", inquiry_status->signature);
     assert(inquiry_status->signature == 0x53425355);
     assert(inquiry_status->tag == inquiry->tag);
     assert(inquiry_status->data_residue == 0);//hope
     assert(inquiry_status->status == 0);
+    assert(inquiry_response->peripheral_device_type == 0);//direct access block device
+    assert(inquiry_response->response_data_format == 1 || inquiry_response->response_data_format == 2);
 
+    char vendor_information[9] = {};
+    memcpy(&vendor_information, (void*)&inquiry_response->vendor_information, 8);
+    char product_identification[17] = {};
+    memcpy(&product_identification, (void*)&inquiry_response->product_identification, 16);
+    printf("vendor information: %s\nproduct identification: %s\n", vendor_information, product_identification);
     //394
 }

@@ -8,8 +8,9 @@ ASM_SRCS = $(wildcard $(SRC_DIR)/*.asm)
 MALLOC_SRC_DIR = ../malloc_my_os_3
 MALLOC_SRCS = $(wildcard $(MALLOC_SRC_DIR)/*.c)
 
-CFLAGS = -ffreestanding -m64 -nostdlib -O0 -Wall -Wextra -mcmodel=kernel -fno-pie -mno-red-zone -march=x86-64 -I../abi -I ../malloc_my_os_3/
-DBGFLAGS = -g -fno-omit-frame-pointer
+#frame pointer is needed for HCF backtraces
+CFLAGS = -ffreestanding -m64 -nostdlib -O0 -fno-omit-frame-pointer -Wall -Wextra -mcmodel=kernel -fno-pie -mno-red-zone -march=x86-64 -I../abi -I ../malloc_my_os_3/
+DBGFLAGS = -g
 LDFLAGS = -T $(SRC_DIR)/linker.lds -nostdlib
 
 # location of build artifacts

@@ -3,6 +3,7 @@ bits 64
 section .text
 
 global loop_hlt
+global generate_stack_trace
 global check_cpuid_sse
 global enable_sse
 global get_pml4_phys
@@ -24,6 +25,44 @@ extern syscall_stack_top
 loop_hlt:
     hlt
     jmp loop_hlt
+
+generate_stack_trace:
+    push    rbp
+    mov     rbp, rsp
+
+    ; r8 = number of addresses written
+    ; r9 = current stack pointer
+    ; rdi = array address
+    ; rsi = number of entries in array
+    mov r8, 0
+    mov r9, rbp
+
+.loop:
+    ; Stop if we've filled the supplied buffer.
+    cmp     r8, rsi
+    jae     .done
+
+    ; get return address for the current frame.
+    mov     rax, [r9 + 8]
+    ; stack_trace[r8] = return address
+    mov     [rdi + r8*8], rax
+    inc     r8
+    ; Get previous frame pointer.
+    mov     r10, [r9]
+    ; zero pointer = end of trace
+    test    r10, r10
+    jz      .done
+
+    ; Stack grows downward, so caller's rbp should be at a higher address than the current rbp.
+    cmp     r10, r9
+    jbe     .done
+    mov     r9, r10
+    jmp     .loop
+
+.done:
+    mov     rax, r8
+    pop     rbp
+    ret
 
 ; sets up SSE support
 enable_sse:

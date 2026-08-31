@@ -35,7 +35,7 @@ void putchar(char a) {
    while (!is_transmit_empty());
 
    out8(PORT,a);
-//    tty_write_char(a);
+   tty_write_char(a);
 }
 
 void abort() {
@@ -43,8 +43,17 @@ void abort() {
 }
 
 __attribute__((noreturn)) extern void loop_hlt();
+//returns a list of return addresses from the stack (-fno-omit-frame-pointer) including the return address for __debugging_hcf()
+extern uint64_t generate_stack_trace(uint64_t *stack_trace, uint64_t count);
 
 __attribute__((noreturn)) void __debugging_hcf(int line, char* file) {
     printf("halt and catch fire! %s:%d\n", file, line);
+
+    uint64_t stack_trace[256] = {};
+    uint64_t count = generate_stack_trace(stack_trace, 256);
+    printf("stack trace:\n");
+    for(uint64_t i=0; i<count; i++) {
+        printf("%llu: 0x%llx\n", i, stack_trace[i]);
+    }
     loop_hlt();
 }

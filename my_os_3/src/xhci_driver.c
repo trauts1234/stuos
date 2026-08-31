@@ -261,7 +261,7 @@ void make_request(struct xHCIData *xhci, void *output, struct RequestTemplate re
             .direction = request.direction,
             .request = request.request,
             .value = request.value,
-            .index = request.length,
+            .index = request.index,
             .length = request.length
         },
         .status.device_request = {
@@ -311,7 +311,9 @@ void make_request(struct xHCIData *xhci, void *output, struct RequestTemplate re
     delay();
     struct TRB recv = fetch_and_extract(xhci, TRB_TYPE_TRANSFER);
     assert(recv.status.type_transfer.trb_type != 0);
-    // assert(recv.status.type_transfer.trb_transfer_length == num_bytes);
+    if(recv.status.type_transfer.completion_code != 1) {
+        printf("bad completion code %d\n", recv.status.type_transfer.completion_code);
+    }
     assert(recv.status.type_transfer.completion_code == 1);
     assert(recv.status.type_transfer.slot_id == request.slot_number);
     assert(recv.status.type_transfer.event_data);//ensures that paramater contains raw data
@@ -329,8 +331,7 @@ void set_context_entries(struct DeviceContext *device_context) {
         index_of_last_valid_entry--;//found an empty slot
     }
 
-    device_context->context_entries = index_of_last_valid_entry;
-    printf("set context entries %d\n", index_of_last_valid_entry);
+    device_context->context_entries = index_of_last_valid_entry+1;
 }
 
 static void send_control_transfer(struct xHCIData *xhci, uint8_t slot_number, uint8_t descriptor_type, uint8_t descriptor_index, void *output, uint64_t num_bytes) {
