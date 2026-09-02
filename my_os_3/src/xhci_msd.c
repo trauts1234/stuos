@@ -5,9 +5,6 @@
 #include "debugging.h"
 #include "xhci_trb.h"
 #include "memory.h"
-#include "xhci_td_size.h"
-
-static uint32_t next_free_tag = 69;
 
 struct CommandBlockWrapper {
     uint32_t signature;//0x43425355
@@ -66,6 +63,120 @@ struct InquiryReturn {
         product_identification[2];//ASCII
     uint32_t product_revision_level;
 } __attribute__((packed));
+
+struct ReadCapacity10Return {
+    uint32_t last_valid_lba;
+    uint32_t block_size_bytes;
+};
+
+// struct CapacityReturn {
+//     uint8_t reserved[3];
+//     uint8_t num_bytes;//size of capacity_descriptors
+//     struct CapacityDescriptor {
+//         uint32_t number_of_blocks;
+//         uint8_t
+//         //0b01=>unformatted disk, is a maximum capacity descriptor for current disk, 0b10=>formatted disk, is current capacity descriptor, 0b11=>no disk, is maximum capacity the controller is capable of handling
+//             descriptor_code: 2,
+//             reserved_0: 6;
+//         uint32_t block_length: 24;
+//     } capacity_descriptors[31];
+// };
+
+// struct RequestSenseReturn {
+//     uint8_t
+//         error_code: 7,
+//         information_is_valid: 1,
+//         reserved_0,
+//         sense_key: 4, reserved_1:1, ili: 1, eom: 1, file_mark: 1;
+//     uint32_t information;
+//     uint8_t additional_sense_length;
+//     uint32_t reserved_2;
+//     uint8_t
+//         additional_sense_code,
+//         additional_sense_code_qualifier,
+//         field_replaceable_unit_code;
+//     uint32_t sense_key_specific: 24;
+// } __attribute__((packed));
+
+static uint32_t send_bbb(struct xHCIData *xhci, uint8_t slot_number, struct Ring *in_ring, int in_index, struct Ring *out_ring, int out_index, struct CommandBlockWrapper cbw, void* response_out, uint32_t response_len) {
+    static uint32_t next_free_tag = 69;
+
+    uint64_t command_phys = malloc4k_phys();
+    volatile struct CommandBlockWrapper *command = phys_to_hhdm(command_phys);
+    cbw.tag = next_free_tag++,
+    *command = cbw;
+
+    assert(response_len > 0);
+    assert(response_out);
+    uint64_t response_num_pages = round_up_pages(response_len);
+    uint64_t response_phys = malloc_contiguous_phys(response_num_pages);
+    
+    uint64_t status_phys = malloc4k_phys();
+    volatile struct CommandStatusWrapper *status = phys_to_hhdm(status_phys);
+
+    //send command
+    enqueue_ring(out_ring, (struct TRB) {
+        .parameter.raw = command_phys,
+        .status.normal = {
+            .trb_transfer_length = sizeof(struct CommandBlockWrapper),
+            .trb_type = TRB_TYPE_NORMAL,
+            .interrupt_on_completion = 1,
+        }
+    });
+    ring_doorbell(xhci, slot_number, out_index);
+    //check that sending command was successful
+    struct TRB recv = fetch_and_extract(xhci, TRB_TYPE_TRANSFER);
+    assert(recv.status.type_transfer.trb_type != 0);
+    assert(recv.status.type_transfer.completion_code == 1);
+    assert(recv.status.type_transfer.trb_transfer_length == 0);
+    assert(recv.status.type_transfer.slot_id == slot_number);
+
+    //here is where to put the response
+    enqueue_ring(in_ring, (struct TRB) {
+        .parameter.raw = response_phys,
+        .status.normal = {
+            .trb_transfer_length = response_len,
+            .trb_type = TRB_TYPE_NORMAL,
+            .interrupt_on_completion = 1,
+            .interrupt_on_short_packet = 1,
+        }
+    });
+    // here is where to put the CSW
+    enqueue_ring(in_ring, (struct TRB) {
+        .parameter.raw = status_phys,
+        .status.normal = {
+            .trb_transfer_length = sizeof(struct CommandStatusWrapper),
+            .trb_type = TRB_TYPE_NORMAL,
+            .interrupt_on_completion = 1,
+        }
+    });
+    ring_doorbell(xhci, slot_number, in_index);
+
+    //read the response from the inquiry response (TODO handle a short packet gracefully since this is fine)
+    recv = fetch_and_extract(xhci, TRB_TYPE_TRANSFER);
+    assert(recv.status.type_transfer.trb_type != 0);
+    assert(recv.status.type_transfer.completion_code == 1);
+    assert(recv.status.type_transfer.trb_transfer_length == 0);
+    assert(recv.status.type_transfer.slot_id == slot_number);
+
+    recv = fetch_and_extract(xhci, TRB_TYPE_TRANSFER);
+    assert(recv.status.type_transfer.trb_type != 0);
+    assert(recv.status.type_transfer.completion_code == 1);
+    assert(recv.status.type_transfer.trb_transfer_length == 0);
+    assert(recv.status.type_transfer.slot_id == slot_number);
+
+    assert(status->signature == 0x53425355);
+    assert(status->tag == command->tag);
+    assert(status->status == 0);
+
+    memcpy(response_out, phys_to_hhdm(response_phys), response_len - status->data_residue);
+
+    free4k_phys(command_phys);
+    free_contiguous_phys(response_phys, response_num_pages);
+    free4k_phys(status_phys);
+
+    return response_len - status->data_residue;
+}
 
 void initialise_msd(struct xHCIData *xhci, uint8_t slot_number, struct ExternConfigDesc config_descriptor) {
     printf("initialising MSD:\n");
@@ -169,94 +280,111 @@ void initialise_msd(struct xHCIData *xhci, uint8_t slot_number, struct ExternCon
 
     printf("inquiry\n");
 
-    uint64_t inquiry_phys = malloc4k_phys();
-    volatile struct CommandBlockWrapper *inquiry = phys_to_hhdm(inquiry_phys);
-    *inquiry = (struct CommandBlockWrapper) {
-        .signature=0x43425355,
-        .tag = next_free_tag++,
-        .transfer_length = 0x24,
-        .direction = 1,
-        .lun=0,
-        .command_len = 6,
-        .command = {
-            0x12,//inquiry
-            0x00,//no vital product data
-            0x00,//page code
-            0x00,
-            0x24,//big endian length
-            0x00//control
-        }
-    };
-
-    uint64_t inquiry_response_phys = malloc4k_phys();
-    volatile struct InquiryReturn *inquiry_response = phys_to_hhdm(inquiry_response_phys);
-    memset((void*)inquiry_response, 0xCD, PAGE_SIZE);
-    uint64_t inquiry_status_phys = malloc4k_phys();
-    volatile struct CommandStatusWrapper *inquiry_status = phys_to_hhdm(inquiry_status_phys);
-    memset((void*)inquiry_status, 0xAB, PAGE_SIZE);
-
-    //ask for an inquiry
-    enqueue_ring(out_ring, (struct TRB) {
-        .parameter.raw = inquiry_phys,
-        .status.normal = {
-            .trb_transfer_length = 31,
-            .trb_type = TRB_TYPE_NORMAL,
-            .interrupt_on_completion = 1,
-        }
-    });
-    ring_doorbell(xhci, slot_number, out_index);
-    //check that the inquiry request was successful
-    struct TRB recv = fetch_and_extract(xhci, TRB_TYPE_TRANSFER);
-    assert(recv.status.type_transfer.trb_type != 0);
-    assert(recv.status.type_transfer.completion_code == 1);
-    assert(recv.status.type_transfer.trb_transfer_length == 0);
-    assert(recv.status.type_transfer.slot_id == slot_number);
-
-    //here is where to put the response
-    enqueue_ring(in_ring, (struct TRB) {
-        .parameter.raw = inquiry_response_phys,
-        .status.normal = {
-            .trb_transfer_length = 0x24,
-            .trb_type = TRB_TYPE_NORMAL,
-            .interrupt_on_completion = 1,
-            .interrupt_on_short_packet = 1,
-        }
-    });
-    // here is where to put the CSW
-    enqueue_ring(in_ring, (struct TRB) {
-        .parameter.raw = inquiry_status_phys,
-        .status.normal = {
-            .trb_transfer_length = 13,
-            .trb_type = TRB_TYPE_NORMAL,
-            .interrupt_on_completion = 1,
-        }
-    });
-    ring_doorbell(xhci, slot_number, in_index);
-
-    //read the response from the inquiry response (TODO handle a short packet gracefully since this is fine)
-    recv = fetch_and_extract(xhci, TRB_TYPE_TRANSFER);
-    assert(recv.status.type_transfer.trb_type != 0);
-    assert(recv.status.type_transfer.completion_code == 1);
-    assert(recv.status.type_transfer.trb_transfer_length == 0);
-    assert(recv.status.type_transfer.slot_id == slot_number);
-
-    recv = fetch_and_extract(xhci, TRB_TYPE_TRANSFER);
-    assert(recv.status.type_transfer.trb_type != 0);
-    assert(recv.status.type_transfer.completion_code == 1);
-    assert(recv.status.type_transfer.trb_transfer_length == 0);
-    assert(recv.status.type_transfer.slot_id == slot_number);
-
-    assert(inquiry_status->signature == 0x53425355);
-    assert(inquiry_status->tag == inquiry->tag);
-    assert(inquiry_status->data_residue == 0);//hope
-    assert(inquiry_status->status == 0);
-    assert(inquiry_response->peripheral_device_type == 0);//direct access block device
-    assert(inquiry_response->response_data_format == 1 || inquiry_response->response_data_format == 2);
-
+    struct InquiryReturn inquiry_return = {};
+    uint32_t inquiry_data_read = send_bbb(
+        xhci, slot_number, in_ring, in_index, out_ring, out_index,
+        (struct CommandBlockWrapper) {
+            .signature=0x43425355,
+            .transfer_length = 0x24,
+            .direction = 1,
+            .lun=0,
+            .command_len = 6,
+            .command = {
+                0x12,//inquiry
+                0x00,//no vital product data
+                0x00,//page code
+                0x00,
+                0x24,//big endian length
+                0x00//control
+            }
+        },
+        &inquiry_return, sizeof(inquiry_return)
+    );
+    assert(inquiry_data_read == sizeof(inquiry_return));
+    assert(inquiry_return.peripheral_device_type == 0);//direct access block device
+    assert(inquiry_return.response_data_format == 1 || inquiry_return.response_data_format == 2);
     char vendor_information[9] = {};
-    memcpy(&vendor_information, (void*)&inquiry_response->vendor_information, 8);
+    memcpy(&vendor_information, (void*)&inquiry_return.vendor_information, 8);
     char product_identification[17] = {};
-    memcpy(&product_identification, (void*)&inquiry_response->product_identification, 16);
+    memcpy(&product_identification, (void*)&inquiry_return.product_identification, 16);
     printf("vendor information: %s\nproduct identification: %s\n", vendor_information, product_identification);
-    //394
+
+
+    // //397
+    // struct CapacityReturn capacity_return = {};
+    // //call read format capacities and request sense until something works?
+    // while(1) {
+    //     uint32_t capacity_return_read = send_bbb(
+    //         xhci, slot_number, in_ring, in_index, out_ring, out_index,
+    //         (struct CommandBlockWrapper) {
+    //             .signature=0x43425355,
+    //             .transfer_length = 0xFC,
+    //             .direction = 1,
+    //             .lun=0,
+    //             .command_len = 0xA,
+    //             .command = {
+    //                 0x23,//READ FORMAT CAPACITIES
+    //                 0,0,0,0,0,0,//reserved
+    //                 0x00,
+    //                 0xFC,//big endian length
+    //                 0x00,//control
+    //             }
+    //         },
+    //         &capacity_return, sizeof(capacity_return)
+    //     );
+
+    //     if(capacity_return_read == sizeof(capacity_return)) break;
+
+    //     //see page 401 for this definition
+    //     printf("failed capacity\n");
+    //     struct RequestSenseReturn request_sense_return = {};
+    //     uint32_t request_sense_read = send_bbb(
+    //         xhci, slot_number, in_ring, in_index, out_ring, out_index,
+    //         (struct CommandBlockWrapper) {
+    //             .signature=0x43425355,
+    //             .transfer_length = 0x12,
+    //             .direction = 1,
+    //             .lun=0,
+    //             .command_len = 0x6,
+    //             .command = {
+    //                 0x3,//REQUEST SENSE
+    //                 0,0,0,//reserved and DESC bit?
+    //                 0x12,//big endian length
+    //                 0x00,//control
+    //             }
+    //         },
+    //         &request_sense_return, sizeof(request_sense_return)
+    //     );
+    //     assert(request_sense_read == sizeof(request_sense_return));
+    //     assert(request_sense_return.error_code == 0x70 || request_sense_return.error_code == 0x71);
+    //     assert(request_sense_return.additional_sense_length >= 10 && request_sense_return.additional_sense_length <= 244);
+    //     printf("sense key: %d\nasc value: 0x%x\nascq value: 0x%x\n", request_sense_return.sense_key, request_sense_return.additional_sense_code, request_sense_return.additional_sense_code_qualifier);
+    // }
+    // assert(capacity_return.num_bytes == 8);//one element
+    // struct CapacityDescriptor *capacity = &capacity_return.capacity_descriptors[0];
+    // printf("number of blocks: %u\ndescriptor code: %d\nblock length: %u\n", capacity->number_of_blocks, capacity->descriptor_code, capacity->block_length);
+
+    //403
+    struct ReadCapacity10Return read_capacity_10;
+    uint32_t read_capacity_read = send_bbb(
+        xhci, slot_number, in_ring, in_index, out_ring, out_index,
+        (struct CommandBlockWrapper) {
+            .signature=0x43425355,
+            .transfer_length = 0x8,
+            .direction = 1,
+            .lun=0,
+            .command_len = 0x0A,
+            .command = {
+                0x25,//read capacity(10)
+                0,//reserved
+                0,0,0,0,//LBA 0
+                0,0,0,//reserved
+                0//control
+            }
+        },
+        &read_capacity_10, sizeof(read_capacity_10)
+    );
+    assert(read_capacity_read == sizeof(read_capacity_10));
+
+    printf("last LBA: 0x%x\nblock size %u", read_capacity_10.last_valid_lba, read_capacity_10.block_size_bytes);
 }
