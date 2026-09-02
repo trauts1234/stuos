@@ -65,38 +65,20 @@ struct InquiryReturn {
 } __attribute__((packed));
 
 struct ReadCapacity10Return {
+    //big endian!
     uint32_t last_valid_lba;
+    //big endian!
     uint32_t block_size_bytes;
 };
 
-// struct CapacityReturn {
-//     uint8_t reserved[3];
-//     uint8_t num_bytes;//size of capacity_descriptors
-//     struct CapacityDescriptor {
-//         uint32_t number_of_blocks;
-//         uint8_t
-//         //0b01=>unformatted disk, is a maximum capacity descriptor for current disk, 0b10=>formatted disk, is current capacity descriptor, 0b11=>no disk, is maximum capacity the controller is capable of handling
-//             descriptor_code: 2,
-//             reserved_0: 6;
-//         uint32_t block_length: 24;
-//     } capacity_descriptors[31];
-// };
-
-// struct RequestSenseReturn {
-//     uint8_t
-//         error_code: 7,
-//         information_is_valid: 1,
-//         reserved_0,
-//         sense_key: 4, reserved_1:1, ili: 1, eom: 1, file_mark: 1;
-//     uint32_t information;
-//     uint8_t additional_sense_length;
-//     uint32_t reserved_2;
-//     uint8_t
-//         additional_sense_code,
-//         additional_sense_code_qualifier,
-//         field_replaceable_unit_code;
-//     uint32_t sense_key_specific: 24;
-// } __attribute__((packed));
+uint32_t flip_endianness(uint32_t val) {
+    uint8_t *bytes = (void*)&val;
+    return
+        (bytes[0] << 24) |
+        (bytes[1] << 16) |
+        (bytes[2] << 8) |
+        bytes[3];
+}
 
 static uint32_t send_bbb(struct xHCIData *xhci, uint8_t slot_number, struct Ring *in_ring, int in_index, struct Ring *out_ring, int out_index, struct CommandBlockWrapper cbw, void* response_out, uint32_t response_len) {
     static uint32_t next_free_tag = 69;
@@ -309,61 +291,6 @@ void initialise_msd(struct xHCIData *xhci, uint8_t slot_number, struct ExternCon
     memcpy(&product_identification, (void*)&inquiry_return.product_identification, 16);
     printf("vendor information: %s\nproduct identification: %s\n", vendor_information, product_identification);
 
-
-    // //397
-    // struct CapacityReturn capacity_return = {};
-    // //call read format capacities and request sense until something works?
-    // while(1) {
-    //     uint32_t capacity_return_read = send_bbb(
-    //         xhci, slot_number, in_ring, in_index, out_ring, out_index,
-    //         (struct CommandBlockWrapper) {
-    //             .signature=0x43425355,
-    //             .transfer_length = 0xFC,
-    //             .direction = 1,
-    //             .lun=0,
-    //             .command_len = 0xA,
-    //             .command = {
-    //                 0x23,//READ FORMAT CAPACITIES
-    //                 0,0,0,0,0,0,//reserved
-    //                 0x00,
-    //                 0xFC,//big endian length
-    //                 0x00,//control
-    //             }
-    //         },
-    //         &capacity_return, sizeof(capacity_return)
-    //     );
-
-    //     if(capacity_return_read == sizeof(capacity_return)) break;
-
-    //     //see page 401 for this definition
-    //     printf("failed capacity\n");
-    //     struct RequestSenseReturn request_sense_return = {};
-    //     uint32_t request_sense_read = send_bbb(
-    //         xhci, slot_number, in_ring, in_index, out_ring, out_index,
-    //         (struct CommandBlockWrapper) {
-    //             .signature=0x43425355,
-    //             .transfer_length = 0x12,
-    //             .direction = 1,
-    //             .lun=0,
-    //             .command_len = 0x6,
-    //             .command = {
-    //                 0x3,//REQUEST SENSE
-    //                 0,0,0,//reserved and DESC bit?
-    //                 0x12,//big endian length
-    //                 0x00,//control
-    //             }
-    //         },
-    //         &request_sense_return, sizeof(request_sense_return)
-    //     );
-    //     assert(request_sense_read == sizeof(request_sense_return));
-    //     assert(request_sense_return.error_code == 0x70 || request_sense_return.error_code == 0x71);
-    //     assert(request_sense_return.additional_sense_length >= 10 && request_sense_return.additional_sense_length <= 244);
-    //     printf("sense key: %d\nasc value: 0x%x\nascq value: 0x%x\n", request_sense_return.sense_key, request_sense_return.additional_sense_code, request_sense_return.additional_sense_code_qualifier);
-    // }
-    // assert(capacity_return.num_bytes == 8);//one element
-    // struct CapacityDescriptor *capacity = &capacity_return.capacity_descriptors[0];
-    // printf("number of blocks: %u\ndescriptor code: %d\nblock length: %u\n", capacity->number_of_blocks, capacity->descriptor_code, capacity->block_length);
-
     //403
     struct ReadCapacity10Return read_capacity_10;
     uint32_t read_capacity_read = send_bbb(
@@ -385,6 +312,10 @@ void initialise_msd(struct xHCIData *xhci, uint8_t slot_number, struct ExternCon
         &read_capacity_10, sizeof(read_capacity_10)
     );
     assert(read_capacity_read == sizeof(read_capacity_10));
+    assert(read_capacity_10.last_valid_lba != 0xFFFFFFFF);//32 bit is not big enough to find the capacity of the drive! (see page 105)
 
-    printf("last LBA: 0x%x\nblock size %u", read_capacity_10.last_valid_lba, read_capacity_10.block_size_bytes);
+    uint32_t last_lba = flip_endianness(read_capacity_10.last_valid_lba);
+    uint32_t block_size = flip_endianness(read_capacity_10.block_size_bytes);
+
+    printf("last LBA: 0x%x\nblock size %u\n", last_lba, block_size);
 }

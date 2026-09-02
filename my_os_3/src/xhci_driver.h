@@ -103,9 +103,6 @@ struct xHCIData {
     //indexed by root port index (0 based)
     bool port_is_usb3[64];
 
-    //I've taken these from the event TRBs
-    //trb type 0 indicates an empty slot
-    struct TRB unhandled_events[TRB_LIST_LEN];
 };
 
 struct DeviceDescriptor {

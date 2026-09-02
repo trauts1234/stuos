@@ -163,61 +163,32 @@ static void ring_command_doorbell(struct xHCIData *data) {
     delay();
 }
 
-static void insert_to_list(struct TRB list[TRB_LIST_LEN], struct TRB to_insert) {
-    for(int i=0;;i++) {
-        assert(i < TRB_LIST_LEN)
-        if(list[i].status.trb_type == 0) {
-            list[i] = to_insert;
-            return;
-        }
-    }
-}
-//returns {} on failure
-static struct TRB extract_from_list(struct TRB list[TRB_LIST_LEN], uint8_t requested_trb_type) {
+struct TRB fetch_and_extract(struct xHCIData *data, uint8_t requested_trb_type) {
     assert(requested_trb_type != 0);
     assert(requested_trb_type <= 39);//this may exclude vendor defined messages :(
-    for(int i=0; i<TRB_LIST_LEN ;i++) {
-        if(list[i].status.trb_type == requested_trb_type) {
-            struct TRB result = list[i];
-            list[i].status.trb_type = 0;
-            return result;
-        }
-    }
-    return (struct TRB) {};
-}
-
-static void xhci_handle_responses(struct xHCIData *data) {
-    //try and read some data
     struct TRB recv = {};
-    while(dequeue_ring(&data->event_ring, &recv) == 0) {
+    while (recv.status.trb_type != requested_trb_type) {
+        while(dequeue_ring(&data->event_ring, &recv) == -1);
         update_erdp(data, true);
-        switch(recv.status.trb_type) {
-            case TRB_TYPE_TRANSFER:
-            case TRB_TYPE_CMD_COMPLETION:
-            case TRB_TYPE_PORT_STS_CHANGE:
-            case TRB_TYPE_BANDWIDTH_REQUEST:
-            case TRB_TYPE_DOORBELL:
-            case TRB_TYPE_HOST_CONTROLLER:
-            case TRB_TYPE_DEVICE_NOTIFICATION:
-            case TRB_TYPE_MFINDEX_WRAP:
-            break;
-            
-            default:
-            printf("ERR: unknown trb type 0x%x\n", recv.status.trb_type);
-            HCF
-            break;
-        }
-
-        insert_to_list(data->unhandled_events, recv);
     }
-}
-
-struct TRB fetch_and_extract(struct xHCIData *data, uint8_t requested_trb_type) {
-    struct TRB result;
-    while((result = extract_from_list(data->unhandled_events, requested_trb_type)).status.trb_type == 0) {
-        xhci_handle_responses(data);
+    switch(recv.status.trb_type) {
+        case TRB_TYPE_TRANSFER:
+        case TRB_TYPE_CMD_COMPLETION:
+        case TRB_TYPE_PORT_STS_CHANGE:
+        case TRB_TYPE_BANDWIDTH_REQUEST:
+        case TRB_TYPE_DOORBELL:
+        case TRB_TYPE_HOST_CONTROLLER:
+        case TRB_TYPE_DEVICE_NOTIFICATION:
+        case TRB_TYPE_MFINDEX_WRAP:
+        break;
+        
+        default:
+        printf("ERR: unknown trb type 0x%x\n", recv.status.trb_type);
+        HCF
+        break;
     }
-    return result;
+
+    return recv;
 }
 
 //calls SET_ADDRESS with the block bit zeroed
@@ -724,6 +695,9 @@ void initialise_xhci(struct PciDevice dev, struct PciData *dev_data) {
     }
 
     delay();
+
+    struct TRB x;
+    while(dequeue_ring(&xhci.event_ring, &x) == 0);
 
     printf("scanning %d ports\n", max_ports);
     for(uint8_t port_idx = 0; port_idx < max_ports; port_idx++) {
