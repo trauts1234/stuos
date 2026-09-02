@@ -265,38 +265,47 @@ void make_request(struct xHCIData *xhci, void *output, struct RequestTemplate re
             .length = request.length
         },
         .status.device_request = {
-            .trb_transfer_length = 8,
-            .interrupter_target = 0,
-            .interrupt_on_completion = 0,
-            .immediate_data = 1,
+            .trb_transfer_length = 8,//length of THIS trb's transfer (8 bytes inside parameter.device_request)
+            .immediate_data = 1,//the data is in parameter, not a pointer
             .trb_type = TRB_TYPE_SETUP_STAGE,
-            .transfer_type = 3,
+            .transfer_type = request.setup_transfer_type,
         }
     });
     //data stage
-    uint64_t num_pages = round_up_pages(request.length);
-    uint64_t data_buffer_phys = malloc_contiguous_phys(num_pages);
-    void *data_buffer_virt = phys_to_hhdm(data_buffer_phys);
-    memset(data_buffer_virt, 0, PAGE_SIZE);//todo * num_pages ?
-    enqueue_ring(ep0_transfer, (struct TRB) {
-        .parameter.raw = data_buffer_phys,
-        .status.data_stage = {
-            .trb_transfer_length = request.length,
-            .td_size = 0,
-            .interrupter_target = 0,//this is an IR_IMOD index, not an IDT index
-            .evaluate_next_trb = 1,
-            .chain_bit = 1,
-            .trb_type = TRB_TYPE_DATA_STAGE,
-            .direction = 1,
-        }
-    });
+    uint64_t num_pages = 0;
+    uint64_t data_buffer_phys = 0;
+    void *data_buffer_virt = NULL;
+    //only allocate memory and send a data stage if required
+    if(output) {
+        assert(request.length);
+        assert(request.setup_transfer_type != NoDataStage);
+        num_pages = round_up_pages(request.length);
+        data_buffer_phys = malloc_contiguous_phys(num_pages);
+        data_buffer_virt = phys_to_hhdm(data_buffer_phys);
+        memset(data_buffer_virt, 0, PAGE_SIZE * num_pages);
 
+        enqueue_ring(ep0_transfer, (struct TRB) {
+            .parameter.raw = data_buffer_phys,
+            .status.data_stage = {
+                .trb_transfer_length = request.length,
+                .td_size = 0,//number of data stage packets remaining
+                .evaluate_next_trb = 1,
+                .chain_bit = 1,
+                .trb_type = TRB_TYPE_DATA_STAGE,
+                .direction = request.direction,
+            }
+        });
+    }
+
+    enum RequestDirection status_direction = (request.setup_transfer_type == NoDataStage) ? DeviceToHost : !request.direction;
     enqueue_ring(ep0_transfer, (struct TRB) {
         .parameter.raw = 0,
         .status.status_stage = {
             .interrupter_target = 0,
-            .chain_bit = 1,
+            .chain_bit = 1,//handle the event data, before completing 
             .trb_type = TRB_TYPE_STATUS_STAGE,
+            .direction = status_direction,
+            .evaluate_next_trb = 0,
         }
     });
     enqueue_ring(ep0_transfer, (struct TRB) {
@@ -304,7 +313,7 @@ void make_request(struct xHCIData *xhci, void *output, struct RequestTemplate re
         .status.event_data = {
             .interrupt_target = 0,
             .interrupt_on_completion = 1,
-            .trb_type = TRB_TYPE_EVENT_DATA
+            .trb_type = TRB_TYPE_EVENT_DATA,
         }
     });
     ring_doorbell(xhci, request.slot_number, 0);
@@ -319,8 +328,11 @@ void make_request(struct xHCIData *xhci, void *output, struct RequestTemplate re
     assert(recv.status.type_transfer.event_data);//ensures that paramater contains raw data
     assert(recv.parameter.raw == 0xBEEFBEEFBEEFBEEF);
 
-    memcpy(output, data_buffer_virt, request.length);
-    free_contiguous_phys(data_buffer_phys, num_pages);
+    //only save result if required
+    if(output) {
+        memcpy(output, data_buffer_virt, request.length);
+        free_contiguous_phys(data_buffer_phys, num_pages);
+    }
 }
 
 void set_context_entries(struct DeviceContext *device_context) {
@@ -345,7 +357,8 @@ static void send_control_transfer(struct xHCIData *xhci, uint8_t slot_number, ui
         .descriptor_index = descriptor_index,
         .descriptor_type = descriptor_type,
         .index = 0,
-        .length = num_bytes
+        .length = num_bytes,
+        .setup_transfer_type = InDataStage,
     };
 
     make_request(xhci, output, rq);
@@ -387,6 +400,7 @@ static struct ExternConfigDesc read_configuration_descriptor(struct xHCIData *xh
     assert(initial_config.type == DESCRIPTOR_TYPE_CONFIGURATION);
     assert(initial_config.total_length >= initial_config.length);
     result.num_interfaces = initial_config.num_interfaces;
+    result.configuration_value = initial_config.config_val;
 
     void *data = malloc(initial_config.total_length);
     const void *end = data + initial_config.total_length;
@@ -509,6 +523,7 @@ static void initialise_port(struct xHCIData *xhci, uint64_t *dcbaa_virt, uint8_t
     set_context_entries(&input_context->device_context);
     //initialise something
     set_input_context(xhci, slot_number, true);
+    printf("input context set\n");
     assert(device_context->slot_state == 1);
     assert(device_context->device_address == 0);
     assert(device_context->endpoint_context[0].ep_state == 1);
@@ -517,10 +532,12 @@ static void initialise_port(struct xHCIData *xhci, uint64_t *dcbaa_virt, uint8_t
     assert(device_context->slot_state == 2);
 
     struct DeviceDescriptor device_descriptor;
+    DEBUG_HERE
     send_control_transfer(xhci, slot_number, 1, 0, &device_descriptor, 8);
     input_context->device_context.endpoint_context[0] = device_context->endpoint_context[0];
     input_context->add_flags = 0b10;
     input_context->device_context.endpoint_context[0].max_packet_size = (device_descriptor.release_bcd_maj >= 0x03) ? (1<<device_descriptor.max_packet_size) : device_descriptor.max_packet_size;//usb 3 decided to be special and think that 9 equals 512
+    DEBUG_HERE
     update_input_context(xhci, slot_number, true);
     //read the full data buffer
     assert(device_descriptor.length == 18);

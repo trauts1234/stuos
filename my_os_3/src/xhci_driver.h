@@ -138,6 +138,7 @@ struct DeviceDescriptor {
 
 struct ExternConfigDesc {
     uint8_t num_interfaces;
+    uint8_t configuration_value;
     struct ExternIfDesc{
         uint8_t num_endpoints;
         enum {ExternIfClassMSD=0x08} class_code;
@@ -155,9 +156,19 @@ struct ExternConfigDesc {
 struct RequestTemplate {
     uint8_t slot_number;
 
-    enum {HostToDevice=0,DeviceToHost=1} direction;
+    /// affects:
+    /// - parameter of setup stage, as part of the request type bitfield
+    /// - status of data stage, as the direction bit
+    /// - status of status stage, as the direction bit IN THE OPPOSITE VALUE
+    enum RequestDirection{HostToDevice=0,DeviceToHost=1} direction;
+    /// affects:
+    /// - parameter of setup stage, as part of the request type bitfield
     enum {RequestTypeStandard=0, RequestTypeClass=1, RequestTypeVendor=2} request_type;
+    /// affects:
+    /// - parameter of setup stage, as part of the request type bitfield
     enum {RecipientDevice=0, RecipientInterface=1, RecipientEndpoint=2, RecipientOther=3} recipient;
+    /// affects:
+    /// - parameter of setup stage, the request
     enum {GET_DESCRIPTOR=6, SET_CONFIGURATION=9, GET_MAX_LUN=0xFE} request;
     union {
         uint16_t value;
@@ -168,8 +179,16 @@ struct RequestTemplate {
                 descriptor_type;
         };
     };
+    /// affects:
+    /// - parameter of setup stage, as a request specific field
     uint16_t index;
+    /// affects:
+    /// - parameter of setup stage, as the length field
+    /// - status of the data stage, as the trb transfer length field
     uint16_t length;
+    /// affects:
+    /// - status of setup stage, the transfer type
+    enum {NoDataStage=0, OutDataStage=2, InDataStage=3} setup_transfer_type;
 };
 
 void make_request(struct xHCIData *xhci, void *output, struct RequestTemplate request);

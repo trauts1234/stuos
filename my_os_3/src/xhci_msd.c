@@ -5,6 +5,7 @@
 #include "debugging.h"
 #include "xhci_trb.h"
 #include "memory.h"
+#include "xhci_td_size.h"
 
 static uint32_t next_free_tag = 69;
 
@@ -70,6 +71,7 @@ void initialise_msd(struct xHCIData *xhci, uint8_t slot_number, struct ExternCon
     printf("initialising MSD:\n");
 
     assert(config_descriptor.num_interfaces == 1);
+    printf("config val %d\n", config_descriptor.configuration_value);
     const struct ExternIfDesc if_descriptor = config_descriptor.interfaces[0];
     struct XHCIDevice *device = &xhci->slots[slot_number];
 
@@ -131,17 +133,21 @@ void initialise_msd(struct xHCIData *xhci, uint8_t slot_number, struct ExternCon
 
     //TODO page 385 requests we fetch a different device qualifier, so that we know settings for the USB drive when it is in full and high speed
 
+    printf("set configuration\n");
     make_request(xhci, NULL, (struct RequestTemplate) {
         .slot_number = slot_number,
 
         .direction = HostToDevice,
         .request_type = RequestTypeStandard,
-        .recipient=RecipientDevice,
+        .recipient = RecipientDevice,
         .request = SET_CONFIGURATION,
-        .value = 0x0001,//presumably the config number (one based?)?
-        .index=0,
-        .length=0
+        .value = config_descriptor.configuration_value,//lower byte is the configuration number
+        .index = 0,
+        .length = 0,
+        .setup_transfer_type = NoDataStage
     });
+
+    printf("get max lun\n");
 
     uint8_t max_lun;
     make_request(xhci, &max_lun, (struct RequestTemplate) {
@@ -153,12 +159,15 @@ void initialise_msd(struct xHCIData *xhci, uint8_t slot_number, struct ExternCon
         .request = GET_MAX_LUN,
         .value = 0x0000,
         .index=0,
-        .length=1
+        .length=1,
+        .setup_transfer_type = InDataStage
     });//apparently if it returns STALL, then take LUN=0 and total count=1
     if(max_lun == 0xFF) max_lun = 0;//some devices do this
     assert(max_lun <= 15);
     max_lun++;//since zero based, add one
     assert(max_lun == 1);
+
+    printf("inquiry\n");
 
     uint64_t inquiry_phys = malloc4k_phys();
     volatile struct CommandBlockWrapper *inquiry = phys_to_hhdm(inquiry_phys);
@@ -181,37 +190,61 @@ void initialise_msd(struct xHCIData *xhci, uint8_t slot_number, struct ExternCon
 
     uint64_t inquiry_response_phys = malloc4k_phys();
     volatile struct InquiryReturn *inquiry_response = phys_to_hhdm(inquiry_response_phys);
+    memset((void*)inquiry_response, 0xCD, PAGE_SIZE);
     uint64_t inquiry_status_phys = malloc4k_phys();
     volatile struct CommandStatusWrapper *inquiry_status = phys_to_hhdm(inquiry_status_phys);
+    memset((void*)inquiry_status, 0xAB, PAGE_SIZE);
 
     //ask for an inquiry
     enqueue_ring(out_ring, (struct TRB) {
         .parameter.raw = inquiry_phys,
         .status.normal = {
             .trb_transfer_length = 31,
-            .trb_type = TRB_TYPE_NORMAL
+            .trb_type = TRB_TYPE_NORMAL,
+            .interrupt_on_completion = 1,
         }
     });
+    ring_doorbell(xhci, slot_number, out_index);
+    //check that the inquiry request was successful
+    struct TRB recv = fetch_and_extract(xhci, TRB_TYPE_TRANSFER);
+    assert(recv.status.type_transfer.trb_type != 0);
+    assert(recv.status.type_transfer.completion_code == 1);
+    assert(recv.status.type_transfer.trb_transfer_length == 0);
+    assert(recv.status.type_transfer.slot_id == slot_number);
+
     //here is where to put the response
     enqueue_ring(in_ring, (struct TRB) {
         .parameter.raw = inquiry_response_phys,
         .status.normal = {
             .trb_transfer_length = 0x24,
-            .trb_type = TRB_TYPE_NORMAL
+            .trb_type = TRB_TYPE_NORMAL,
+            .interrupt_on_completion = 1,
+            .interrupt_on_short_packet = 1,
         }
     });
-    //here is where to put the CSW
+    // here is where to put the CSW
     enqueue_ring(in_ring, (struct TRB) {
         .parameter.raw = inquiry_status_phys,
         .status.normal = {
             .trb_transfer_length = 13,
-            .trb_type = TRB_TYPE_NORMAL
+            .trb_type = TRB_TYPE_NORMAL,
+            .interrupt_on_completion = 1,
         }
     });
-
-    ring_doorbell(xhci, slot_number, out_index);
     ring_doorbell(xhci, slot_number, in_index);
-    delay();
+
+    //read the response from the inquiry response (TODO handle a short packet gracefully since this is fine)
+    recv = fetch_and_extract(xhci, TRB_TYPE_TRANSFER);
+    assert(recv.status.type_transfer.trb_type != 0);
+    assert(recv.status.type_transfer.completion_code == 1);
+    assert(recv.status.type_transfer.trb_transfer_length == 0);
+    assert(recv.status.type_transfer.slot_id == slot_number);
+
+    recv = fetch_and_extract(xhci, TRB_TYPE_TRANSFER);
+    assert(recv.status.type_transfer.trb_type != 0);
+    assert(recv.status.type_transfer.completion_code == 1);
+    assert(recv.status.type_transfer.trb_transfer_length == 0);
+    assert(recv.status.type_transfer.slot_id == slot_number);
 
     assert(inquiry_status->signature == 0x53425355);
     assert(inquiry_status->tag == inquiry->tag);
