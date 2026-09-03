@@ -4,6 +4,7 @@
 #include <uapi/fcntl.h>
 #include <uapi/stat.h>
 #include <uapi/stdint.h>
+#include <uapi/stdbool.h>
 #include "kern_libc.h"
 
 #define DEV_ROOT_DIR_INODE_NUM UINT64_MAX
@@ -16,6 +17,12 @@ struct BlockDevice {
     void* driver_private;
     void (*block_read)(void* driver_private, uint64_t sector_number, uint8_t output[BLOCK_DEVICE_READ_SIZE]);
     void (*block_write)(void* driver_private, uint64_t sector_number, uint8_t input[BLOCK_DEVICE_READ_SIZE]);
+
+    struct SectorCache {
+        void *data;//malloc-ed
+        uint64_t sector_number;
+        bool is_valid;
+    } cache;
 
     //guaranteed to be at least 1, since offset 0 length n to represent the whole drive is valid
     uint8_t num_partitions;
@@ -40,6 +47,10 @@ void fs_dev_add_block_device(
         .driver_private = driver_private,
         .block_read = block_read,
         .block_write = block_write,
+        .cache = {
+            .data = malloc(BLOCK_DEVICE_READ_SIZE),
+            .is_valid = false
+        },
         .num_partitions = 1,
         .partitions = {
             [0] = {
@@ -132,6 +143,8 @@ static uint64_t blockdev_write_file(struct VNodeData inode_num, uint64_t offset,
 
         //write back modified data
         dev->block_write(dev->driver_private, sector, data);
+
+        dev->cache.is_valid = false;
     }
     return num_bytes;
 }
@@ -151,13 +164,16 @@ static uint64_t blockdev_read_file(struct VNodeData inode_num, uint64_t offset, 
     uint64_t bytes_read = 0;
     uint64_t offset_in_sector = offset_in_first_sector;
     for(uint64_t sector = first_sector_number; sector <= last_sector_number; sector++) {
-        //read the sector
-        uint8_t data[BLOCK_DEVICE_READ_SIZE];
-        dev->block_read(dev->driver_private, sector, data);
+        //read the sector into cache if it is not already there
+        if(dev->cache.sector_number != sector || !dev->cache.is_valid) {
+            dev->cache.sector_number = sector;
+            dev->cache.is_valid = true;
+            dev->block_read(dev->driver_private, sector, dev->cache.data);
+        }
 
         //write over the appropriate region
         while(offset_in_sector < BLOCK_DEVICE_READ_SIZE && bytes_read < num_bytes) {
-            output_buf[bytes_read++] = data[offset_in_sector++];
+            output_buf[bytes_read++] = ((uint8_t*)dev->cache.data)[offset_in_sector++];
         }
         offset_in_sector = 0;//write from the start of the next sector
 

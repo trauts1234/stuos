@@ -296,11 +296,6 @@ void initialise_pci() {
                     initialise_virtio(header, header_buffer, dev.bar_list);
                 }
 
-                if(header.class_code == 0x0C && header.subclass == 0x03 && header.prog_if == 0x20) {
-                    //EHCI USB controller
-                    // printf("EHCI found\n");
-                    // initialise_ehci(device, bar_list[0]);
-                }
                 if(header.class_code == 0x0C && header.subclass == 0x03 && header.prog_if == 0x30) {
                     printf("xHCI found\n");
                     initialise_xhci(device, &dev);

@@ -14,7 +14,7 @@ struct Ring create_ring() {
     trb_virt[count-1] = (struct TRB) {
         .parameter = trb_phys,
         .status.link = {
-            .cycle_bit = 1,
+            .cycle_bit = 0,
             .trb_type = TRB_TYPE_LINK,
             .toggle_cycle = 1
         }
@@ -29,6 +29,10 @@ struct Ring create_ring() {
     };
 }
 
+void debug_ring(struct Ring* r) {
+    printf("length: %llu\nnext free index: %llu\ncycle state: %d\n", r->count, r->idx, r->ring_cycle_state);
+}
+
 void enqueue_ring(struct Ring *ring, struct TRB trb) {
     assert(ring->trbs);
     trb.status.cycle_bit = ring->ring_cycle_state;
@@ -36,7 +40,7 @@ void enqueue_ring(struct Ring *ring, struct TRB trb) {
 
     ring->idx++;
     if(ring->idx == ring->count-1) {
-        //now pointing to link element, so update the cycle bit and loop round
+        //now pointing to link element, so update its cycle bit and loop round
         ring->trbs[ring->idx].status.cycle_bit ^= 1;
         ring->idx = 0;
         ring->ring_cycle_state ^= 1;

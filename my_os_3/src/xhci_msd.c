@@ -5,6 +5,18 @@
 #include "debugging.h"
 #include "xhci_trb.h"
 #include "memory.h"
+#include "fs_dev.h"
+
+struct MassStorageDeviceXHCI {
+    //either 10,12,or 16
+    //ensure to choose read(10), read(12), read(16) based on this, etc.
+    uint8_t size_class;
+
+    struct xHCIData *xhci;
+    uint8_t slot_number;
+    int in_index, out_index;
+    uint32_t last_lba;
+};
 
 struct CommandBlockWrapper {
     uint32_t signature;//0x43425355
@@ -80,7 +92,7 @@ uint32_t flip_endianness(uint32_t val) {
         bytes[3];
 }
 
-static uint32_t send_bbb(struct xHCIData *xhci, uint8_t slot_number, struct Ring *in_ring, int in_index, struct Ring *out_ring, int out_index, struct CommandBlockWrapper cbw, void* response_out, uint32_t response_len) {
+static uint32_t send_bbb(struct xHCIData *xhci, uint8_t slot_number, int in_index, int out_index, struct CommandBlockWrapper cbw, void* response_out, uint32_t response_len, bool is_read) {
     static uint32_t next_free_tag = 69;
 
     uint64_t command_phys = malloc4k_phys();
@@ -88,10 +100,14 @@ static uint32_t send_bbb(struct xHCIData *xhci, uint8_t slot_number, struct Ring
     cbw.tag = next_free_tag++,
     *command = cbw;
 
+    struct Ring *in_ring = &xhci->slots[slot_number].endpoint_rings[in_index];
+    struct Ring *out_ring = &xhci->slots[slot_number].endpoint_rings[out_index];
+
     assert(response_len > 0);
     assert(response_out);
     uint64_t response_num_pages = round_up_pages(response_len);
     uint64_t response_phys = malloc_contiguous_phys(response_num_pages);
+    if(!is_read) memcpy(phys_to_hhdm(response_phys), response_out, response_len);
     
     uint64_t status_phys = malloc4k_phys();
     volatile struct CommandStatusWrapper *status = phys_to_hhdm(status_phys);
@@ -114,7 +130,7 @@ static uint32_t send_bbb(struct xHCIData *xhci, uint8_t slot_number, struct Ring
     assert(recv.status.type_transfer.slot_id == slot_number);
 
     //here is where to put the response
-    enqueue_ring(in_ring, (struct TRB) {
+    enqueue_ring(is_read ? in_ring : out_ring, (struct TRB) {
         .parameter.raw = response_phys,
         .status.normal = {
             .trb_transfer_length = response_len,
@@ -123,6 +139,13 @@ static uint32_t send_bbb(struct xHCIData *xhci, uint8_t slot_number, struct Ring
             .interrupt_on_short_packet = 1,
         }
     });
+    ring_doorbell(xhci, slot_number, is_read ? in_index : out_index);
+    //read the response from the inquiry response (TODO handle a short packet gracefully since this is fine)
+    recv = fetch_and_extract(xhci, TRB_TYPE_TRANSFER);
+    assert(recv.status.type_transfer.trb_type != 0);
+    assert(recv.status.type_transfer.trb_transfer_length == 0);
+    assert(recv.status.type_transfer.slot_id == slot_number);
+
     // here is where to put the CSW
     enqueue_ring(in_ring, (struct TRB) {
         .parameter.raw = status_phys,
@@ -133,14 +156,7 @@ static uint32_t send_bbb(struct xHCIData *xhci, uint8_t slot_number, struct Ring
         }
     });
     ring_doorbell(xhci, slot_number, in_index);
-
-    //read the response from the inquiry response (TODO handle a short packet gracefully since this is fine)
-    recv = fetch_and_extract(xhci, TRB_TYPE_TRANSFER);
-    assert(recv.status.type_transfer.trb_type != 0);
-    assert(recv.status.type_transfer.completion_code == 1);
-    assert(recv.status.type_transfer.trb_transfer_length == 0);
-    assert(recv.status.type_transfer.slot_id == slot_number);
-
+    //read the CSW
     recv = fetch_and_extract(xhci, TRB_TYPE_TRANSFER);
     assert(recv.status.type_transfer.trb_type != 0);
     assert(recv.status.type_transfer.completion_code == 1);
@@ -151,7 +167,9 @@ static uint32_t send_bbb(struct xHCIData *xhci, uint8_t slot_number, struct Ring
     assert(status->tag == command->tag);
     assert(status->status == 0);
 
-    memcpy(response_out, phys_to_hhdm(response_phys), response_len - status->data_residue);
+    assert(recv.status.type_transfer.completion_code == 1);
+
+    if(is_read) memcpy(response_out, phys_to_hhdm(response_phys), response_len - status->data_residue);
 
     free4k_phys(command_phys);
     free_contiguous_phys(response_phys, response_num_pages);
@@ -160,11 +178,92 @@ static uint32_t send_bbb(struct xHCIData *xhci, uint8_t slot_number, struct Ring
     return response_len - status->data_residue;
 }
 
-void initialise_msd(struct xHCIData *xhci, uint8_t slot_number, struct ExternConfigDesc config_descriptor) {
-    printf("initialising MSD:\n");
+static void block_read(void* driver_private, uint64_t sector_number, uint8_t output[BLOCK_DEVICE_READ_SIZE]) {
+    struct MassStorageDeviceXHCI *msd = driver_private;
+    assert(sector_number <= msd->last_lba);
 
+    switch(msd->size_class) {
+        case 10:
+        //use read(10)
+        assert(sector_number <= 0xFFFFFFFF);
+        uint8_t *bytes = (void*)&sector_number;
+        
+        uint32_t read10_read = send_bbb(
+            msd->xhci, msd->slot_number, msd->in_index, msd->out_index,
+            (struct CommandBlockWrapper) {
+                .signature=0x43425355,
+                .transfer_length = BLOCK_DEVICE_READ_SIZE,
+                .direction = 1,
+                .lun=0,
+                .command_len = 0x0A,
+                .command = {
+                    0x28,//READ(10)
+                    0,//reserved
+                    bytes[3],
+                    bytes[2],
+                    bytes[1],
+                    bytes[0],//big endian
+                    0,//reserved
+                    0x00,
+                    0x01,//1 block
+                    0x00,//control
+                }
+            },
+            output, BLOCK_DEVICE_READ_SIZE,
+            true
+        );
+        assert(read10_read == BLOCK_DEVICE_READ_SIZE);
+        return;
+
+        default:
+        HCF//unimplemented
+    }
+}
+
+static void block_write(void* driver_private, uint64_t sector_number, uint8_t input[BLOCK_DEVICE_READ_SIZE]) {
+    struct MassStorageDeviceXHCI *msd = driver_private;
+    assert(sector_number <= msd->last_lba);
+
+    switch(msd->size_class) {
+        case 10:
+        //use write(10)
+        assert(sector_number <= 0xFFFFFFFF);
+        uint8_t *bytes = (void*)&sector_number;
+        
+        uint32_t write10_read = send_bbb(
+            msd->xhci, msd->slot_number, msd->in_index, msd->out_index,
+            (struct CommandBlockWrapper) {
+                .signature=0x43425355,
+                .transfer_length = BLOCK_DEVICE_READ_SIZE,
+                .direction = 0,
+                .lun=0,
+                .command_len = 0x0A,
+                .command = {
+                    0x2A,//WRITE(10)
+                    0,//reserved
+                    bytes[3],
+                    bytes[2],
+                    bytes[1],
+                    bytes[0],//big endian
+                    0,//reserved
+                    0x00,
+                    0x01,//1 block
+                    0x00,//control
+                }
+            },
+            input, BLOCK_DEVICE_READ_SIZE,
+            false
+        );
+        assert(write10_read == BLOCK_DEVICE_READ_SIZE);
+        return;
+
+        default:
+        HCF//unimplemented
+    }
+}
+
+void initialise_msd(struct xHCIData *xhci, uint8_t slot_number, struct ExternConfigDesc config_descriptor) {
     assert(config_descriptor.num_interfaces == 1);
-    printf("config val %d\n", config_descriptor.configuration_value);
     const struct ExternIfDesc if_descriptor = config_descriptor.interfaces[0];
     struct XHCIDevice *device = &xhci->slots[slot_number];
 
@@ -189,11 +288,9 @@ void initialise_msd(struct xHCIData *xhci, uint8_t slot_number, struct ExternCon
     //enable the endpoints
     int in_index = calculate_endpoint_index(in.endpoint_num, true);
     device->endpoint_rings[in_index] = create_ring();
-    struct Ring *in_ring = &device->endpoint_rings[in_index];
 
     int out_index = calculate_endpoint_index(out.endpoint_num, false);
     device->endpoint_rings[out_index] = create_ring();
-    struct Ring *out_ring = &device->endpoint_rings[out_index];
     device->input_context->add_flags = 
         1 | 
         (1 << (in_index+1)) |
@@ -202,8 +299,8 @@ void initialise_msd(struct xHCIData *xhci, uint8_t slot_number, struct ExternCon
         .ep_type = 6,
         .cerr = 3,
         .max_packet_size = in.max_packet_size,
-        .tr_dequeue_pointer_lo = in_ring->trbs_phys >> 4,
-        .tr_dequeue_pointer_hi = in_ring->trbs_phys >> 32,
+        .tr_dequeue_pointer_lo = device->endpoint_rings[in_index].trbs_phys >> 4,
+        .tr_dequeue_pointer_hi = device->endpoint_rings[in_index].trbs_phys >> 32,
         .dcs = 1,
         .average_trb_length = 8,
     };
@@ -211,8 +308,8 @@ void initialise_msd(struct xHCIData *xhci, uint8_t slot_number, struct ExternCon
         .ep_type = 2,
         .cerr = 3,
         .max_packet_size = in.max_packet_size,
-        .tr_dequeue_pointer_lo = out_ring->trbs_phys >> 4,
-        .tr_dequeue_pointer_hi = out_ring->trbs_phys >> 32,
+        .tr_dequeue_pointer_lo = device->endpoint_rings[out_index].trbs_phys >> 4,
+        .tr_dequeue_pointer_hi = device->endpoint_rings[out_index].trbs_phys >> 32,
         .dcs = 1,
         .average_trb_length = 8,
         // .lsa = 1,
@@ -226,7 +323,6 @@ void initialise_msd(struct xHCIData *xhci, uint8_t slot_number, struct ExternCon
 
     //TODO page 385 requests we fetch a different device qualifier, so that we know settings for the USB drive when it is in full and high speed
 
-    printf("set configuration\n");
     make_request(xhci, NULL, (struct RequestTemplate) {
         .slot_number = slot_number,
 
@@ -239,8 +335,6 @@ void initialise_msd(struct xHCIData *xhci, uint8_t slot_number, struct ExternCon
         .length = 0,
         .setup_transfer_type = NoDataStage
     });
-
-    printf("get max lun\n");
 
     uint8_t max_lun;
     make_request(xhci, &max_lun, (struct RequestTemplate) {
@@ -260,11 +354,9 @@ void initialise_msd(struct xHCIData *xhci, uint8_t slot_number, struct ExternCon
     max_lun++;//since zero based, add one
     assert(max_lun == 1);
 
-    printf("inquiry\n");
-
     struct InquiryReturn inquiry_return = {};
     uint32_t inquiry_data_read = send_bbb(
-        xhci, slot_number, in_ring, in_index, out_ring, out_index,
+        xhci, slot_number, in_index, out_index,
         (struct CommandBlockWrapper) {
             .signature=0x43425355,
             .transfer_length = 0x24,
@@ -280,21 +372,22 @@ void initialise_msd(struct xHCIData *xhci, uint8_t slot_number, struct ExternCon
                 0x00//control
             }
         },
-        &inquiry_return, sizeof(inquiry_return)
+        &inquiry_return, sizeof(inquiry_return),
+        true
     );
     assert(inquiry_data_read == sizeof(inquiry_return));
     assert(inquiry_return.peripheral_device_type == 0);//direct access block device
     assert(inquiry_return.response_data_format == 1 || inquiry_return.response_data_format == 2);
-    char vendor_information[9] = {};
-    memcpy(&vendor_information, (void*)&inquiry_return.vendor_information, 8);
-    char product_identification[17] = {};
-    memcpy(&product_identification, (void*)&inquiry_return.product_identification, 16);
-    printf("vendor information: %s\nproduct identification: %s\n", vendor_information, product_identification);
+    // char vendor_information[9] = {};
+    // memcpy(&vendor_information, (void*)&inquiry_return.vendor_information, 8);
+    // char product_identification[17] = {};
+    // memcpy(&product_identification, (void*)&inquiry_return.product_identification, 16);
+    // printf("vendor information: %s\nproduct identification: %s\n", vendor_information, product_identification);
 
     //403
     struct ReadCapacity10Return read_capacity_10;
     uint32_t read_capacity_read = send_bbb(
-        xhci, slot_number, in_ring, in_index, out_ring, out_index,
+        xhci, slot_number, in_index, out_index,
         (struct CommandBlockWrapper) {
             .signature=0x43425355,
             .transfer_length = 0x8,
@@ -309,13 +402,27 @@ void initialise_msd(struct xHCIData *xhci, uint8_t slot_number, struct ExternCon
                 0//control
             }
         },
-        &read_capacity_10, sizeof(read_capacity_10)
+        &read_capacity_10, sizeof(read_capacity_10),
+        true
     );
     assert(read_capacity_read == sizeof(read_capacity_10));
     assert(read_capacity_10.last_valid_lba != 0xFFFFFFFF);//32 bit is not big enough to find the capacity of the drive! (see page 105)
 
-    uint32_t last_lba = flip_endianness(read_capacity_10.last_valid_lba);
-    uint32_t block_size = flip_endianness(read_capacity_10.block_size_bytes);
+    assert(flip_endianness(read_capacity_10.block_size_bytes) == BLOCK_DEVICE_READ_SIZE);
 
-    printf("last LBA: 0x%x\nblock size %u\n", last_lba, block_size);
+    struct MassStorageDeviceXHCI *msd = malloc(sizeof(struct MassStorageDeviceXHCI));
+    *msd = (struct MassStorageDeviceXHCI) {
+        .size_class = 10,
+        .xhci = xhci,
+        .slot_number = slot_number,
+        .in_index = in_index,
+        .out_index = out_index,
+        .last_lba = flip_endianness(read_capacity_10.last_valid_lba),
+    };
+
+    fs_dev_add_block_device(
+        msd,
+        block_read,
+        block_write
+    );
 }

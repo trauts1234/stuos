@@ -94,8 +94,8 @@ struct xHCIData {
         //indexed by calculate_endpoint_index (or 0 for endpoint 0)
         struct Ring endpoint_rings[15];
         uint64_t input_context_phys;
-        struct InputContext *input_context;
-        struct DeviceContext *device_context;
+        volatile struct InputContext *input_context;
+        volatile struct DeviceContext *device_context;
         //root port number (0 as a null sentinel if the slot is unused)
         uint8_t one_based_root_port;
     } slots[256];
@@ -193,7 +193,7 @@ void make_request(struct xHCIData *xhci, void *output, struct RequestTemplate re
 void update_input_context(struct xHCIData *xhci, uint8_t slot_id, bool am_modifying_existing_endpoints);
 uint8_t calculate_endpoint_index(uint8_t endpoint_num, bool is_in);
 // sets the context_entries field correctly
-void set_context_entries(struct DeviceContext *device_context);
+void set_context_entries(volatile struct DeviceContext *device_context);
 // endpoint index as a return value from calculate_endpoint_index, or 0 for the control doorbell
 //
 // port is one-based

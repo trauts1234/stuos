@@ -167,10 +167,10 @@ struct TRB fetch_and_extract(struct xHCIData *data, uint8_t requested_trb_type) 
     assert(requested_trb_type != 0);
     assert(requested_trb_type <= 39);//this may exclude vendor defined messages :(
     struct TRB recv = {};
-    while (recv.status.trb_type != requested_trb_type) {
-        while(dequeue_ring(&data->event_ring, &recv) == -1);
-        update_erdp(data, true);
-    }
+    while(dequeue_ring(&data->event_ring, &recv) == -1);
+    update_erdp(data, true);
+    if(recv.status.trb_type != requested_trb_type) printf("skipping TRB %d\n", recv.status.trb_type);
+    assert(recv.status.trb_type == requested_trb_type)
     switch(recv.status.trb_type) {
         case TRB_TYPE_TRANSFER:
         case TRB_TYPE_CMD_COMPLETION:
@@ -291,9 +291,6 @@ void make_request(struct xHCIData *xhci, void *output, struct RequestTemplate re
     delay();
     struct TRB recv = fetch_and_extract(xhci, TRB_TYPE_TRANSFER);
     assert(recv.status.type_transfer.trb_type != 0);
-    if(recv.status.type_transfer.completion_code != 1) {
-        printf("bad completion code %d\n", recv.status.type_transfer.completion_code);
-    }
     assert(recv.status.type_transfer.completion_code == 1);
     assert(recv.status.type_transfer.slot_id == request.slot_number);
     assert(recv.status.type_transfer.event_data);//ensures that paramater contains raw data
@@ -306,7 +303,7 @@ void make_request(struct xHCIData *xhci, void *output, struct RequestTemplate re
     }
 }
 
-void set_context_entries(struct DeviceContext *device_context) {
+void set_context_entries(volatile struct DeviceContext *device_context) {
     //count down based on the number of unused trailing entries
     uint8_t index_of_last_valid_entry = 30;
     while(device_context->endpoint_context[index_of_last_valid_entry].max_packet_size == 0) {
@@ -393,7 +390,6 @@ static struct ExternConfigDesc read_configuration_descriptor(struct xHCIData *xh
         while((void*)curr_endpoint + 2 < end && curr_endpoint->type != DESCRIPTOR_TYPE_INTERFACE) {
             if(curr_endpoint->type == DESCRIPTOR_TYPE_ENDPOINT) {
                 assert(curr_endpoint->interval == 0);//means no polling needed
-                printf("endpoint index %d of %d\n", endpoint_index, curr_interface->num_endpoints);
                 assert(endpoint_index < curr_interface->num_endpoints);
                 result.interfaces[curr_interface->interface_num].endpoints[endpoint_index++] = (struct ExternEpDesc) {
                     .endpoint_num = curr_endpoint->endpoint_num,
@@ -446,6 +442,13 @@ static void initialise_port(struct xHCIData *xhci, uint64_t *dcbaa_virt, uint8_t
     portsc = read_bar_32(xhci->bar, xhci->cap_length + PORTSC_OFFSET(port_idx));
     assert(portsc & PORTSC_PED);
 
+    //remove the port status change TRBs
+    struct TRB x = {};
+    while(dequeue_ring(&xhci->event_ring, &x) == 0) {
+        update_erdp(xhci, true);
+        assert(x.status.trb_type == TRB_TYPE_PORT_STS_CHANGE);
+    }
+
     //get a device slot
     enqueue_ring(&xhci->command_ring, (struct TRB) {
         .status.trb_type = TRB_TYPE_ENABLE_SLOT
@@ -465,14 +468,14 @@ static void initialise_port(struct xHCIData *xhci, uint64_t *dcbaa_virt, uint8_t
 
     //create device context
     uint64_t device_context_phys = malloc4k_phys();
-    struct DeviceContext *device_context = phys_to_hhdm(device_context_phys);
+    volatile struct DeviceContext *device_context = phys_to_hhdm(device_context_phys);
     curr_device->device_context = device_context;
     memset(device_context, 0, sizeof(struct DeviceContext));
     dcbaa_virt[slot_number] = device_context_phys;
 
     //create input context, which is a second device context plus some extra
     uint64_t input_context_phys = malloc4k_phys();
-    struct InputContext *input_context = phys_to_hhdm(input_context_phys);
+    volatile struct InputContext *input_context = phys_to_hhdm(input_context_phys);
     memset(input_context, 0, sizeof(struct InputContext));
     curr_device->input_context = input_context;
     curr_device->input_context_phys = input_context_phys;
@@ -494,7 +497,6 @@ static void initialise_port(struct xHCIData *xhci, uint64_t *dcbaa_virt, uint8_t
     set_context_entries(&input_context->device_context);
     //initialise something
     set_input_context(xhci, slot_number, true);
-    printf("input context set\n");
     assert(device_context->slot_state == 1);
     assert(device_context->device_address == 0);
     assert(device_context->endpoint_context[0].ep_state == 1);
@@ -503,12 +505,10 @@ static void initialise_port(struct xHCIData *xhci, uint64_t *dcbaa_virt, uint8_t
     assert(device_context->slot_state == 2);
 
     struct DeviceDescriptor device_descriptor;
-    DEBUG_HERE
     send_control_transfer(xhci, slot_number, 1, 0, &device_descriptor, 8);
     input_context->device_context.endpoint_context[0] = device_context->endpoint_context[0];
     input_context->add_flags = 0b10;
     input_context->device_context.endpoint_context[0].max_packet_size = (device_descriptor.release_bcd_maj >= 0x03) ? (1<<device_descriptor.max_packet_size) : device_descriptor.max_packet_size;//usb 3 decided to be special and think that 9 equals 512
-    DEBUG_HERE
     update_input_context(xhci, slot_number, true);
     //read the full data buffer
     assert(device_descriptor.length == 18);
@@ -516,12 +516,12 @@ static void initialise_port(struct xHCIData *xhci, uint64_t *dcbaa_virt, uint8_t
 
     assert(device_descriptor.device_class == 0);//unknown type
     
-    if(device_descriptor.product) {
-        read_string_descriptor(xhci, slot_number, device_descriptor.product);
-    }
-    if(device_descriptor.serial_num) {
-        read_string_descriptor(xhci, slot_number, device_descriptor.serial_num);
-    }
+    // if(device_descriptor.product) {
+    //     read_string_descriptor(xhci, slot_number, device_descriptor.product);
+    // }
+    // if(device_descriptor.serial_num) {
+    //     read_string_descriptor(xhci, slot_number, device_descriptor.serial_num);
+    // }
 
     //337, 383
 
@@ -550,7 +550,8 @@ void initialise_xhci(struct PciDevice dev, struct PciData *dev_data) {
     const uint8_t max_ports = HCSPARAMS1_MAXPORTS(hcsparams1);
     const uint16_t scratchpad_required = HCSPARAMS2_required_scratchpad_buffers(hcsparams2);
 
-    struct xHCIData xhci = {
+    struct xHCIData *xhci = malloc(sizeof(struct xHCIData));
+    *xhci = (struct xHCIData) {
         .bar = bar,
         .cap_length = cap_length,
         .rts_offset = rts_offset,
@@ -580,9 +581,8 @@ void initialise_xhci(struct PciDevice dev, struct PciData *dev_data) {
             uint8_t usb_min = (data >> 16) & 0xFF;
             uint8_t port_index = (third_dword & 0xFF)-1;//port offset starts at 1 for some reason
             uint8_t port_count = (third_dword >> 8) & 0xFF;
-            printf("found %d usb %d.%d slots at index %d and onward\n", port_count, usb_maj, usb_min, port_index);
             for(uint8_t i=port_index; i<port_index+port_count; i++) {
-                xhci.port_is_usb3[i] = (usb_maj == 3);
+                xhci->port_is_usb3[i] = (usb_maj == 3);
             }
 
             default:
@@ -639,9 +639,9 @@ void initialise_xhci(struct PciDevice dev, struct PciData *dev_data) {
     write_bar_32(bar, dcbaa_phys >> 32, cap_length + DCBAAP_OFFSET + 4);
 
     //set up command ring
-    xhci.command_ring = create_ring();
-    write_bar_32(bar, (xhci.command_ring.trbs_phys & 0xFFFFFFFF) | xhci.command_ring.ring_cycle_state, cap_length + CRCR_OFFSET);
-    write_bar_32(bar, xhci.command_ring.trbs_phys >> 32, cap_length + CRCR_OFFSET + 4);
+    xhci->command_ring = create_ring();
+    write_bar_32(bar, (xhci->command_ring.trbs_phys & 0xFFFFFFFF) | xhci->command_ring.ring_cycle_state, cap_length + CRCR_OFFSET);
+    write_bar_32(bar, xhci->command_ring.trbs_phys >> 32, cap_length + CRCR_OFFSET + 4);
 
     //set up runtime registers
     //enable interrupts
@@ -651,27 +651,27 @@ void initialise_xhci(struct PciDevice dev, struct PciData *dev_data) {
     write_bar_32(bar, 0, IR_IMOD_OFFSET(0) + rts_offset);
 
     //set up event ring
-    xhci.event_ring = create_ring();
+    xhci->event_ring = create_ring();
 
     uint64_t event_ring_table_phys = malloc4k_phys();//this contains fat pointers to several event rings (in our case, one)
     struct EventRingSegmentTableEntry *event_ring_table_virt = phys_to_hhdm(event_ring_table_phys);
     memset(event_ring_table_virt, 0, PAGE_SIZE);
     event_ring_table_virt[0] = (struct EventRingSegmentTableEntry) {
-        .ring_segment_base_address = xhci.event_ring.trbs_phys,
-        .ring_segment_size = xhci.event_ring.count,
+        .ring_segment_base_address = xhci->event_ring.trbs_phys,
+        .ring_segment_size = xhci->event_ring.count,
     };
 
     //set ERST size
     write_bar_32(bar, 1, IR_ERSTSZ_OFFSET(0) + rts_offset);
 
-    update_erdp(&xhci, false);//TODO original implementation didn't add ERDP_EHB
+    update_erdp(xhci, false);//TODO original implementation didn't add ERDP_EHB
 
     //point to the ERST
     write_bar_32(bar, event_ring_table_phys & 0xFFFFFFFF, IR_ERSTBA_OFFSET(0) + rts_offset);
     write_bar_32(bar, event_ring_table_phys >> 32, IR_ERSTBA_OFFSET(0) + rts_offset + 4);
 
     //clear prior interrupts
-    ack_irq(&xhci, 0);
+    ack_irq(xhci, 0);
 
     //intel 7 series C210 series chipset magic?
     union ConfigAddress addr = {
@@ -696,12 +696,9 @@ void initialise_xhci(struct PciDevice dev, struct PciData *dev_data) {
 
     delay();
 
-    struct TRB x;
-    while(dequeue_ring(&xhci.event_ring, &x) == 0);
-
     printf("scanning %d ports\n", max_ports);
     for(uint8_t port_idx = 0; port_idx < max_ports; port_idx++) {
-        initialise_port(&xhci, dcbaa_virt, port_idx);
+        initialise_port(xhci, dcbaa_virt, port_idx);
     }
 
 }
