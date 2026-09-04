@@ -7,22 +7,6 @@
 #include <uapi/stddef.h>
 
 struct LapicReg {uint32_t data; uint32_t reserved[3];};
-struct PriorityReg {
-    uint32_t sub_class: 4;
-    uint32_t class: 4;
-    uint32_t reserved_1: 24;
-    uint32_t reserved_2[3];
-};
-struct LvtTimerReg {
-    uint32_t vector_number: 8,
-    reserved: 4,
-    interrupt_status: 1,// 0 when interrupt has been accepted, R
-    reserved_2: 3,
-    interrupt_is_disabled: 1, //1 to disable
-    operating_mode: 2,//0=one shot, 1=periodic, 2=deadline, 3=reserved
-    reserved_3: 13,
-    reserved_4[3];
-};
 
 static volatile struct {
     struct LapicReg 
@@ -215,7 +199,56 @@ struct IOAPICData {
     volatile uint32_t io_win;
 };
 
-static void handle_acpi_table(struct SDTHeader* curr, uint8_t interrupt_destination_apic_id) {
+struct IOAPIC {
+    struct IOAPICData *access;//NULL for empty entry
+    uint8_t interrupt_destination_apic_id;
+    uint8_t max_redirection_entry;
+} ioapic = {};
+
+static void detect_pm_timer(struct FADT *fadt) {
+    assert(fadt->PMTimerLength == 4);
+    if(false) {
+        //Xtended (disabled because I don't know when to use this)
+        switch(fadt->X_PMTimerBlock.address_space) {
+            case 0:
+            //mmio
+            pm_timer_mmio = setup_mmio(fadt->X_PMTimerBlock.address, PAGE_SIZE);
+            break;
+            case 1:
+            //port
+            pm_timer_port = fadt->X_PMTimerBlock.address;
+            break;
+            default:
+            HCF
+        }
+    } else {
+        pm_timer_port = fadt->PMTimerBlock;
+    }
+}
+static void setup_ioapic(uint32_t ioapic_phys_addr, uint8_t interrupt_destination_apic_id) {
+    assert(ioapic.access == NULL);
+    ioapic.access = setup_mmio(ioapic_phys_addr, PAGE_SIZE);
+
+    ioapic.access->io_reg_sel = 1;//IOAPICVER
+    ioapic.max_redirection_entry = ioapic.access->io_win >> 16; //max irqs
+}
+//maps irq to vector
+static void map_ioapic_interrupt(uint8_t irq, uint8_t vector) {
+    assert(irq < ioapic.max_redirection_entry);
+    union RedirectionEntry entry = {
+        .vector = 32 + irq,
+        .destination = ioapic.interrupt_destination_apic_id,
+        .mask = 0,
+    };
+
+    ioapic.access->io_reg_sel = io_red_tbl(irq);
+    ioapic.access->io_win = entry.lower;
+
+    ioapic.access->io_reg_sel = io_red_tbl(irq) + 1;
+    ioapic.access->io_win = entry.upper;
+}
+
+static void handle_sdt(struct SDTHeader* curr, uint8_t interrupt_destination_apic_id) {
     //TODO handle revision
     assert(matches_checksum(curr, curr->length));
 
@@ -232,23 +265,8 @@ static void handle_acpi_table(struct SDTHeader* curr, uint8_t interrupt_destinat
                 break;
 
                 case 1://IOAPIC
-                assert(madt->entries[i+1] == 12)
-
-                struct IOAPICData *ioapic = setup_mmio(*(uint32_t*)(madt->entries + i+4), PAGE_SIZE);
-
-                ioapic->io_reg_sel = 1;//IOAPICVER
-                // uint8_t max_redirection_entry = ioapic->io_win >> 16; //max irqs
-
-                //write keyboard interrupt
-                union RedirectionEntry ps2_keyboard_entry = {
-                    .vector = 33,
-                    .destination = interrupt_destination_apic_id
-                };
-                ioapic->io_reg_sel = io_red_tbl(1);
-                ioapic->io_win = ps2_keyboard_entry.lower;
-                ioapic->io_reg_sel = io_red_tbl(1) + 1;
-                ioapic->io_win = ps2_keyboard_entry.upper;
-
+                assert(madt->entries[i+1] == 12);
+                setup_ioapic(*(uint32_t*)(madt->entries + i+4), interrupt_destination_apic_id);
                 break;
 
                 default:
@@ -256,29 +274,11 @@ static void handle_acpi_table(struct SDTHeader* curr, uint8_t interrupt_destinat
             }
         }
     } else if(memcmp(curr->signature, "FACP", 4) == 0) {
-        struct FADT *fadt = (void*)curr;
-        assert(fadt->PMTimerLength == 4);
-        if(false) {
-            //Xtended (disabled because I don't know when to use this)
-            switch(fadt->X_PMTimerBlock.address_space) {
-                case 0:
-                //mmio
-                pm_timer_mmio = setup_mmio(fadt->X_PMTimerBlock.address, PAGE_SIZE);
-                break;
-                case 1:
-                //port
-                pm_timer_port = fadt->X_PMTimerBlock.address;
-                break;
-                default:
-                HCF
-            }
-        } else {
-            pm_timer_port = fadt->PMTimerBlock;
-        }
+        detect_pm_timer((void*)curr);
     }
 }
 
-static void pmtimer_ioapic_init(struct RSDP *rsdp, uint8_t interrupt_destination_apic_id) {
+static void handle_rsdp(struct RSDP *rsdp, uint8_t interrupt_destination_apic_id) {
     //check signature
     assert(memcmp(rsdp->signature, "RSD PTR ", 8) == 0)
 
@@ -297,7 +297,7 @@ static void pmtimer_ioapic_init(struct RSDP *rsdp, uint8_t interrupt_destination
         uint64_t entries = (xsdt->header.length - sizeof(xsdt->header)) / 8;
         for(uint64_t i=0; i<entries; i++) {
             struct SDTHeader *h = phys_to_hhdm(xsdt->entries[i]);
-            handle_acpi_table(h, interrupt_destination_apic_id);
+            handle_sdt(h, interrupt_destination_apic_id);
         }
     } else {
         struct RSDT *rsdt = phys_to_hhdm(rsdp->rsdt_address);
@@ -307,7 +307,7 @@ static void pmtimer_ioapic_init(struct RSDP *rsdp, uint8_t interrupt_destination
         uint32_t entries = (rsdt->header.length - sizeof(rsdt->header)) / 4;
         for(uint32_t i=0; i<entries; i++) {
             struct SDTHeader *h = phys_to_hhdm(rsdt->entries[i]);
-            handle_acpi_table(h, interrupt_destination_apic_id);
+            handle_sdt(h, interrupt_destination_apic_id);
         }
     }
 }
@@ -329,14 +329,19 @@ void apic_init(void *rsdp_response) {
     lapic_registers = setup_mmio(LAPIC_PHYS_ADDR, PAGE_SIZE);
     enable_apic();
     //Set the Spurious Interrupt Vector Register bit 8 to start receiving interrupts
-    lapic_registers->spurious_interrupt_vector.data |= 0x100;
+    // this should be set by the limine bootloader
+    assert(lapic_registers->spurious_interrupt_vector.data == 0x1FF);
 
     lapic_registers->initial_count.data = 1'000'000;
     lapic_registers->divide_configuration.data = 0;// /2
 
     lapic_registers->lvt_timer.data = 32 | (1 << 17);
 
-    pmtimer_ioapic_init(rsdp_response, lapic_registers->lapic_id.data);
+    //this will enable the IOAPIC and handle timer things
+    handle_rsdp(rsdp_response, lapic_registers->lapic_id.data);
+
+    //PS/2 keyboard
+    map_ioapic_interrupt(1, 33);
 }
 
 //call to restart interrupts once this one is done

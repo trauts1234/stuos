@@ -5,6 +5,7 @@
 #include "kern_libc.h"
 #include "debugging.h"
 #include "memory.h"
+#include "xhci_keyboard.h"
 #include "xhci_msd.h"
 #include "xhci_trb.h"
 #include <uapi/stdbool.h>
@@ -389,13 +390,13 @@ static struct ExternConfigDesc read_configuration_descriptor(struct xHCIData *xh
         struct EndpointDescriptor *curr_endpoint = (void*)curr_interface + curr_interface->length;//immediately after
         while((void*)curr_endpoint + 2 < end && curr_endpoint->type != DESCRIPTOR_TYPE_INTERFACE) {
             if(curr_endpoint->type == DESCRIPTOR_TYPE_ENDPOINT) {
-                assert(curr_endpoint->interval == 0);//means no polling needed
                 assert(endpoint_index < curr_interface->num_endpoints);
                 result.interfaces[curr_interface->interface_num].endpoints[endpoint_index++] = (struct ExternEpDesc) {
                     .endpoint_num = curr_endpoint->endpoint_num,
                     .is_in = curr_endpoint->direction,//1 means in
                     .transfer_type = curr_endpoint->transfer_type,
-                    .max_packet_size = curr_endpoint->max_packet_size
+                    .max_packet_size = curr_endpoint->max_packet_size,
+                    .interval = curr_endpoint->interval
                 };
             }
 
@@ -516,25 +517,32 @@ static void initialise_port(struct xHCIData *xhci, uint64_t *dcbaa_virt, uint8_t
 
     assert(device_descriptor.device_class == 0);//unknown type
     
-    // if(device_descriptor.product) {
-    //     read_string_descriptor(xhci, slot_number, device_descriptor.product);
-    // }
-    // if(device_descriptor.serial_num) {
-    //     read_string_descriptor(xhci, slot_number, device_descriptor.serial_num);
-    // }
+    if(device_descriptor.product) {
+        read_string_descriptor(xhci, slot_number, device_descriptor.product);
+    }
+    if(device_descriptor.serial_num) {
+        read_string_descriptor(xhci, slot_number, device_descriptor.serial_num);
+    }
 
     //337, 383
 
     assert(device_descriptor.configurations == 1);// only handle situations with one configuration for now
     const struct ExternConfigDesc config_descriptor = read_configuration_descriptor(xhci, slot_number, 0);
-
-    if (
-        config_descriptor.num_interfaces == 1
-    ) {
-        const struct ExternIfDesc desc = config_descriptor.interfaces[0];
-
+    assert(config_descriptor.num_interfaces > 0);
+    
+    for(uint16_t i=0; i<config_descriptor.num_interfaces; i++) {
+        const struct ExternIfDesc desc = config_descriptor.interfaces[i];
+        
         if(desc.protocol == ExternIfProtocolBulkOnly && desc.sub_class == ExternIfSubClassSCSI) {
-            initialise_msd(xhci, slot_number, config_descriptor);
+            initialise_msd(xhci, slot_number, config_descriptor, i);
+            break;
+        }
+        
+        if(desc.protocol == 0x01 && desc.class_code == 0x03 && desc.sub_class == 0x01) {
+            //sub class = 1 means it is simple enough for the BIOS to use
+            printf("HID keyboard\n");
+            // initialise_keyboard(xhci, slot_number, config_descriptor, i);
+            break;
         }
     }
 }

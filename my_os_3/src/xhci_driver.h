@@ -146,6 +146,8 @@ struct ExternConfigDesc {
             bool is_in;//1=>in, 0=>out
             enum {EPTransferControl=0b00, EpTransferIsochronous=0b01, EpTransferBulk=0b10, EpTransferInterrupt=0b11} transfer_type;
             uint16_t max_packet_size;
+            //0=>no polling needed, not sure about anything else
+            uint8_t interval;
         } endpoints[16];//TODO is 16 right?
     } interfaces[256];
 };
@@ -166,7 +168,7 @@ struct RequestTemplate {
     enum {RecipientDevice=0, RecipientInterface=1, RecipientEndpoint=2, RecipientOther=3} recipient;
     /// affects:
     /// - parameter of setup stage, the request
-    enum {GET_DESCRIPTOR=6, SET_CONFIGURATION=9, GET_MAX_LUN=0xFE} request;
+    enum {GET_DESCRIPTOR=6, SET_CONFIGURATION=9, GET_MAX_LUN=0xFE, SET_IDLE=0xA, SET_PROTOCOL=0xB} request;
     union {
         uint16_t value;
         struct {

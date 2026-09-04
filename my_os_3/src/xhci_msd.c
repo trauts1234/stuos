@@ -142,6 +142,7 @@ static uint32_t send_bbb(struct xHCIData *xhci, uint8_t slot_number, int in_inde
     ring_doorbell(xhci, slot_number, is_read ? in_index : out_index);
     //read the response from the inquiry response (TODO handle a short packet gracefully since this is fine)
     recv = fetch_and_extract(xhci, TRB_TYPE_TRANSFER);
+    assert(recv.status.type_transfer.completion_code == 1);
     assert(recv.status.type_transfer.trb_type != 0);
     assert(recv.status.type_transfer.trb_transfer_length == 0);
     assert(recv.status.type_transfer.slot_id == slot_number);
@@ -166,8 +167,6 @@ static uint32_t send_bbb(struct xHCIData *xhci, uint8_t slot_number, int in_inde
     assert(status->signature == 0x53425355);
     assert(status->tag == command->tag);
     assert(status->status == 0);
-
-    assert(recv.status.type_transfer.completion_code == 1);
 
     if(is_read) memcpy(response_out, phys_to_hhdm(response_phys), response_len - status->data_residue);
 
@@ -262,9 +261,8 @@ static void block_write(void* driver_private, uint64_t sector_number, uint8_t in
     }
 }
 
-void initialise_msd(struct xHCIData *xhci, uint8_t slot_number, struct ExternConfigDesc config_descriptor) {
-    assert(config_descriptor.num_interfaces == 1);
-    const struct ExternIfDesc if_descriptor = config_descriptor.interfaces[0];
+void initialise_msd(struct xHCIData *xhci, uint8_t slot_number, struct ExternConfigDesc config_descriptor, uint8_t interface_num) {
+    const struct ExternIfDesc if_descriptor = config_descriptor.interfaces[interface_num];
     struct XHCIDevice *device = &xhci->slots[slot_number];
 
     //should only be an in and out endpoint, however some devices may have a dead interrupt endpoint that must be ignored
@@ -285,6 +283,8 @@ void initialise_msd(struct xHCIData *xhci, uint8_t slot_number, struct ExternCon
     assert(!out.is_in);
     assert(in.transfer_type = EpTransferBulk);
     assert(out.transfer_type = EpTransferBulk);
+    assert(in.interval == 0);//means no polling needed
+    assert(out.interval == 0);//means no polling needed
     //enable the endpoints
     int in_index = calculate_endpoint_index(in.endpoint_num, true);
     device->endpoint_rings[in_index] = create_ring();
