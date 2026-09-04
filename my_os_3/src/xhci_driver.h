@@ -208,6 +208,5 @@ void delay();
 struct TRB fetch_and_extract(struct xHCIData *data, uint8_t requested_trb_type);
 
 void initialise_xhci(struct PciDevice dev, struct PciData *dev_data);
-void poll_xhci();
 
 #endif

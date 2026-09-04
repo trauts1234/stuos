@@ -8,6 +8,7 @@
 #include "xhci_keyboard.h"
 #include "xhci_msd.h"
 #include "xhci_trb.h"
+#include "idt.h"
 #include <uapi/stdbool.h>
 #include <uapi/stddef.h>
 
@@ -414,6 +415,34 @@ static struct ExternConfigDesc read_configuration_descriptor(struct xHCIData *xh
     return result;
 }
 
+void handle_incoming_event(int) {
+    struct xHCIData *data = controller_i_found;
+    struct TRB recv = {};
+    if(dequeue_ring(&data->event_ring, &recv) == -1) return;
+    update_erdp(data, true);
+    switch(recv.status.trb_type) {
+        case TRB_TYPE_TRANSFER:
+        struct XHCIDevice *dev = &data->slots[recv.status.type_transfer.slot_id];
+        assert(dev->interrupt_trb_handler);
+        dev->interrupt_trb_handler(data, recv);
+        break;
+
+        case TRB_TYPE_CMD_COMPLETION:
+        case TRB_TYPE_PORT_STS_CHANGE:
+        case TRB_TYPE_BANDWIDTH_REQUEST:
+        case TRB_TYPE_DOORBELL:
+        case TRB_TYPE_HOST_CONTROLLER:
+        case TRB_TYPE_DEVICE_NOTIFICATION:
+        case TRB_TYPE_MFINDEX_WRAP:
+        HCF
+        
+        default:
+        printf("ERR: unknown trb type 0x%x\n", recv.status.trb_type);
+        HCF
+    }
+
+}
+
 //does nothing if port is empty
 static void initialise_port(struct xHCIData *xhci, uint64_t *dcbaa_virt, uint8_t port_idx) {
     uint32_t portsc = read_bar_32(xhci->bar, xhci->cap_length + PORTSC_OFFSET(port_idx));
@@ -447,6 +476,9 @@ static void initialise_port(struct xHCIData *xhci, uint64_t *dcbaa_virt, uint8_t
     portsc = read_bar_32(xhci->bar, xhci->cap_length + PORTSC_OFFSET(port_idx));
     assert(portsc & PORTSC_PED);
 
+    // printf("waiting...\n");
+    // while(1);
+
     //remove the port status change TRBs
     struct TRB x = {};
     while(dequeue_ring(&xhci->event_ring, &x) == 0) {
@@ -475,13 +507,13 @@ static void initialise_port(struct xHCIData *xhci, uint64_t *dcbaa_virt, uint8_t
     uint64_t device_context_phys = malloc4k_phys();
     volatile struct DeviceContext *device_context = phys_to_hhdm(device_context_phys);
     curr_device->device_context = device_context;
-    memset(device_context, 0, sizeof(struct DeviceContext));
+    volatile_memset(device_context, 0, sizeof(struct DeviceContext));
     dcbaa_virt[slot_number] = device_context_phys;
 
     //create input context, which is a second device context plus some extra
     uint64_t input_context_phys = malloc4k_phys();
     volatile struct InputContext *input_context = phys_to_hhdm(input_context_phys);
-    memset(input_context, 0, sizeof(struct InputContext));
+    volatile_memset(input_context, 0, sizeof(struct InputContext));
     curr_device->input_context = input_context;
     curr_device->input_context_phys = input_context_phys;
 
@@ -552,6 +584,7 @@ static void initialise_port(struct xHCIData *xhci, uint64_t *dcbaa_virt, uint8_t
 }
 
 void initialise_xhci(struct PciDevice dev, struct PciData *dev_data) {
+    initialise_idt_entry(dev_data->allocated_interrupt, handle_incoming_event);
     struct BarInfo bar = dev_data->bar_list[0];
     uint8_t cap_length = CAPLENGTH_CAPLENGTH(read_bar_32(bar, CAPLENGTH_AND_VERSION_OFFSET));
     uint32_t rts_offset = read_bar_32(bar, RTSOFF_OFFSET);
@@ -678,7 +711,7 @@ void initialise_xhci(struct PciDevice dev, struct PciData *dev_data) {
     //set ERST size
     write_bar_32(bar, 1, IR_ERSTSZ_OFFSET(0) + rts_offset);
 
-    update_erdp(xhci, false);//TODO original implementation didn't add ERDP_EHB
+    update_erdp(xhci, true);//TODO original implementation didn't add ERDP_EHB
 
     //point to the ERST
     write_bar_32(bar, event_ring_table_phys & 0xFFFFFFFF, IR_ERSTBA_OFFSET(0) + rts_offset);
@@ -713,34 +746,6 @@ void initialise_xhci(struct PciDevice dev, struct PciData *dev_data) {
     printf("scanning %d ports\n", max_ports);
     for(uint8_t port_idx = 0; port_idx < max_ports; port_idx++) {
         initialise_port(xhci, dcbaa_virt, port_idx);
-    }
-
-}
-
-void poll_xhci() {
-    struct xHCIData *data = controller_i_found;
-    struct TRB recv = {};
-    if(dequeue_ring(&data->event_ring, &recv) == -1) return;
-    update_erdp(data, true);
-    switch(recv.status.trb_type) {
-        case TRB_TYPE_TRANSFER:
-        struct XHCIDevice *dev = &data->slots[recv.status.type_transfer.slot_id];
-        assert(dev->interrupt_trb_handler);
-        dev->interrupt_trb_handler(data, recv);
-        break;
-
-        case TRB_TYPE_CMD_COMPLETION:
-        case TRB_TYPE_PORT_STS_CHANGE:
-        case TRB_TYPE_BANDWIDTH_REQUEST:
-        case TRB_TYPE_DOORBELL:
-        case TRB_TYPE_HOST_CONTROLLER:
-        case TRB_TYPE_DEVICE_NOTIFICATION:
-        case TRB_TYPE_MFINDEX_WRAP:
-        HCF
-        
-        default:
-        printf("ERR: unknown trb type 0x%x\n", recv.status.trb_type);
-        HCF
     }
 
 }

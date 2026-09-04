@@ -65,6 +65,15 @@ void *memset(void *s, int c, size_t n) {
 
     return s;
 }
+volatile void* volatile_memset(volatile void *s, int c, size_t n) {
+    volatile uint8_t *p = (volatile void *)s;
+
+    for (size_t i = 0; i < n; i++) {
+        p[i] = (uint8_t)c;
+    }
+
+    return s;
+}
 
 void *memmove(void *dest, const void *src, size_t n) {
     uint8_t *pdest = (uint8_t *)dest;

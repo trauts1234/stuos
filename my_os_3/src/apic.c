@@ -348,20 +348,16 @@ void apic_init(void *rsdp_response) {
 
     //this will enable the IOAPIC and handle timer things
     handle_rsdp(rsdp_response, lapic_registers->lapic_id.data);
-
-    //PS/2 keyboard
-    // map_ioapic_interrupt(1, 33);
-
-    //test LAPIC
-    uint32_t * special = ((void*)lapic_registers) + (lapic_registers->lapic_id.data << 12);
-    *special = 69;
 }
 
 //call to restart interrupts once this one is done
 void apic_eoi() {
-    poll_xhci();//TODO this is in a super random place
     //end of interrupt
     lapic_registers->end_of_interrupt.data = 0;
+}
+
+uint64_t get_lapic_magic_address() {
+    return LAPIC_PHYS_ADDR + (lapic_registers->lapic_id.data << 12);
 }
 
 static uint64_t total_interrupts = 0;

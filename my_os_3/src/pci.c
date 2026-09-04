@@ -12,7 +12,7 @@
 #define CONFIG_ADDRESS 0xCF8
 #define CONFIG_DATA 0xCFC
 
-#define USE_MSI_MSIX false
+#define USE_MSI_MSIX true
 
 //this is _after_ the capability ID and next pointer
 struct MSIData {
@@ -247,21 +247,6 @@ void initialise_pci() {
                         }
                     }
                     // assert((msi_idx && msix_idx) == 0);//can't have both?
-                    if(msi_idx && USE_MSI_MSIX) {
-                        struct MSIData *data = (struct MSIData *)&header_buffer[msi_idx];
-                        assert(!data->enable);
-                        assert(data->is_64_bit);
-                        printf("device supports %u MSI interrupts\n", 1<<data->multiple_message_capable);
-                        data->multiple_message_enable = 0;// enables 1<<0 messages
-                        data->enable = 1;
-
-                        data->message_address = LAPIC_PHYS_ADDR;//there are some flags here, but they are zeroed (page 3605 of the intel combined volumes)
-                        int allocated_vec = allocate_free_idt_entry();
-                        data->vector = allocated_vec;
-                        write_header(device, header_buffer);
-
-                        dev.allocated_interrupt = allocated_vec;
-                    }
                     if(msix_idx && USE_MSI_MSIX) {
                         struct MSIXData *data = (struct MSIXData *)&header_buffer[msix_idx];
                         assert(!data->enable);
@@ -278,8 +263,8 @@ void initialise_pci() {
                         for(uint64_t i=0; i<table_size; i++) {
                             uint64_t offset = table_addr + i*16ull;
                             //message address
-                            write_bar_32(dev.bar_list[bar_number], LAPIC_PHYS_ADDR & 0xFFFFFFFF, offset);
-                            write_bar_32(dev.bar_list[bar_number], LAPIC_PHYS_ADDR >> 32, offset+4);
+                            write_bar_32(dev.bar_list[bar_number], get_lapic_magic_address() & 0xFFFFFFFF, offset);
+                            write_bar_32(dev.bar_list[bar_number], get_lapic_magic_address() >> 32, offset+4);
                             //message data
                             write_bar_32(dev.bar_list[bar_number], allocated_vec, offset+8);
                             //vector control
@@ -287,6 +272,20 @@ void initialise_pci() {
                         }
 
                         write_header(device, header_buffer);
+                        dev.allocated_interrupt = allocated_vec;
+                    } else if(msi_idx && USE_MSI_MSIX) {
+                        struct MSIData *data = (struct MSIData *)&header_buffer[msi_idx];
+                        assert(!data->enable);
+                        assert(data->is_64_bit);
+                        printf("device supports %u MSI interrupts\n", 1<<data->multiple_message_capable);
+                        data->multiple_message_enable = 0;// enables 1<<0 messages
+                        data->enable = 1;
+
+                        data->message_address = get_lapic_magic_address();//there are some flags here, but they are zeroed (page 3605 of the intel combined volumes)
+                        int allocated_vec = allocate_free_idt_entry();
+                        data->vector = allocated_vec;
+                        write_header(device, header_buffer);
+
                         dev.allocated_interrupt = allocated_vec;
                     }
                 }

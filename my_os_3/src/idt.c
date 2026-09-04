@@ -59,6 +59,7 @@ void setup_idt() {
     for(int i=33; i<N_INTERRUPTS; i++) {
         general_purpose_interrupt_handlers[i] = unused_general_purpose_slot;
     }
+    __asm__ __volatile__ ("sti");
 }
 
 int allocate_free_idt_entry() {
@@ -72,7 +73,7 @@ int allocate_free_idt_entry() {
     HCF
 }
 void initialise_idt_entry(int free_idt_entry, void (*handler)(int)) {
-    assert(free_idt_entry > 33);
+    assert(free_idt_entry > 32);
     assert(free_idt_entry < 256);
     assert(general_purpose_interrupt_handlers[free_idt_entry] == allocated_general_purpose_slot);//I may be overwriting an initialised slot or an unallocated slot
     general_purpose_interrupt_handlers[free_idt_entry] = handler;
