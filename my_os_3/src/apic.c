@@ -4,6 +4,7 @@
 #include "io.h"
 #include "physical_slab_allocation.h"
 #include "memory.h"
+#include "xhci_driver.h"
 #include <uapi/stddef.h>
 
 struct LapicReg {uint32_t data; uint32_t reserved[3];};
@@ -42,7 +43,7 @@ static volatile struct {
 } *lapic_registers;
 
 static uint32_t pm_timer_port = 0;//if 0, then use mmio
-static uint32_t *pm_timer_mmio = NULL;
+static volatile uint32_t *pm_timer_mmio = NULL;
 
 extern void enable_apic();
 
@@ -190,6 +191,14 @@ union RedirectionEntry
     };
 };
 
+struct MessageData {
+
+};
+
+union MessageAddress {
+    
+};
+
 static uint32_t io_red_tbl(uint32_t i) {return 0x10 + 2*i;}
 struct IOAPICData {
     //register selector
@@ -200,7 +209,7 @@ struct IOAPICData {
 };
 
 struct IOAPIC {
-    struct IOAPICData *access;//NULL for empty entry
+    volatile struct IOAPICData *access;//NULL for empty entry
     uint8_t interrupt_destination_apic_id;
     uint8_t max_redirection_entry;
 } ioapic = {};
@@ -341,11 +350,16 @@ void apic_init(void *rsdp_response) {
     handle_rsdp(rsdp_response, lapic_registers->lapic_id.data);
 
     //PS/2 keyboard
-    map_ioapic_interrupt(1, 33);
+    // map_ioapic_interrupt(1, 33);
+
+    //test LAPIC
+    uint32_t * special = ((void*)lapic_registers) + (lapic_registers->lapic_id.data << 12);
+    *special = 69;
 }
 
 //call to restart interrupts once this one is done
 void apic_eoi() {
+    poll_xhci();//TODO this is in a super random place
     //end of interrupt
     lapic_registers->end_of_interrupt.data = 0;
 }

@@ -96,6 +96,9 @@ struct xHCIData {
         uint64_t input_context_phys;
         volatile struct InputContext *input_context;
         volatile struct DeviceContext *device_context;
+        //called when an interrupt hands back a TRB during runtime (not during setup)
+        void (*interrupt_trb_handler)(struct xHCIData *xhci, struct TRB trb);
+        void* interrupt_handler_data;
         //root port number (0 as a null sentinel if the slot is unused)
         uint8_t one_based_root_port;
     } slots[256];
@@ -205,5 +208,6 @@ void delay();
 struct TRB fetch_and_extract(struct xHCIData *data, uint8_t requested_trb_type);
 
 void initialise_xhci(struct PciDevice dev, struct PciData *dev_data);
+void poll_xhci();
 
 #endif

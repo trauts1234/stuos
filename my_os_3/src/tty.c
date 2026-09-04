@@ -4,7 +4,6 @@
 #include "display.h"
 #include "kern_libc.h"
 #include "font8x8_basic.h"
-#include "ps2.h"
 
 // 8x8 bitmap chars
 #define CHAR_MEMORY_SIZE 8
@@ -193,18 +192,17 @@ void tty_write_char(char c) {
     write_from_multiple_sources(c, false);
 }
 
-void tty_provide_stdin(struct KeyEvent ev) {
-    if(ev.event_type != KE_ASCII) return;
-    if(ev.is_break) return;
+void tty_provide_stdin(char x) {
+    if(x == 0) return;
     
-    write_from_multiple_sources(ev.character, true);
+    write_from_multiple_sources(x, true);
 
-    if(ev.character == '\b' && tty_settings.c_lflag & ICANON) {
+    if(x == '\b' && tty_settings.c_lflag & ICANON) {
         if(next == input_buffer) return;//underflow
         next--;
     } else {
         if(next == input_buffer + INPUT_BUF_LENGTH) HCF//overflow
-        *next++ = ev.character;
+        *next++ = x;
     }
 }
 

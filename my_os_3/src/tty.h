@@ -1,7 +1,6 @@
 #ifndef TTY_H
 #define TTY_H
 
-#include "ps2.h"
 #include <uapi/stdint.h>
 
 extern struct termios tty_settings;
@@ -19,6 +18,6 @@ uint64_t tty_read(char* out, uint64_t num);
 
 //provide keyboard input to the TTY
 //this is called by the PS/2 driver
-void tty_provide_stdin(struct KeyEvent ev);
+void tty_provide_stdin(char x);
 
 #endif

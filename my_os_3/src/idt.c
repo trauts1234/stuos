@@ -1,7 +1,6 @@
 #include <uapi/stdint.h>
 #include "debugging.h"
 #include "kern_libc.h"
-#include "ps2.h"
 
 #define N_INTERRUPTS 256
 
@@ -60,7 +59,6 @@ void setup_idt() {
     for(int i=33; i<N_INTERRUPTS; i++) {
         general_purpose_interrupt_handlers[i] = unused_general_purpose_slot;
     }
-    general_purpose_interrupt_handlers[33] = handle_incoming_byte;//TODO make this set itself up like PCI MSI does
 }
 
 int allocate_free_idt_entry() {

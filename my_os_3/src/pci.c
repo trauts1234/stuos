@@ -147,7 +147,7 @@ static void handle_bar(struct PciDevice device, struct PciConfigurationHeader he
                     uint64_t bar_size = get_bar_size_32(bar_val_low, addr_low);
                     uint64_t address = bar_val_low & ~0xFul;
 
-                    void* virtual_address = setup_mmio(address, bar_size);
+                    volatile void* virtual_address = setup_mmio(address, bar_size);
                     output_bar_list[index_in_config] = (struct BarInfo) {
                         .bar_size = bar_size,
                         .address = address,
@@ -170,7 +170,7 @@ static void handle_bar(struct PciDevice device, struct PciConfigurationHeader he
                     uint64_t bar_size = get_bar_size_64(bar_val_low, bar_val_high, addr_low, addr_high);
                     uint64_t address = ((uint64_t)bar_val_high << 32) | (bar_val_low & ~0xFul);
 
-                    void* virtual_address = setup_mmio(address, bar_size);
+                    volatile void* virtual_address = setup_mmio(address, bar_size);
                     output_bar_list[index_in_config + 1] = output_bar_list[index_in_config] = (struct BarInfo) {
                         .bar_size = bar_size,
                         .address = address,

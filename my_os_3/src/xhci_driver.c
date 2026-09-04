@@ -9,10 +9,14 @@
 #include "xhci_msd.h"
 #include "xhci_trb.h"
 #include <uapi/stdbool.h>
+#include <uapi/stddef.h>
 
 //TODO I am missing tons of volatile in here!!!!!
 
 //https://www.intel.com/content/dam/www/public/us/en/documents/technical-specifications/extensible-host-controler-interface-usb-xhci.pdf
+
+//bodge, to allow polling code to have a pointer to the controller
+struct xHCIData *controller_i_found = NULL;
 
 struct EventRingSegmentTableEntry {
     uint64_t ring_segment_base_address;
@@ -532,7 +536,7 @@ static void initialise_port(struct xHCIData *xhci, uint64_t *dcbaa_virt, uint8_t
     
     for(uint16_t i=0; i<config_descriptor.num_interfaces; i++) {
         const struct ExternIfDesc desc = config_descriptor.interfaces[i];
-        
+
         if(desc.protocol == ExternIfProtocolBulkOnly && desc.sub_class == ExternIfSubClassSCSI) {
             initialise_msd(xhci, slot_number, config_descriptor, i);
             break;
@@ -541,7 +545,7 @@ static void initialise_port(struct xHCIData *xhci, uint64_t *dcbaa_virt, uint8_t
         if(desc.protocol == 0x01 && desc.class_code == 0x03 && desc.sub_class == 0x01) {
             //sub class = 1 means it is simple enough for the BIOS to use
             printf("HID keyboard\n");
-            // initialise_keyboard(xhci, slot_number, config_descriptor, i);
+            initialise_keyboard(xhci, slot_number, config_descriptor, i);
             break;
         }
     }
@@ -559,6 +563,8 @@ void initialise_xhci(struct PciDevice dev, struct PciData *dev_data) {
     const uint16_t scratchpad_required = HCSPARAMS2_required_scratchpad_buffers(hcsparams2);
 
     struct xHCIData *xhci = malloc(sizeof(struct xHCIData));
+    assert(controller_i_found == NULL);
+    controller_i_found = xhci;
     *xhci = (struct xHCIData) {
         .bar = bar,
         .cap_length = cap_length,
@@ -707,6 +713,34 @@ void initialise_xhci(struct PciDevice dev, struct PciData *dev_data) {
     printf("scanning %d ports\n", max_ports);
     for(uint8_t port_idx = 0; port_idx < max_ports; port_idx++) {
         initialise_port(xhci, dcbaa_virt, port_idx);
+    }
+
+}
+
+void poll_xhci() {
+    struct xHCIData *data = controller_i_found;
+    struct TRB recv = {};
+    if(dequeue_ring(&data->event_ring, &recv) == -1) return;
+    update_erdp(data, true);
+    switch(recv.status.trb_type) {
+        case TRB_TYPE_TRANSFER:
+        struct XHCIDevice *dev = &data->slots[recv.status.type_transfer.slot_id];
+        assert(dev->interrupt_trb_handler);
+        dev->interrupt_trb_handler(data, recv);
+        break;
+
+        case TRB_TYPE_CMD_COMPLETION:
+        case TRB_TYPE_PORT_STS_CHANGE:
+        case TRB_TYPE_BANDWIDTH_REQUEST:
+        case TRB_TYPE_DOORBELL:
+        case TRB_TYPE_HOST_CONTROLLER:
+        case TRB_TYPE_DEVICE_NOTIFICATION:
+        case TRB_TYPE_MFINDEX_WRAP:
+        HCF
+        
+        default:
+        printf("ERR: unknown trb type 0x%x\n", recv.status.trb_type);
+        HCF
     }
 
 }

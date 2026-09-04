@@ -30,6 +30,6 @@ void allocate_ram_page(void* virtual_addr);
 // Maps a range of physical addresses to virtual addresses, and disables caching
 //
 // Returns: a pointer to the virtual address that has been mapped
-void *setup_mmio(uint64_t phys_addr, uint64_t size);
+volatile void *setup_mmio(uint64_t phys_addr, uint64_t size);
 
 #endif

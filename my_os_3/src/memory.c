@@ -308,7 +308,7 @@ static void map_page(uint64_t physical_addr, void* virtual_addr, bool can_cache)
     invalidate_page(virtual_addr);
 }
 
-void *setup_mmio(uint64_t phys_addr, uint64_t size) {
+volatile void *setup_mmio(uint64_t phys_addr, uint64_t size) {
     //must be aligned
     if(phys_addr & PAGE_MASK) HCF
     if((uint64_t)mmio_start & PAGE_MASK) HCF
