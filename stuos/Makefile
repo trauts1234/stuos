@@ -5,12 +5,12 @@ LD = x86_64-elf-ld
 SRC_DIR := ./src
 C_SRCS = $(wildcard $(SRC_DIR)/*.c)
 ASM_SRCS = $(wildcard $(SRC_DIR)/*.asm)
-MALLOC_SRC_DIR = ../malloc_my_os_3
+MALLOC_SRC_DIR = ../custom_malloc
 MALLOC_SRCS = $(wildcard $(MALLOC_SRC_DIR)/*.c)
 
 #frame pointer is needed for HCF backtraces
 #-Wno-packed-bitfield-compat gcc fixed a packing issue with chars in 4.4
-CFLAGS = -ffreestanding -m64 -nostdlib -O0 -fno-omit-frame-pointer -Wall -Wextra -Wunused -Werror -Wno-packed-bitfield-compat -mcmodel=kernel -fno-pie -mno-red-zone -march=x86-64 -I../abi -I ../malloc_my_os_3/
+CFLAGS = -ffreestanding -m64 -nostdlib -O0 -fno-omit-frame-pointer -Wall -Wextra -Wunused -Werror -Wno-packed-bitfield-compat -mcmodel=kernel -fno-pie -mno-red-zone -march=x86-64 -I../abi -I ../custom_malloc/
 DBGFLAGS = -g
 LDFLAGS = -T $(SRC_DIR)/linker.lds -nostdlib
 

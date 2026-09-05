@@ -5,7 +5,7 @@ LD = x86_64-elf-ld
 ARTIFACT_DIR := ./.build
 #compiler flags for building libc
 CFLAGS = -ffreestanding -nostdlib -O2 -Wall -Wextra -fPIC -march=x86-64 -g -fno-omit-frame-pointer \
-	-I include/ -I ../malloc_my_os_3/ -I ../abi
+	-I include/ -I ../custom_malloc/ -I ../abi
 
 
 ### Building the CRT* files
@@ -18,7 +18,7 @@ OUTPUT_CRTS = $(CRT_SRCS:$(CRT_DIR)/%.asm=$(ARTIFACT_DIR)/%.o)
 ### Building the libc.* files
 
 #malloc and libm dependencies
-MALLOC_SRC_DIR = ../malloc_my_os_3
+MALLOC_SRC_DIR = ../custom_malloc
 MALLOC_SRCS = $(wildcard $(MALLOC_SRC_DIR)/*.c)
 LIBM_OBJS := $(wildcard /home/stuart/Programming/C/openlibm/objectfiles/*)
 #source

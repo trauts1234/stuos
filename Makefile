@@ -3,10 +3,10 @@ PARTED = /sbin/parted
 MKFAT = /sbin/mkfs.fat
 
 LIMINE_FOLDER=./limine
-LIMINE_CONFIG=./my_os_3/src/limine.conf
+LIMINE_CONFIG=./stuos/src/limine.conf
 PUT_IN_FILESYSTEM=./put_in_filesystem
 
-OS_DIR = ./my_os_3
+OS_DIR = ./stuos
 HEADER_DIRS = ./abi/uapi ./custom_libc/include/*
 LIBC_OBJ_DIRS = ./custom_libc/.build
 
@@ -57,4 +57,4 @@ clean:
 	rm -rf $(OUTPUT_DISK) $(OUTPUT_SYSROOT)
 	make -C  custom_libc/ clean
 	make -C  custom_libc/fuzzing clean
-	make -C  my_os_3/ clean
+	make -C  stuos/ clean
