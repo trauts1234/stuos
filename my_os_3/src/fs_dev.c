@@ -187,6 +187,7 @@ static struct stat blockdev_stat(struct VNodeData inode_num) {
 
     uint32_t device_type = inode_num.inode >> 32;
     if(device_type != 0) HCF//other device types not impletmented
+    HCF
     
     return (struct stat) {
         .st_ino = inode_num.inode,
@@ -243,7 +244,7 @@ uint64_t devroot_read_dirents(struct VNodeData inode_num, uint64_t dirent_index,
     return count;
 }
 
-struct stat devroot_stat(struct VNodeData inode_num) {
+struct stat devroot_stat(struct VNodeData) {
     //TODO
     HCF
 }

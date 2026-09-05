@@ -44,7 +44,7 @@ struct VNode {
     ///
     /// Returns:
     /// 0 on success
-    int (*create_inode)(struct VNodeData parent_inode_num, mode_t new_inode_type, const char* name, struct VNode* out);
+    int (*create_inode)(struct VNodeData parent_inode_num, mode_t new_inode_type, const char* name);
 
     /// This function should check that file is a valid file, then either truncate data or zero-extend to len bytes
     void (*ftruncate)(struct VNodeData inode_num, uint64_t len);

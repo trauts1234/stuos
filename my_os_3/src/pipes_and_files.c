@@ -21,12 +21,6 @@ struct PipeSpecialData {
 
 };
 
-/// This is put as a fake read when reading is impossible
-static struct FopReadResult invalid_read(void* _, uint8_t* _1, uint64_t _2) {HCF}
-/// This is put as a fake seek when seeking is impossible
-static uint64_t invalid_lseek(void* _, int64_t _1, int _2) {HCF}
-/// This is put as a fake write when writing is impossible
-static uint64_t invalid_write(void* _, const uint8_t* _1, uint64_t _2) {HCF}
 /// When nothing is required to close the special data, run this
 static void do_nothing_close(void* special_data) {
     if(special_data != NULL) {HCF}
@@ -166,10 +160,10 @@ struct FileOperations* fop_generate_stdout(){
     *heap_allocation = (struct FileOperations){
         .reference_count = 1,
         .special_data = NULL,
-        .read_nonblocking = invalid_read,
+        .read_nonblocking = 0,
         .write = stdout_write,
         .close = do_nothing_close,
-        .offset = invalid_lseek,
+        .offset = 0,
         .is_a_tty = true,
     };
 
@@ -181,9 +175,9 @@ struct FileOperations* fop_generate_stdin(){
         .reference_count = 1,
         .special_data = NULL,
         .read_nonblocking = stdin_read,
-        .write = invalid_write,
+        .write = 0,
         .close = do_nothing_close,
-        .offset = invalid_lseek,
+        .offset = 0,
         .is_a_tty = true,
     };
 
@@ -239,7 +233,7 @@ void fop_generate_pipe(struct FileOperations* output[2]) {
         .read_nonblocking = pipe_read,
         .write = pipe_write,
         .close = pipe_close,
-        .offset = invalid_lseek,
+        .offset = 0,
         .is_a_tty = false,
     };
     *b_ops = (struct FileOperations) {
@@ -248,7 +242,7 @@ void fop_generate_pipe(struct FileOperations* output[2]) {
         .read_nonblocking = pipe_read,
         .write = pipe_write,
         .close = pipe_close,
-        .offset = invalid_lseek,
+        .offset = 0,
         .is_a_tty = false,
     };
 

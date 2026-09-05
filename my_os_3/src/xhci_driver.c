@@ -342,32 +342,6 @@ static void send_control_transfer(struct xHCIData *xhci, uint8_t slot_number, ui
     make_request(xhci, output, rq);
 }
 
-static void read_string_descriptor(struct xHCIData *xhci, uint8_t slot_id, uint8_t string_index) {
-    assert(string_index != 0);//0 is the language descriptor
-    #define MAX_STRING_DESCRIPTOR_LENGTH ((UINT8_MAX - 2)/2)
-    struct String {
-        //how many bytes the struct is (includes length and type)
-        uint8_t length;
-        uint8_t type;
-        uint16_t unicode[MAX_STRING_DESCRIPTOR_LENGTH];
-    } str;
-
-    //read length and type
-    send_control_transfer(xhci, slot_id, DESCRIPTOR_TYPE_STRING, string_index, &str, 2);
-    assert(str.length % 2 == 0);
-    assert(str.length >= 2);
-    assert(str.type == DESCRIPTOR_TYPE_STRING);
-    //read whole string
-    send_control_transfer(xhci, slot_id, DESCRIPTOR_TYPE_STRING, string_index, &str, str.length);
-
-    uint64_t num_chars = (str.length-2)/2;
-    char ascii[MAX_STRING_DESCRIPTOR_LENGTH+1] = {};
-    for(uint64_t i=0; i<num_chars; i++) {
-        assert((str.unicode[i] & 0xFF00) == 0);
-        ascii[i] = str.unicode[i];
-    }
-    printf("string descriptor %d: %s\n", string_index, ascii);
-}
 static struct ExternConfigDesc read_configuration_descriptor(struct xHCIData *xhci, uint8_t slot_id, uint8_t configuration_index) {
     struct ExternConfigDesc result = {};
     
@@ -560,15 +534,6 @@ static void set_up_port(struct xHCIData *xhci, uint8_t port_idx) {
     send_control_transfer(xhci, slot_number, 1, 0, &device_descriptor, 18);
 
     assert(device_descriptor.device_class == 0);//unknown type
-    
-    // if(device_descriptor.product) {
-    //     read_string_descriptor(xhci, slot_number, device_descriptor.product);
-    // }
-    // if(device_descriptor.serial_num) {
-    //     read_string_descriptor(xhci, slot_number, device_descriptor.serial_num);
-    // }
-
-    //337, 383
 
     assert(device_descriptor.configurations == 1);// only handle situations with one configuration for now
     const struct ExternConfigDesc config_descriptor = read_configuration_descriptor(xhci, slot_number, 0);
@@ -637,7 +602,6 @@ void initialise_xhci(struct PciDevice dev, struct PciData *dev_data) {
 
             assert(memcmp(&second_dword, "USB ", 4) == 0);
             uint8_t usb_maj = data >> 24;
-            uint8_t usb_min = (data >> 16) & 0xFF;
             uint8_t port_index = (third_dword & 0xFF)-1;//port offset starts at 1 for some reason
             uint8_t port_count = (third_dword >> 8) & 0xFF;
             for(uint8_t i=port_index; i<port_index+port_count; i++) {

@@ -20,7 +20,7 @@ static uint8_t syscall_stack[4096 * 4] __attribute__ ((__aligned__(16)));
 // used in assembly
 uint8_t *const syscall_stack_top = syscall_stack + sizeof(syscall_stack);
 
-void syscall_halt(struct HaltSyscallData *data, struct ProcessorState* processor_state) {
+void syscall_halt(struct HaltSyscallData *data) {
     if(DEBUG_SYSCALLS) printf("%s: exit code %d\n", __func__, data->exit_code);
     register_as_waiting((struct WaitingData) {
         .status = I_AM_ZOMBIE,

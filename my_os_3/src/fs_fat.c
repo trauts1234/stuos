@@ -395,61 +395,13 @@ static void write_parent_dirent(struct Fat16Volume *vol, uint64_t inode_num, con
 static struct stat stat_file(struct VNodeData inode_num);
 static uint64_t read_file(struct VNodeData inode_num, uint64_t offset, uint8_t* output_buf, uint64_t num_bytes);
 static uint64_t write_file(struct VNodeData inode_num, uint64_t offset, const uint8_t *input_buf, uint64_t num_bytes);
-static int create_inode(struct VNodeData parent_inode_num, mode_t new_inode_type, const char *name, struct VNode *out);
+static int create_inode(struct VNodeData parent_inode_num, mode_t new_inode_type, const char *name);
 static void ftruncate(struct VNodeData inode_num, uint64_t len);
 
 struct DirentAndVnode {
     struct dirent directory_entry;
     struct VNode vnode;
 };
-
-static void debug_dir(struct Fat16DirectoryEntry *arr) {
-    for(uint64_t dir_idx=0; ; dir_idx++) {
-        char file_name[256] = {};
-        char *curr = file_name;
-        if(arr[dir_idx].attributes & 0b11000000) HCF
-        //empty entry
-        if(arr[dir_idx].filename[0] == (char)0xE5) continue;
-        if(arr[dir_idx].filename[0] == 0) {
-            printf("end\n\n");
-            return;
-        }
-        if(arr[dir_idx].attributes == FILE_ATTRIBUTES_LFN) {
-            struct Fat16LFNEntry *ent = (void*)(arr + dir_idx);
-
-            bool found_zero = false;
-            for(int i=0; i<5 && !found_zero; i++) {
-                uint16_t c = ent->unicode_name_1[i];
-                if(c & 0xFF00) HCF//unicode... weird.
-                *curr++ = (char)c;
-                found_zero = c==0;
-            }
-            for(int i=0; i<6 && !found_zero; i++) {
-                uint16_t c = ent->unicode_name_2[i];
-                if(c & 0xFF00) HCF//unicode... weird.
-                *curr++ = (char)c;
-                found_zero = c==0;
-            }
-            for(int i=0; i<2 && !found_zero; i++) {
-                uint16_t c = ent->unicode_name_3[i];
-                if(c & 0xFF00) HCF//unicode... weird.
-                *curr++ = (char)c;
-                found_zero = c==0;
-            }
-
-            printf("lfn in seq %d (is_last %d) with name %s\n", ent->sequence_number, ent->is_last_in_sequence, file_name);
-        } else {
-            for(int i=0; i < 8 && arr[dir_idx].filename[i] != ' '; i++) {
-                *curr++ = tolower(arr[dir_idx].filename[i]);
-            }
-            if(arr[dir_idx].filename[8] != ' ') *curr++ = '.';
-            for(int i=8; i<11 && arr[dir_idx].filename[i] != ' '; i++) {
-                *curr++ = tolower(arr[dir_idx].filename[i]);
-            }
-            printf("entry to a %ub entry at cluster number %u with name %s\n", arr[dir_idx].file_size_bytes, arr[dir_idx].cluster_number, file_name);
-        }
-    }
-}
 
 static uint64_t read_dirents(struct VNodeData inode_num, uint64_t dirent_index, struct dirent* dirent_buf, struct VNode* vnode_buf, uint64_t dirent_count) {
     struct Fat16Volume vol = all_fat_mounts[inode_num.mount_id];
@@ -655,7 +607,7 @@ static uint64_t write_file(struct VNodeData inode_num, uint64_t offset, const ui
     return num_bytes;
 }
 
-static int create_inode(struct VNodeData parent_inode_num, mode_t new_inode_type, const char *name, struct VNode *out) {
+static int create_inode(struct VNodeData parent_inode_num, mode_t new_inode_type, const char *name) {
     struct Fat16Volume vol = all_fat_mounts[parent_inode_num.mount_id];
 
     if(!S_ISDIR(stat_file(parent_inode_num).st_mode)) {
@@ -778,7 +730,6 @@ static void ftruncate(struct VNodeData inode_num, uint64_t len) {
     }
     
     //update length
-    const uint32_t old_size_bytes = entry_in_parent.file_size_bytes;
     if(len > UINT32_MAX) HCF
     entry_in_parent.file_size_bytes = len;
 
@@ -842,5 +793,5 @@ void mount_fat16(struct VNode block_device, const char* mount_name) {
         .create_inode = create_inode
     };
 
-    vfs_add_mount(vfs_get("/", "/", O_DIRECTORY), mount_vnode);
+    vfs_add_mount(vfs_get("/", mount_name, O_DIRECTORY), mount_vnode);
 }

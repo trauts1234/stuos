@@ -190,7 +190,7 @@ static void walk_virtual_tree(uint64_t page_table_phys, void (*leaf_callback)(vo
 }
 
 //a leaf callback, that frees the physical page
-static void leaf_callback_remove_page(void* _, uint64_t phys) {
+static void leaf_callback_remove_page(void*, uint64_t phys) {
     void* virt = phys_to_hhdm(phys);
     memset(virt, 0xEE, PAGE_SIZE);
     free4k_phys(phys);
@@ -211,7 +211,7 @@ static void leaf_callback_clone_page(void* virt, uint64_t phys) {
     memcpy(virt, phys_to_hhdm(phys), PAGE_SIZE);
 }
 
-static void table_entry_callback_do_nothing(uint64_t _) {}
+static void table_entry_callback_do_nothing(uint64_t) {}
 
 uint64_t clone_virtual_addressing(uint64_t original_root_phys) {
     uint64_t result = generate_clean_virtual_addressing();

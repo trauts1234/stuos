@@ -225,7 +225,7 @@ void virtio_block_write(void* block_dev_data, uint64_t sector_number, uint8_t in
     free4k_phys(packet_phys);
 }
 
-void initialise_virtio(struct PciConfigurationHeader header, void* header_buffer, struct BarInfo bar_list[6]) {
+void initialise_virtio(struct PciConfigurationHeader header, struct BarInfo bar_list[6]) {
     if(header.vendor_id != 0x1AF4) HCF
     if(header.device_id < 0x1000 || header.device_id > 0x103F) HCF
     if(header.revision_id != 0) HCF
@@ -239,10 +239,10 @@ void initialise_virtio(struct PciConfigurationHeader header, void* header_buffer
     //reset the device
     out8(bar_port + DEVICE_STATUS_OFF, 0);
     spin_wait();
-    uint8_t status = in8(bar_port + DEVICE_STATUS_OFF);
+    in8(bar_port + DEVICE_STATUS_OFF);//is this needed?
     out8(bar_port + DEVICE_STATUS_OFF, DEVICE_STATUS_ACKNOWLEDGE | DEVICE_STATUS_DRIVER);
     spin_wait();
-    status = in8(bar_port + DEVICE_STATUS_OFF);
+    in8(bar_port + DEVICE_STATUS_OFF);//is this needed?
 
 
     switch(header.subsystem_id) {
@@ -254,7 +254,7 @@ void initialise_virtio(struct PciConfigurationHeader header, void* header_buffer
         if(queue.queue_size == 0) HCF//queue is invalid
 
         spin_wait();
-        status = in8(bar_port + DEVICE_STATUS_OFF);
+        in8(bar_port + DEVICE_STATUS_OFF);// is this needed?
 
         dev_data->queue = queue;
 

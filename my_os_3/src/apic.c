@@ -199,7 +199,6 @@ union MessageAddress {
     
 };
 
-static uint32_t io_red_tbl(uint32_t i) {return 0x10 + 2*i;}
 struct IOAPICData {
     //register selector
     volatile uint32_t io_reg_sel;
@@ -234,30 +233,32 @@ static void detect_pm_timer(struct FADT *fadt) {
         pm_timer_port = fadt->PMTimerBlock;
     }
 }
-static void setup_ioapic(uint32_t ioapic_phys_addr, uint8_t interrupt_destination_apic_id) {
+static void setup_ioapic(uint32_t ioapic_phys_addr) {
     assert(ioapic.access == NULL);
     ioapic.access = setup_mmio(ioapic_phys_addr, PAGE_SIZE);
 
     ioapic.access->io_reg_sel = 1;//IOAPICVER
     ioapic.max_redirection_entry = ioapic.access->io_win >> 16; //max irqs
 }
+
+// static uint32_t io_red_tbl(uint32_t i) {return 0x10 + 2*i;}
 //maps irq to vector
-static void map_ioapic_interrupt(uint8_t irq, uint8_t vector) {
-    assert(irq < ioapic.max_redirection_entry);
-    union RedirectionEntry entry = {
-        .vector = 32 + irq,
-        .destination = ioapic.interrupt_destination_apic_id,
-        .mask = 0,
-    };
+// static void map_ioapic_interrupt(uint8_t irq, uint8_t vector) {
+//     assert(irq < ioapic.max_redirection_entry);
+//     union RedirectionEntry entry = {
+//         .vector = vector,
+//         .destination = ioapic.interrupt_destination_apic_id,
+//         .mask = 0,
+//     };
 
-    ioapic.access->io_reg_sel = io_red_tbl(irq);
-    ioapic.access->io_win = entry.lower;
+//     ioapic.access->io_reg_sel = io_red_tbl(irq);
+//     ioapic.access->io_win = entry.lower;
 
-    ioapic.access->io_reg_sel = io_red_tbl(irq) + 1;
-    ioapic.access->io_win = entry.upper;
-}
+//     ioapic.access->io_reg_sel = io_red_tbl(irq) + 1;
+//     ioapic.access->io_win = entry.upper;
+// }
 
-static void handle_sdt(struct SDTHeader* curr, uint8_t interrupt_destination_apic_id) {
+static void handle_sdt(struct SDTHeader* curr) {
     //TODO handle revision
     assert(matches_checksum(curr, curr->length));
 
@@ -275,7 +276,7 @@ static void handle_sdt(struct SDTHeader* curr, uint8_t interrupt_destination_api
 
                 case 1://IOAPIC
                 assert(madt->entries[i+1] == 12);
-                setup_ioapic(*(uint32_t*)(madt->entries + i+4), interrupt_destination_apic_id);
+                setup_ioapic(*(uint32_t*)(madt->entries + i+4));
                 break;
 
                 default:
@@ -287,7 +288,7 @@ static void handle_sdt(struct SDTHeader* curr, uint8_t interrupt_destination_api
     }
 }
 
-static void handle_rsdp(struct RSDP *rsdp, uint8_t interrupt_destination_apic_id) {
+static void handle_rsdp(struct RSDP *rsdp) {
     //check signature
     assert(memcmp(rsdp->signature, "RSD PTR ", 8) == 0)
 
@@ -306,7 +307,7 @@ static void handle_rsdp(struct RSDP *rsdp, uint8_t interrupt_destination_apic_id
         uint64_t entries = (xsdt->header.length - sizeof(xsdt->header)) / 8;
         for(uint64_t i=0; i<entries; i++) {
             struct SDTHeader *h = phys_to_hhdm(xsdt->entries[i]);
-            handle_sdt(h, interrupt_destination_apic_id);
+            handle_sdt(h);
         }
     } else {
         struct RSDT *rsdt = phys_to_hhdm(rsdp->rsdt_address);
@@ -316,7 +317,7 @@ static void handle_rsdp(struct RSDP *rsdp, uint8_t interrupt_destination_apic_id
         uint32_t entries = (rsdt->header.length - sizeof(rsdt->header)) / 4;
         for(uint32_t i=0; i<entries; i++) {
             struct SDTHeader *h = phys_to_hhdm(rsdt->entries[i]);
-            handle_sdt(h, interrupt_destination_apic_id);
+            handle_sdt(h);
         }
     }
 }
@@ -347,7 +348,7 @@ void apic_init(void *rsdp_response) {
     lapic_registers->lvt_timer.data = 32 | (1 << 17);
 
     //this will enable the IOAPIC and handle timer things
-    handle_rsdp(rsdp_response, lapic_registers->lapic_id.data);
+    handle_rsdp(rsdp_response);
 }
 
 //call to restart interrupts once this one is done

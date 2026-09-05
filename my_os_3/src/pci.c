@@ -310,7 +310,7 @@ void initialise_pci() {
 
                 if(header.vendor_id == 0x1AF4) {
                     //virtio device
-                    initialise_virtio(header, header_buffer, dev.bar_list);
+                    initialise_virtio(header, dev.bar_list);
                 }
 
                 if(header.class_code == 0x0C && header.subclass == 0x03 && header.prog_if == 0x30) {

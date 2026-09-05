@@ -12,7 +12,7 @@ struct Ring create_ring() {
 
     //set last element to a link, which points back to the start again
     trb_virt[count-1] = (struct TRB) {
-        .parameter = trb_phys,
+        .parameter = {trb_phys},
         .status.link = {
             .cycle_bit = 0,
             .trb_type = TRB_TYPE_LINK,

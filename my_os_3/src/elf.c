@@ -99,7 +99,8 @@ static void allocate_virtual_range(struct VirtualMemoryRegion* virtual_memory_tr
 static void* find_contiguous_virtual_range(struct VirtualMemoryRegion* virtual_memory_tracker_head, size_t size_bytes) {
     struct VirtualMemoryRegion* curr = virtual_memory_tracker_head;
     while(1) {
-        if(curr->is_free && curr->end_addr - curr->start_addr >= size_bytes) {
+        assert(curr->end_addr >= curr->start_addr);//so that signed->unsigned cast is OK
+        if(curr->is_free && (uint64_t)(curr->end_addr - curr->start_addr) >= size_bytes) {
             return curr->start_addr;//found a good memory region
         }
 

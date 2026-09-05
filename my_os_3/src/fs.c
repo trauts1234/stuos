@@ -63,7 +63,7 @@ static struct stat tmpfs_stat_file(struct VNodeData id) {
     HCF
 }
 
-static uint64_t tmpfs_read_dirents(struct VNodeData inode_num, uint64_t dirent_index, struct dirent* dirent_buf, struct VNode* vnode_buf, uint64_t dirent_count) {
+static uint64_t tmpfs_read_dirents(struct VNodeData, uint64_t dirent_index, struct dirent* dirent_buf, struct VNode* vnode_buf, uint64_t dirent_count) {
     struct dirent dirents[] = {
         [0] = {
             .d_ino = TMPFS_DEV,
@@ -244,9 +244,9 @@ struct VNode vfs_get(const char* cwd_path, const char* path, int open_flags) {
         case STEPPATH_NOTEXIST_LAST:
             if(open_flags & O_CREAT) {
                 if (open_flags & O_DIRECTORY) HCF
-                if(dbg_have_created_inode) HCF
+                assert(!dbg_have_created_inode)
                 //since not a dir, the last bit of the `path` is a valid string that I can pass
-                location.create_inode(location.id, S_IFREG, path, &location);
+                location.create_inode(location.id, S_IFREG, path);
                 dbg_have_created_inode = true;
                 continue;//try and read the file now I have created it
             }

@@ -103,7 +103,7 @@ void kmain(void) {
     devfs_init();
     syscall_init();
     initialise_pci();
-    mount_fat16(vfs_get("/", "/dev/blkAp1", 0), "fat");
+    mount_fat16(vfs_get("/", "/dev/blkAp1", 0), "/");
 
     // struct VNode fuzz = vfs_get("/", "testing.out", 0);
     // const struct LoadedProgram elf = instantiate_ELF(fuzz, (char*[]){"testing.out", "helloworld", NULL});

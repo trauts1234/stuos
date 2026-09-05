@@ -23,7 +23,7 @@ struct IdtPtr {
 static struct InterruptDescriptor interrupt_descriptor_table[N_INTERRUPTS];
 static struct IdtPtr idt_table_ptr = {.limit = sizeof(interrupt_descriptor_table) - 1, .base = &interrupt_descriptor_table};
 
-const extern void *vector_n_handlers[N_INTERRUPTS];
+extern const void *vector_n_handlers[N_INTERRUPTS];
 extern void apply_idt(struct IdtPtr* idt_base);
 
 //first 33 entries are reserved since they aren't called
