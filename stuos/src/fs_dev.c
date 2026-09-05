@@ -29,7 +29,7 @@ struct BlockDevice {
     struct BlockDevicePartition {
         uint64_t byte_offset;
         //TODO
-        // uint64_t byte_length;
+        uint64_t byte_length;
     } partitions[MAX_PARTITIONS];
 };
 
@@ -91,7 +91,8 @@ void fs_dev_add_block_device(
             if(result.num_partitions >= MAX_PARTITIONS) HCF
             if(mbr.partition_table[i].partition_sector_count == 0) break;
             result.partitions[result.num_partitions] = (struct BlockDevicePartition) {
-                .byte_offset = mbr.partition_table[i].lba_partition_start * BLOCK_DEVICE_READ_SIZE
+                .byte_offset = mbr.partition_table[i].lba_partition_start * BLOCK_DEVICE_READ_SIZE,
+                .byte_length = mbr.partition_table[i].partition_sector_count * BLOCK_DEVICE_READ_SIZE,
             };
             result.num_partitions++;
         }
@@ -185,16 +186,16 @@ static struct stat blockdev_stat(struct VNodeData inode_num) {
     if(inode_num.mount_id != 0) HCF
     if(inode_num.inode == DEV_ROOT_DIR_INODE_NUM) HCF
 
-    uint32_t device_type = inode_num.inode >> 32;
-    if(device_type != 0) HCF//other device types not impletmented
-    HCF
+    struct BlockDevice* dev;
+    struct BlockDevicePartition part;
+    get_block_device(inode_num, &dev, &part);
     
     return (struct stat) {
         .st_ino = inode_num.inode,
         .st_mode = S_IFBLK,
         .st_uid = 0,
         .st_gid = 0,
-        .st_size = 0,//TODO
+        .st_size = part.byte_length,
     };
 }
 
