@@ -19,23 +19,35 @@ struct MSIData {
     //message control
     uint16_t
         enable: 1,
+        //means that 1 << multiple_message_capable interrupts are supported
         multiple_message_capable: 3,
         multiple_message_enable: 3,
         is_64_bit: 1,
         per_vector_masking: 1,
         reserved_1: 7;
-    uint64_t message_address;
-    //message data
-    uint16_t 
-        vector: 8,
-        delivery_mode: 3,
-        reserved_2: 3,
-        level: 1,
-        trigger_mode: 1;
-    uint16_t reserved_4;
-    //only used if per_vector_masking:
-    // uint32_t mask;//mask message by setting 1<<n
-    // uint32_t pending;//n is pending if 1<<n set
+    
+    union {
+        struct {
+            uint32_t message_address;
+            //message data
+            uint16_t 
+                vector: 8,
+                delivery_mode: 3,
+                reserved_2: 3,
+                level: 1,
+                trigger_mode: 1;
+        } __attribute__ ((packed)) is_32;
+        struct {
+            uint64_t message_address;
+            //message data
+            uint16_t 
+                vector: 8,
+                delivery_mode: 3,
+                reserved_2: 3,
+                level: 1,
+                trigger_mode: 1;
+        } __attribute__ ((packed)) is_64;
+    };
 } __attribute__ ((packed));
 
 struct MSIXData {
@@ -255,20 +267,21 @@ void initialise_pci() {
                         
                         int bar_number = data->table_address & 0b111;
                         uint64_t table_addr = data->table_address & ~0b111;
-                        
-                        printf("device supports %u MSI-X interrupts (bar %d offset 0x%llx)\n", table_size, bar_number, table_addr);
                         int allocated_vec = allocate_free_idt_entry();
 
-                        //point all interrupts to one handler for now
-                        for(uint64_t i=0; i<table_size; i++) {
+                        //message address
+                        write_bar_32(dev.bar_list[bar_number], get_lapic_magic_address() & 0xFFFFFFFF, table_addr);
+                        write_bar_32(dev.bar_list[bar_number], get_lapic_magic_address() >> 32, table_addr+4);
+                        //message data
+                        write_bar_32(dev.bar_list[bar_number], allocated_vec, table_addr+8);
+                        //vector control
+                        write_bar_32(dev.bar_list[bar_number], 0, table_addr+12);//enable
+
+                        //mask all other interrupts
+                        for(uint64_t i=1; i<table_size; i++) {
                             uint64_t offset = table_addr + i*16ull;
-                            //message address
-                            write_bar_32(dev.bar_list[bar_number], get_lapic_magic_address() & 0xFFFFFFFF, offset);
-                            write_bar_32(dev.bar_list[bar_number], get_lapic_magic_address() >> 32, offset+4);
-                            //message data
-                            write_bar_32(dev.bar_list[bar_number], allocated_vec, offset+8);
                             //vector control
-                            write_bar_32(dev.bar_list[bar_number], 0, offset+12);//enable
+                            write_bar_32(dev.bar_list[bar_number], 1, offset+12);//disable
                         }
 
                         write_header(device, header_buffer);
@@ -276,14 +289,19 @@ void initialise_pci() {
                     } else if(msi_idx && USE_MSI_MSIX) {
                         struct MSIData *data = (struct MSIData *)&header_buffer[msi_idx];
                         assert(!data->enable);
-                        assert(data->is_64_bit);
-                        printf("device supports %u MSI interrupts\n", 1<<data->multiple_message_capable);
                         data->multiple_message_enable = 0;// enables 1<<0 messages
                         data->enable = 1;
-
-                        data->message_address = get_lapic_magic_address();//there are some flags here, but they are zeroed (page 3605 of the intel combined volumes)
                         int allocated_vec = allocate_free_idt_entry();
-                        data->vector = allocated_vec;
+
+                        uint64_t message_address = get_lapic_magic_address();//there are some flags here, but they are zeroed (page 3605 of the intel combined volumes)
+                        if(data->is_64_bit) {   
+                            data->is_64.message_address = message_address;
+                            data->is_64.vector = allocated_vec;
+                        } else {
+                            assert((message_address & 0xFFFFFFFF00000000) == 0);
+                            data->is_32.message_address = message_address;
+                            data->is_32.vector = allocated_vec;
+                        }
                         write_header(device, header_buffer);
 
                         dev.allocated_interrupt = allocated_vec;

@@ -88,6 +88,7 @@ struct xHCIData {
     uint8_t cap_length;
     uint32_t rts_offset;
     uint32_t db_offset;
+    uint64_t *dcbaa_virt;
     
     //indexed by slot number (one based)
     struct XHCIDevice {
@@ -99,8 +100,6 @@ struct xHCIData {
         //called when an interrupt hands back a TRB during runtime (not during setup)
         void (*interrupt_trb_handler)(struct xHCIData *xhci, struct TRB trb);
         void* interrupt_handler_data;
-        //root port number (0 as a null sentinel if the slot is unused)
-        uint8_t one_based_root_port;
     } slots[256];
 
     //indexed by root port index (0 based)
@@ -203,9 +202,13 @@ void set_context_entries(volatile struct DeviceContext *device_context);
 //
 // port is one-based
 void ring_doorbell(struct xHCIData *data, uint8_t port, uint8_t endpoint_index);
-//memory fence + nops
-void delay();
-struct TRB fetch_and_extract(struct xHCIData *data, uint8_t requested_trb_type);
+
+struct FetchAndCopyData {
+    volatile struct TRB result;
+    volatile bool done;
+};
+//when called as an interrupt handler, copies the data into *interrupt_handler_data
+void fetch_and_copy(struct xHCIData *xhci, struct TRB trb);
 
 void initialise_xhci(struct PciDevice dev, struct PciData *dev_data);
 

@@ -93,11 +93,13 @@ uint32_t flip_endianness(uint32_t val) {
 }
 
 static uint32_t send_bbb(struct xHCIData *xhci, uint8_t slot_number, int in_index, int out_index, struct CommandBlockWrapper cbw, void* response_out, uint32_t response_len, bool is_read) {
+    __asm__ __volatile__ ("sti");//disgusting bodge, fix ASAP
     static uint32_t next_free_tag = 69;
+    struct XHCIDevice *dev = &xhci->slots[slot_number];
 
     uint64_t command_phys = malloc4k_phys();
     volatile struct CommandBlockWrapper *command = phys_to_hhdm(command_phys);
-    cbw.tag = next_free_tag++,
+    cbw.tag = next_free_tag++;
     *command = cbw;
 
     struct Ring *in_ring = &xhci->slots[slot_number].endpoint_rings[in_index];
@@ -121,13 +123,15 @@ static uint32_t send_bbb(struct xHCIData *xhci, uint8_t slot_number, int in_inde
             .interrupt_on_completion = 1,
         }
     });
+
+    struct FetchAndCopyData handler_data = {};
+    dev->interrupt_handler_data = &handler_data;
+    dev->interrupt_trb_handler = fetch_and_copy;
     ring_doorbell(xhci, slot_number, out_index);
-    //check that sending command was successful
-    struct TRB recv = fetch_and_extract(xhci, TRB_TYPE_TRANSFER);
-    assert(recv.status.type_transfer.trb_type != 0);
-    assert(recv.status.type_transfer.completion_code == 1);
-    assert(recv.status.type_transfer.trb_transfer_length == 0);
-    assert(recv.status.type_transfer.slot_id == slot_number);
+    while(!handler_data.done) {}
+    assert(handler_data.result.status.type_transfer.trb_type == TRB_TYPE_TRANSFER);
+    assert(handler_data.result.status.type_transfer.completion_code == 1);
+    assert(handler_data.result.status.type_transfer.trb_transfer_length == 0);
 
     //here is where to put the response
     enqueue_ring(is_read ? in_ring : out_ring, (struct TRB) {
@@ -139,13 +143,14 @@ static uint32_t send_bbb(struct xHCIData *xhci, uint8_t slot_number, int in_inde
             .interrupt_on_short_packet = 1,
         }
     });
+    handler_data = (struct FetchAndCopyData) {};
+    dev->interrupt_handler_data = &handler_data;
     ring_doorbell(xhci, slot_number, is_read ? in_index : out_index);
+    while(!handler_data.done) {}
     //read the response from the inquiry response (TODO handle a short packet gracefully since this is fine)
-    recv = fetch_and_extract(xhci, TRB_TYPE_TRANSFER);
-    assert(recv.status.type_transfer.completion_code == 1);
-    assert(recv.status.type_transfer.trb_type != 0);
-    assert(recv.status.type_transfer.trb_transfer_length == 0);
-    assert(recv.status.type_transfer.slot_id == slot_number);
+    assert(handler_data.result.status.type_transfer.trb_type == TRB_TYPE_TRANSFER);
+    assert(handler_data.result.status.type_transfer.completion_code == 1);
+    assert(handler_data.result.status.type_transfer.trb_transfer_length == 0);
 
     // here is where to put the CSW
     enqueue_ring(in_ring, (struct TRB) {
@@ -156,14 +161,15 @@ static uint32_t send_bbb(struct xHCIData *xhci, uint8_t slot_number, int in_inde
             .interrupt_on_completion = 1,
         }
     });
+    handler_data = (struct FetchAndCopyData) {};
+    dev->interrupt_handler_data = &handler_data;
     ring_doorbell(xhci, slot_number, in_index);
+    while(!handler_data.done) {}
     //read the CSW
-    recv = fetch_and_extract(xhci, TRB_TYPE_TRANSFER);
-    assert(recv.status.type_transfer.trb_type != 0);
-    assert(recv.status.type_transfer.completion_code == 1);
-    assert(recv.status.type_transfer.trb_transfer_length == 0);
-    assert(recv.status.type_transfer.slot_id == slot_number);
-
+    assert(handler_data.result.status.type_transfer.trb_type == TRB_TYPE_TRANSFER);
+    assert(handler_data.result.status.type_transfer.completion_code == 1);
+    assert(handler_data.result.status.type_transfer.trb_transfer_length == 0);
+    
     assert(status->signature == 0x53425355);
     assert(status->tag == command->tag);
     assert(status->status == 0);
@@ -173,7 +179,8 @@ static uint32_t send_bbb(struct xHCIData *xhci, uint8_t slot_number, int in_inde
     free4k_phys(command_phys);
     free_contiguous_phys(response_phys, response_num_pages);
     free4k_phys(status_phys);
-
+    dev->interrupt_trb_handler = NULL;
+    
     return response_len - status->data_residue;
 }
 
@@ -354,30 +361,30 @@ void initialise_msd(struct xHCIData *xhci, uint8_t slot_number, struct ExternCon
     max_lun++;//since zero based, add one
     assert(max_lun == 1);
 
-    struct InquiryReturn inquiry_return = {};
-    uint32_t inquiry_data_read = send_bbb(
-        xhci, slot_number, in_index, out_index,
-        (struct CommandBlockWrapper) {
-            .signature=0x43425355,
-            .transfer_length = 0x24,
-            .direction = 1,
-            .lun=0,
-            .command_len = 6,
-            .command = {
-                0x12,//inquiry
-                0x00,//no vital product data
-                0x00,//page code
-                0x00,
-                0x24,//big endian length
-                0x00//control
-            }
-        },
-        &inquiry_return, sizeof(inquiry_return),
-        true
-    );
-    assert(inquiry_data_read == sizeof(inquiry_return));
-    assert(inquiry_return.peripheral_device_type == 0);//direct access block device
-    assert(inquiry_return.response_data_format == 1 || inquiry_return.response_data_format == 2);
+    // struct InquiryReturn inquiry_return = {};
+    // uint32_t inquiry_data_read = send_bbb(
+    //     xhci, slot_number, in_index, out_index,
+    //     (struct CommandBlockWrapper) {
+    //         .signature=0x43425355,
+    //         .transfer_length = 0x24,
+    //         .direction = 1,
+    //         .lun=0,
+    //         .command_len = 6,
+    //         .command = {
+    //             0x12,//inquiry
+    //             0x00,//no vital product data
+    //             0x00,//page code
+    //             0x00,
+    //             0x24,//big endian length
+    //             0x00//control
+    //         }
+    //     },
+    //     &inquiry_return, sizeof(inquiry_return),
+    //     true
+    // );
+    // assert(inquiry_data_read == sizeof(inquiry_return));
+    // assert(inquiry_return.peripheral_device_type == 0);//direct access block device
+    // assert(inquiry_return.response_data_format == 1 || inquiry_return.response_data_format == 2);
     // char vendor_information[9] = {};
     // memcpy(&vendor_information, (void*)&inquiry_return.vendor_information, 8);
     // char product_identification[17] = {};
@@ -409,6 +416,8 @@ void initialise_msd(struct xHCIData *xhci, uint8_t slot_number, struct ExternCon
     assert(read_capacity_10.last_valid_lba != 0xFFFFFFFF);//32 bit is not big enough to find the capacity of the drive! (see page 105)
 
     assert(flip_endianness(read_capacity_10.block_size_bytes) == BLOCK_DEVICE_READ_SIZE);
+
+    device->interrupt_trb_handler = NULL;
 
     struct MassStorageDeviceXHCI *msd = malloc(sizeof(struct MassStorageDeviceXHCI));
     *msd = (struct MassStorageDeviceXHCI) {

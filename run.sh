@@ -5,7 +5,7 @@ if [[ "$1" == "debug" ]]; then
     FLAGS="-S -s"
 fi
 
-#-trace usb_xhci_* -D ./qemu.log
+#-trace 'usb_*' -trace 'scsi_*' -D ./qemu.log
 #-d cpu_reset,int
 
 qemu-system-x86_64 $FLAGS -m 4096M \
@@ -14,7 +14,5 @@ qemu-system-x86_64 $FLAGS -m 4096M \
   -device usb-storage,drive=usbstick \
   -device usb-kbd \
   -serial stdio -no-reboot -no-shutdown \
-  -d cpu_reset,int \
-  -trace 'usb_*' -trace '*msi*' -trace 'scsi_*' -D ./qemu.log
 
 # qemu-system-x86_64 $FLAGS -m 4096M -drive if=virtio,file=filesystem.img,format=raw -serial stdio -no-reboot -no-shutdown

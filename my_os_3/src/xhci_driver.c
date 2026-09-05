@@ -169,53 +169,56 @@ static void ring_command_doorbell(struct xHCIData *data) {
     delay();
 }
 
-struct TRB fetch_and_extract(struct xHCIData *data, uint8_t requested_trb_type) {
-    assert(requested_trb_type != 0);
-    assert(requested_trb_type <= 39);//this may exclude vendor defined messages :(
-    struct TRB recv = {};
-    while(dequeue_ring(&data->event_ring, &recv) == -1);
-    update_erdp(data, true);
-    if(recv.status.trb_type != requested_trb_type) printf("skipping TRB %d\n", recv.status.trb_type);
-    assert(recv.status.trb_type == requested_trb_type)
-    switch(recv.status.trb_type) {
-        case TRB_TYPE_TRANSFER:
+void fetch_and_copy(struct xHCIData *xhci, struct TRB trb) {
+    uint8_t slot_id;
+    switch(trb.status.trb_type) {
         case TRB_TYPE_CMD_COMPLETION:
-        case TRB_TYPE_PORT_STS_CHANGE:
-        case TRB_TYPE_BANDWIDTH_REQUEST:
-        case TRB_TYPE_DOORBELL:
-        case TRB_TYPE_HOST_CONTROLLER:
-        case TRB_TYPE_DEVICE_NOTIFICATION:
-        case TRB_TYPE_MFINDEX_WRAP:
-        break;
-        
+            slot_id = trb.status.command_completion.slot_id;break;
+        case TRB_TYPE_TRANSFER:
+            slot_id = trb.status.type_transfer.slot_id;break;
         default:
-        printf("ERR: unknown trb type 0x%x\n", recv.status.trb_type);
-        HCF
-        break;
+            HCF
     }
+    struct XHCIDevice *dev = &xhci->slots[slot_id];
+    struct FetchAndCopyData *result = dev->interrupt_handler_data;
+    result->result = trb;
+    result->done = true;
+}
+//when powering up a port, the slot number is unknown. So, this should use slot 0 to store some data
+static void fetch_and_copy_to_slot_0(struct xHCIData *xhci, struct TRB trb) {
+    struct XHCIDevice *dev = &xhci->slots[0];
+    struct FetchAndCopyData *result = dev->interrupt_handler_data;
+    result->result = trb;
+    result->done = true;
+}
 
-    return recv;
+static void send_command_ring_trb(struct xHCIData *xhci, uint8_t slot_id, struct TRB trb) {
+    struct XHCIDevice *dev = &xhci->slots[slot_id];
+    enqueue_ring(&xhci->command_ring, trb);
+    struct FetchAndCopyData handler_data = {};
+    dev->interrupt_handler_data = &handler_data;
+    dev->interrupt_trb_handler = fetch_and_copy;
+    ring_command_doorbell(xhci);
+
+    while(!handler_data.done) {}
+    assert(handler_data.result.status.command_completion.trb_type == TRB_TYPE_CMD_COMPLETION);
+    assert(handler_data.result.status.command_completion.completion_code == 1);
 }
 
 //calls SET_ADDRESS with the block bit zeroed
 static void set_input_context(struct xHCIData *xhci, uint8_t slot_id, bool block_set_address_request) {
-    enqueue_ring(&xhci->command_ring, (struct TRB) {
-        .parameter.raw = xhci->slots[slot_id].input_context_phys,
+    struct XHCIDevice *dev = &xhci->slots[slot_id];
+    send_command_ring_trb(xhci, slot_id, (struct TRB) {
+        .parameter.raw = dev->input_context_phys,
         .status.set_address = {
             .block_set_address_request = block_set_address_request,
             .trb_type = TRB_TYPE_SET_ADDRESS,
             .slot_id = slot_id,
         }
     });
-    ring_command_doorbell(xhci);
-    struct TRB recv = fetch_and_extract(xhci, TRB_TYPE_CMD_COMPLETION);
-    assert(recv.status.command_completion.trb_type != 0);
-    assert(recv.status.command_completion.completion_code == 1);
-    assert(recv.status.command_completion.slot_id == slot_id);
 }
-
 void update_input_context(struct xHCIData *xhci, uint8_t slot_id, bool am_modifying_existing_endpoints) {
-    enqueue_ring(&xhci->command_ring, (struct TRB) {
+    send_command_ring_trb(xhci, slot_id, (struct TRB) {
         .parameter.raw = xhci->slots[slot_id].input_context_phys,
         //use the set_address union (todo may need custom union to access the configure endpoint deconfigure bit)
         .status.set_address = {
@@ -223,14 +226,11 @@ void update_input_context(struct xHCIData *xhci, uint8_t slot_id, bool am_modify
             .slot_id = slot_id,
         }
     });
-    ring_command_doorbell(xhci);
-    struct TRB recv = fetch_and_extract(xhci, TRB_TYPE_CMD_COMPLETION);
-    assert(recv.status.command_completion.trb_type != 0);
-    assert(recv.status.command_completion.completion_code == 1);
 }
 
 void make_request(struct xHCIData *xhci, void *output, struct RequestTemplate request) {
-    struct Ring *ep0_transfer = &xhci->slots[request.slot_number].endpoint_rings[0];
+    struct XHCIDevice *dev = &xhci->slots[request.slot_number];
+    struct Ring *ep0_transfer = &dev->endpoint_rings[0];
     enqueue_ring(ep0_transfer, (struct TRB) {
         .parameter.device_request = {
             .recipient = request.recipient,
@@ -293,14 +293,18 @@ void make_request(struct xHCIData *xhci, void *output, struct RequestTemplate re
             .trb_type = TRB_TYPE_EVENT_DATA,
         }
     });
+    
+    struct FetchAndCopyData handler_data = {};
+    dev->interrupt_handler_data = &handler_data;
+    dev->interrupt_trb_handler = fetch_and_copy;
     ring_doorbell(xhci, request.slot_number, 0);
-    delay();
-    struct TRB recv = fetch_and_extract(xhci, TRB_TYPE_TRANSFER);
-    assert(recv.status.type_transfer.trb_type != 0);
-    assert(recv.status.type_transfer.completion_code == 1);
-    assert(recv.status.type_transfer.slot_id == request.slot_number);
-    assert(recv.status.type_transfer.event_data);//ensures that paramater contains raw data
-    assert(recv.parameter.raw == 0xBEEFBEEFBEEFBEEF);
+
+    while(!handler_data.done) {}
+    assert(handler_data.result.status.type_transfer.trb_type != 0);
+    assert(handler_data.result.status.type_transfer.completion_code == 1);
+    assert(handler_data.result.status.type_transfer.slot_id == request.slot_number);
+    assert(handler_data.result.status.type_transfer.event_data);//ensures that paramater contains raw data
+    assert(handler_data.result.parameter.raw == 0xBEEFBEEFBEEFBEEF);
 
     //only save result if required
     if(output) {
@@ -420,15 +424,24 @@ void handle_incoming_event(int) {
     struct TRB recv = {};
     if(dequeue_ring(&data->event_ring, &recv) == -1) return;
     update_erdp(data, true);
+
+    struct XHCIDevice *dev;
     switch(recv.status.trb_type) {
+
         case TRB_TYPE_TRANSFER:
-        struct XHCIDevice *dev = &data->slots[recv.status.type_transfer.slot_id];
+        dev = &data->slots[recv.status.type_transfer.slot_id];
         assert(dev->interrupt_trb_handler);
         dev->interrupt_trb_handler(data, recv);
         break;
 
         case TRB_TYPE_CMD_COMPLETION:
+        dev = &data->slots[recv.status.command_completion.slot_id];
+        assert(dev->interrupt_trb_handler);
+        dev->interrupt_trb_handler(data, recv);
+        break;
+
         case TRB_TYPE_PORT_STS_CHANGE:
+        break;//ignore these
         case TRB_TYPE_BANDWIDTH_REQUEST:
         case TRB_TYPE_DOORBELL:
         case TRB_TYPE_HOST_CONTROLLER:
@@ -440,17 +453,17 @@ void handle_incoming_event(int) {
         printf("ERR: unknown trb type 0x%x\n", recv.status.trb_type);
         HCF
     }
+    ack_irq(data, 0);
 
 }
 
 //does nothing if port is empty
-static void initialise_port(struct xHCIData *xhci, uint64_t *dcbaa_virt, uint8_t port_idx) {
+static void set_up_port(struct xHCIData *xhci, uint8_t port_idx) {
     uint32_t portsc = read_bar_32(xhci->bar, xhci->cap_length + PORTSC_OFFSET(port_idx));
     assert(portsc & PORTSC_PP);//TODO power on the port if it isn't already
 
     if(!((portsc & PORTSC_CCS) && (portsc & PORTSC_CSC))) return;//port is empty
 
-    printf("device found on port index %u\n", port_idx); 
     bool is_usb3 = xhci->port_is_usb3[port_idx];
     //write to clear some status bits?
     portsc |= PORTSC_CSC | PORTSC_PEC | PORTSC_PRC;
@@ -476,30 +489,25 @@ static void initialise_port(struct xHCIData *xhci, uint64_t *dcbaa_virt, uint8_t
     portsc = read_bar_32(xhci->bar, xhci->cap_length + PORTSC_OFFSET(port_idx));
     assert(portsc & PORTSC_PED);
 
-    // printf("waiting...\n");
-    // while(1);
-
-    //remove the port status change TRBs
-    struct TRB x = {};
-    while(dequeue_ring(&xhci->event_ring, &x) == 0) {
-        update_erdp(xhci, true);
-        assert(x.status.trb_type == TRB_TYPE_PORT_STS_CHANGE);
-    }
-
     //get a device slot
     enqueue_ring(&xhci->command_ring, (struct TRB) {
         .status.trb_type = TRB_TYPE_ENABLE_SLOT
     });
+
+    //use the unused slot to contain information, as we don't know the slot number yet
+    struct FetchAndCopyData handler_data = {
+        .done = false
+    };
+    xhci->slots[0].interrupt_handler_data = &handler_data;
     ring_command_doorbell(xhci);
-    struct TRB recv = fetch_and_extract(xhci, TRB_TYPE_CMD_COMPLETION);
-    assert(recv.status.command_completion.trb_type != 0);
-    assert(recv.status.command_completion.completion_code == 1);
-    const uint8_t slot_number = recv.status.command_completion.slot_id;
+    while(!handler_data.done) {}
+    xhci->slots[0].interrupt_handler_data = NULL;
+    assert(handler_data.result.status.command_completion.trb_type == TRB_TYPE_CMD_COMPLETION);
+    assert(handler_data.result.status.command_completion.completion_code == 1);
+    const uint8_t slot_number = handler_data.result.status.command_completion.slot_id;
     assert(slot_number != 0);
 
     struct XHCIDevice *curr_device = &xhci->slots[slot_number];
-    assert(xhci->slots[slot_number].one_based_root_port == 0);//slot must be unused
-    curr_device->one_based_root_port = port_idx;
     //create a ring for this port's endpoint 0
     curr_device->endpoint_rings[0] = create_ring();
 
@@ -508,7 +516,7 @@ static void initialise_port(struct xHCIData *xhci, uint64_t *dcbaa_virt, uint8_t
     volatile struct DeviceContext *device_context = phys_to_hhdm(device_context_phys);
     curr_device->device_context = device_context;
     volatile_memset(device_context, 0, sizeof(struct DeviceContext));
-    dcbaa_virt[slot_number] = device_context_phys;
+    xhci->dcbaa_virt[slot_number] = device_context_phys;
 
     //create input context, which is a second device context plus some extra
     uint64_t input_context_phys = malloc4k_phys();
@@ -553,12 +561,12 @@ static void initialise_port(struct xHCIData *xhci, uint64_t *dcbaa_virt, uint8_t
 
     assert(device_descriptor.device_class == 0);//unknown type
     
-    if(device_descriptor.product) {
-        read_string_descriptor(xhci, slot_number, device_descriptor.product);
-    }
-    if(device_descriptor.serial_num) {
-        read_string_descriptor(xhci, slot_number, device_descriptor.serial_num);
-    }
+    // if(device_descriptor.product) {
+    //     read_string_descriptor(xhci, slot_number, device_descriptor.product);
+    // }
+    // if(device_descriptor.serial_num) {
+    //     read_string_descriptor(xhci, slot_number, device_descriptor.serial_num);
+    // }
 
     //337, 383
 
@@ -604,6 +612,10 @@ void initialise_xhci(struct PciDevice dev, struct PciData *dev_data) {
         .rts_offset = rts_offset,
         .db_offset = db_offset
     };
+    for(int i=0; i<256; i++) {
+        //the port initialisation code won't know a slot, so make any enable slot code copy data to the unused slot 0
+        xhci->slots[i].interrupt_trb_handler = fetch_and_copy_to_slot_0;
+    }
 
     for(uint32_t xecp = HCCPARAMS1_xecp(hccparams1); xecp;) {
         uint32_t data = read_bar_32(bar, xecp);
@@ -660,8 +672,8 @@ void initialise_xhci(struct PciDevice dev, struct PciData *dev_data) {
     assert(max_ports*sizeof(uint64_t) < PAGE_SIZE);
     uint64_t dcbaa_phys = malloc4k_phys();
     //array of pointers TODO should I allocate some DCBA structs and point to them?
-    uint64_t *dcbaa_virt = phys_to_hhdm(dcbaa_phys);
-    memset(dcbaa_virt, 0, PAGE_SIZE);
+    xhci->dcbaa_virt = phys_to_hhdm(dcbaa_phys);
+    memset(xhci->dcbaa_virt, 0, PAGE_SIZE);
 
     if(scratchpad_required) {
         //create array of phys pointers to scratchpads
@@ -677,9 +689,9 @@ void initialise_xhci(struct PciDevice dev, struct PciData *dev_data) {
             scratchpad_pointers_virt[i] = scratchpad;
         }
         //point to scratchpad pointers in the DCBAA
-        dcbaa_virt[0] = scratchpad_pointers_phys;
+        xhci->dcbaa_virt[0] = scratchpad_pointers_phys;
     } else {
-        dcbaa_virt[0] = 0;
+        xhci->dcbaa_virt[0] = 0;
     }
 
     write_bar_32(bar, dcbaa_phys & 0xFFFFFFFF, cap_length + DCBAAP_OFFSET);
@@ -745,7 +757,7 @@ void initialise_xhci(struct PciDevice dev, struct PciData *dev_data) {
 
     printf("scanning %d ports\n", max_ports);
     for(uint8_t port_idx = 0; port_idx < max_ports; port_idx++) {
-        initialise_port(xhci, dcbaa_virt, port_idx);
+        set_up_port(xhci, port_idx);
     }
 
 }
