@@ -50,7 +50,7 @@ $(ARTIFACT_DIR)/%.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
 $(ARTIFACT_DIR)/%.o: $(MALLOC_SRC_DIR)/%.c
 	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) $(DBGFLAGS) -c $< -o $@
+	$(CC) $(CFLAGS) -c $< -o $@
 $(ARTIFACT_DIR)/%.o: %.asm
 	@mkdir -p $(dir $@)
 	nasm -f elf64 $< -o $@

@@ -40,13 +40,13 @@ $(OUTPUT_SYSROOT): FORCE
 	cp $(OS_DIR)/.build/myos $@/boot
 
 #sysroot things
-	mkdir -p $@/dev $@/lib/tcc/include
+	mkdir -p $@/dev $@/usr/include $@/usr/lib
 
 #libc things
 	make -C custom_libc/
-	cp -r $(HEADER_DIRS) $@/lib/tcc/include/
-	cp -r $(LIBC_OBJ_DIRS)/crt0.o $@/lib/tcc/crt0.o
-	cp -r $(LIBC_OBJ_DIRS)/libc_stuos.a $@/lib/tcc/libc.a
+	cp -r $(HEADER_DIRS) $@/usr/include/
+	cp -r $(LIBC_OBJ_DIRS)/crt*.o $@/usr/lib/
+	cp -r $(LIBC_OBJ_DIRS)/libc_stuos.a $@/usr/lib/libc.a
 	
 	cp $(PUT_IN_FILESYSTEM)/* $@/
 	make -C  custom_libc/fuzzing

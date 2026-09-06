@@ -2,8 +2,8 @@ CC = x86_64-elf-gcc
 LD = x86_64-elf-ld
 
 #TODO sysroot
-LIBC = /home/stuart/Programming/stuos/sysroot/lib/tcc/libc.a /home/stuart/Programming/stuos/sysroot/lib/tcc/crt0.o
-LIBC_HEADERS = /home/stuart/Programming/stuos/sysroot/lib/tcc/include
+LIBC = /home/stuart/Programming/stuos/sysroot/usr/lib/libc.a /home/stuart/Programming/stuos/sysroot/usr/lib/crt1.o
+LIBC_HEADERS = /home/stuart/Programming/stuos/sysroot/usr/include
 
 CFLAGS = -ffreestanding -nostdlib -O2 -Wall -Wextra -mno-red-zone -march=x86-64 -I $(LIBC_HEADERS)
 LDFLAGS = -nostdlib
