@@ -4,8 +4,12 @@ stuos_image.iso
 filesystem.img
 sysroot/
 put_in_filesystem/
-limine/
 .clangd
 *.log
 .bochsrc
 write_to_usb.sh
+
+ports/*
+!ports/compile.sh
+!ports/download.sh
+!ports/fuzzing

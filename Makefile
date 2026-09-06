@@ -2,12 +2,11 @@ SFDISK = /sbin/sfdisk
 PARTED = /sbin/parted
 MKFAT = /sbin/mkfs.fat
 
-LIMINE_FOLDER=./limine
+LIMINE_FOLDER=./ports/limine
 LIMINE_CONFIG=./stuos/src/limine.conf
 PUT_IN_FILESYSTEM=./put_in_filesystem
 
 OS_DIR = ./stuos
-HEADER_DIRS = ./abi/uapi ./custom_libc/include/*
 LIBC_OBJ_DIRS = ./custom_libc/.build
 
 OUTPUT_DISK=./filesystem.img
@@ -17,7 +16,7 @@ all: $(OUTPUT_DISK)
 
 #force since running the virtual machine can clobber the output disk
 #creates MBR with a partition at 1MB offset
-$(OUTPUT_DISK): $(OUTPUT_SYSROOT)
+$(OUTPUT_DISK): $(OUTPUT_SYSROOT) $(LIMINE_FOLDER)/limine
 	rm $@ -f
 	fallocate -l 15M $@
 	$(PARTED) -s $@ \
@@ -28,28 +27,31 @@ $(OUTPUT_DISK): $(OUTPUT_SYSROOT)
 	mcopy -Q -s -i $@@@1M ./$</* ::/
 	$(LIMINE_FOLDER)/limine bios-install $@
 
-$(OUTPUT_SYSROOT): FORCE
-	rm -rf $@
+# this represents "the whole of limine being built"
+$(LIMINE_FOLDER)/limine:
+	make -C $(LIMINE_FOLDER)
+
+#TODO
+$(OUTPUT_SYSROOT): $(LIMINE_FOLDER)/limine FORCE
+#sysroot things
+	mkdir -p $@/dev $@/usr/include $@/usr/lib $@/boot/limine $@/EFI/BOOT
+
 #boot things
-	mkdir -p $@/boot/limine $@/EFI/BOOT
 	cp $(LIMINE_CONFIG) $(LIMINE_FOLDER)/limine-bios.sys $(LIMINE_FOLDER)/limine-bios-cd.bin $(LIMINE_FOLDER)/limine-uefi-cd.bin $@/boot/limine/
 	cp $(LIMINE_FOLDER)/BOOTX64.EFI $(LIMINE_FOLDER)/BOOTIA32.EFI $@/EFI/BOOT
 
 #OS things
 	make -C  $(OS_DIR)
-	cp $(OS_DIR)/.build/myos $@/boot
-
-#sysroot things
-	mkdir -p $@/dev $@/usr/include $@/usr/lib
 
 #libc things
 	make -C custom_libc/
-	cp -r $(HEADER_DIRS) $@/usr/include/
-	cp -r $(LIBC_OBJ_DIRS)/crt*.o $@/usr/lib/
-	cp -r $(LIBC_OBJ_DIRS)/libc_stuos.a $@/usr/lib/libc.a
 	
 	cp $(PUT_IN_FILESYSTEM)/* $@/
-	make -C  custom_libc/fuzzing
+# 	make -C custom_libc/fuzzing
+
+#use the compilation of tcc to get libtcc1.a
+	make -C ports/tcc cross-x86_64 install
+	cp ports/tcc/linux_to_stuos/lib/tcc/x86_64-libtcc1.a $@/usr/lib/libtcc1.a
 
 FORCE: ;
 

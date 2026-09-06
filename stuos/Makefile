@@ -2,6 +2,10 @@ CC = x86_64-elf-gcc
 # /home/stuart/Programming/C/stuos_core/toolchain_output/x86_64-tcc
 LD = x86_64-elf-ld
 
+#where to install to
+SYSROOT = ../sysroot
+OS_BINARY := $(SYSROOT)/boot/myos
+
 SRC_DIR := ./src
 C_SRCS = $(wildcard $(SRC_DIR)/*.c)
 ASM_SRCS = $(wildcard $(SRC_DIR)/*.asm)
@@ -16,16 +20,13 @@ LDFLAGS = -T $(SRC_DIR)/linker.lds -nostdlib
 
 # location of build artifacts
 BUILD_DIR := ./.build
-OS_BINARY := $(BUILD_DIR)/myos
 OBJ_DIR := $(BUILD_DIR)/obj
 OBJS := $(C_SRCS:$(SRC_DIR)/%.c=$(OBJ_DIR)/%.o)  $(ASM_SRCS:$(SRC_DIR)/%.asm=$(OBJ_DIR)/%.o) $(MALLOC_SRCS:$(MALLOC_SRC_DIR)/%.c=$(OBJ_DIR)/%.o)
-MALLOC_OBJS := 
 
 all: $(OS_BINARY)
 
 # linking the os requires the .o files and the malloc library
 $(OS_BINARY): $(OBJS)
-	@mkdir -p $(dir $@)
 	$(LD) $^ $(LDFLAGS) -o $@
 
 # .o files require the .c source files
