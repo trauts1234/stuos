@@ -549,7 +549,6 @@ static void set_up_port(struct xHCIData *xhci, uint8_t port_idx) {
         
         if(desc.protocol == 0x01 && desc.class_code == 0x03 && desc.sub_class == 0x01) {
             //sub class = 1 means it is simple enough for the BIOS to use
-            printf("HID keyboard\n");
             initialise_keyboard(xhci, slot_number, config_descriptor, i);
             break;
         }
@@ -716,10 +715,8 @@ void initialise_xhci(struct PciDevice dev, struct PciData *dev_data) {
             break;
         }
     }
-
     delay();
 
-    printf("scanning %d ports\n", max_ports);
     for(uint8_t port_idx = 0; port_idx < max_ports; port_idx++) {
         set_up_port(xhci, port_idx);
     }

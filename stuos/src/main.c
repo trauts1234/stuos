@@ -98,6 +98,7 @@ void kmain(void) {
     display_init(framebuffer);
     memory_init(memmap_response, hhdm_offset);
     initialise_tty();
+    printf("stuos booting\n");
     setup_idt();
     apic_init(rsdp_request.response->address);
     devfs_init();

@@ -314,7 +314,6 @@ void initialise_pci() {
                 }
 
                 if(header.class_code == 0x0C && header.subclass == 0x03 && header.prog_if == 0x30) {
-                    printf("xHCI found\n");
                     initialise_xhci(device, &dev);
                 }
                 
