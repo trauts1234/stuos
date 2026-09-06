@@ -149,6 +149,8 @@ handle_syscall:
     push r14
     push r15
 
+    sti; start interrupts, since they get disabled at a syscall
+
     mov rax, [syscall_table + rax*8]; calculate syscall address from syscall number
     mov rsi, rsp; convert the stack into a struct, as it has the right layout - pass a pointer to it
     call rax

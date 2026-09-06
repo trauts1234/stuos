@@ -84,7 +84,7 @@ struct ReadCapacity10Return {
 };
 
 uint32_t flip_endianness(uint32_t val) {
-    uint8_t *bytes = (void*)&val;
+    const uint8_t *bytes = (void*)&val;
     return
         (bytes[0] << 24) |
         (bytes[1] << 16) |
@@ -93,7 +93,6 @@ uint32_t flip_endianness(uint32_t val) {
 }
 
 static uint32_t send_bbb(struct xHCIData *xhci, uint8_t slot_number, int in_index, int out_index, struct CommandBlockWrapper cbw, void* response_out, uint32_t response_len, bool is_read) {
-    __asm__ __volatile__ ("sti");//disgusting bodge, fix ASAP
     static uint32_t next_free_tag = 69;
     struct XHCIDevice *dev = &xhci->slots[slot_number];
 

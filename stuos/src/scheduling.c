@@ -247,10 +247,6 @@ uint8_t reap(int pid) {
 void run_next_task(const struct ProcessorState* const interrupted_processor_state) {
     if(current_process_in_ll == NULL) HCF //must be running something
 
-    //enable interrupts as the following code could spin forever
-    //TODO err... what about repeating conditions
-    __asm__ __volatile__ ("sti");
-
     //save the processor state
     if(interrupted_processor_state) current_process_in_ll->paused_state = *interrupted_processor_state;
 

@@ -29,10 +29,6 @@ struct Ring create_ring() {
     };
 }
 
-void debug_ring(struct Ring* r) {
-    printf("length: %llu\nnext free index: %llu\ncycle state: %d\n", r->count, r->idx, r->ring_cycle_state);
-}
-
 void enqueue_ring(struct Ring *ring, struct TRB trb) {
     assert(ring->trbs);
     trb.status.cycle_bit = ring->ring_cycle_state;

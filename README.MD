@@ -16,9 +16,9 @@ git clone https://github.com/limine-bootloader/limine.git --branch=v11.x-binary 
 make -C ./limine
 ```
 
-5. mount a data drive and compile the OS: 
+5. compile the OS: 
 ```bash
-./reset.sh
+make
 ```
 6. run the OS:
 ```bash

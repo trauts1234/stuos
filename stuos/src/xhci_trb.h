@@ -210,12 +210,11 @@ struct Ring {
     uint64_t idx;
     uint64_t trbs_phys;
     // NULL indicates an uninitialised ring
-    struct TRB *trbs;
+    volatile struct TRB *trbs;
     uint8_t ring_cycle_state;
 };
 
 struct Ring create_ring();
-void debug_ring(struct Ring* r);
 void enqueue_ring(struct Ring *ring, struct TRB trb);
 //returns 0 on success, -1 if there was nothing to get (trb_out unaffected)
 int dequeue_ring(struct Ring *ring, struct TRB *trb_out);

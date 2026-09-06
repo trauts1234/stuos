@@ -98,8 +98,8 @@ struct xHCIData {
         volatile struct InputContext *input_context;
         volatile struct DeviceContext *device_context;
         //called when an interrupt hands back a TRB during runtime (not during setup)
-        void (*interrupt_trb_handler)(struct xHCIData *xhci, struct TRB trb);
-        void* interrupt_handler_data;
+        void (* volatile interrupt_trb_handler)(struct xHCIData *xhci, struct TRB trb);
+        void* volatile interrupt_handler_data;
     } slots[256];
 
     //indexed by root port index (0 based)
