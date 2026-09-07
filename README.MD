@@ -6,21 +6,20 @@ This kernel + libc project is to prove that I can run userspace processes withou
 Various dependencies are required for compiling and running the OS.
 1. install the following dependencies from apt:
 ```bash
-sudo apt install qemu xorriso git curl build-essential nasm
+sudo apt install qemu xorriso git curl build-essential nasm mtools
 ```
 2. install x86_64-elf-gcc from source or via [homebrew](https://brew.sh/)
 3. install [rust](https://doc.rust-lang.org/cargo/getting-started/installation.html)
-4. download and compile the limine bootloader:
+4. download and compile toolchain:
 ```bash
-git clone https://github.com/limine-bootloader/limine.git --branch=v11.x-binary --depth=1 ./limine
-make -C ./limine
+cd ports && ./download.sh
 ```
 
 5. compile the OS: 
 ```bash
-make
+./build.sh
 ```
-6. run the OS:
+6. run the OS in QEMU:
 ```bash
 ./run.sh
 ```
