@@ -8,6 +8,7 @@ put_in_filesystem/
 *.log
 .bochsrc
 write_to_usb.sh
+x86_64-tcc
 
 ports/*
 !ports/compile.sh

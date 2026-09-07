@@ -39,10 +39,10 @@ static uint32_t skewed32() {
         case 1: return 1;
         case 2: return UINT32_MAX;
         case 3: return UINT32_MAX - 1;
-        case 4: return (~state) & 0xff'ff'ff'ff;
+        case 4: return (~state) & 0xffffffff;
         case 5:
         case 6:
-        case 7: return state & 0xff'ff'ff'ff;
+        case 7: return state & 0xffffffff;
         default: return rand32();
     }
 }

@@ -220,8 +220,11 @@ struct LoadedProgram instantiate_ELF(struct VNode exe, char*const *argv) {
 
         switch (curr_header.segment_type) {
             case 1:break;//load segment
+            case 1685382482://don't know what this one is
             case 1685382481:continue;//GNU_STACK (gives us permissions information but idc)
-            default: HCF//not a load segment? not sure how to deal with this
+            default: 
+                printf("unknown ELF segment type %d\n", curr_header.segment_type);
+                HCF//not a load segment? not sure how to deal with this
         }
 
         if(curr_header.required_alignment != 0 && (curr_header.p_vaddr % curr_header.required_alignment != curr_header.p_offset % curr_header.required_alignment)) {

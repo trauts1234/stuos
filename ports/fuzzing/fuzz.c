@@ -43,7 +43,7 @@ void sleep_uptime_test(uint64_t loops) {
 
 void malloc_free_test(uint64_t loops) {
     const size_t max_alloc_count = 1024;
-    const size_t max_alloc_bytes = 10'000'000;
+    const size_t max_alloc_bytes = 10000000;
     uint8_t *allocations[max_alloc_count];
     size_t allocation_sizes[max_alloc_count];
 

@@ -1,6 +1,8 @@
 #ifndef assert_H
 #define assert_H
 
+#include "stdbool.h"
+
 #ifdef NDEBUG
 #define assert(ignore)((void) 0)
 #else
