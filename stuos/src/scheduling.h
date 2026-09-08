@@ -4,8 +4,8 @@
 #include "signal.h"
 #include <uapi/signal.h>
 #include <uapi/stdint.h>
+#include <uapi/limits.h>
 
-#define MAX_FD_COUNT 10
 
 struct ProcessorState {
     /* General purpose registers saved by assembly stub */
@@ -23,7 +23,7 @@ struct ProcessorState {
 struct LoadedProgram {
     void* heap_start;
     uint64_t page_table_root;
-    struct FileOperations* file_descriptors[MAX_FD_COUNT];
+    struct FileOperations* file_descriptors[OPEN_MAX];
     struct ProcessorState initial_state;
 };
 
@@ -60,7 +60,7 @@ struct ProcessData {
     /// PAGE_SIZE aligned, represents where the ELF's heap starts - This is only to tell the ELF if they request this information via syscall
     void* heap_start;
     /// Indexed by file descriptor number
-    struct FileOperations* file_descriptors[MAX_FD_COUNT];
+    struct FileOperations* file_descriptors[OPEN_MAX];
     /// Process ID
     int pid;
     /// Process group ID

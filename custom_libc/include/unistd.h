@@ -28,6 +28,7 @@ pid_t getpgrp(void);
 
 pid_t getpid(void);
 
+int dup(int fildes);
 int dup2(int oldfd, int newfd);
 
 ssize_t read(int fd, void *buf, size_t count);

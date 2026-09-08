@@ -1,12 +1,14 @@
 #include "nonstandard.h"
 #include "stddef.h"
 #include "uapi/syscalls.h"
+#include "limits.h"
 #include "sys/types.h"
 #include "stdint.h"
 #include "stdlib.h"
 #include "stdio.h"
 #include "errno.h"
 #include "unistd.h"
+#include "fcntl.h"
 
 char **environ = {NULL};
 
@@ -63,14 +65,18 @@ pid_t getpid(void) {
     return data.result;
 }
 
-int dup2(int oldfd, int newfd) {
-    struct Dup2Data data = {
-        .oldfd = oldfd,
-        .newfd = newfd
-    };
-    do_syscall(&data, DUP2_SYSCALL);
-
-    return newfd;
+int dup2(int fildes, int fildes2) {
+    if(fildes2 < 0 || fildes2 > OPEN_MAX) {
+        errno = EBADF;
+        return -1;
+    }
+    //TODO more edge cases to check, like invalid fildes, or fildes==fildes2
+    close(fildes2);
+    return fcntl(fildes, F_DUPFD, fildes2);
+}
+int dup(int fildes) {
+    //TODO more edge cases to check, like invalid fildes
+    return fcntl(fildes, F_DUPFD, 0);
 }
 
 ssize_t read(int fd, void *buf, size_t count) {

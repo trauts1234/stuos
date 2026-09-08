@@ -104,7 +104,7 @@ int add_new_process(struct LoadedProgram program) {
         //next_process_to_run is set later
     };
 
-    memcpy(&new->file_descriptors, program.file_descriptors, sizeof(struct FileOperations*) * MAX_FD_COUNT);
+    memcpy(&new->file_descriptors, program.file_descriptors, sizeof(struct FileOperations*) * OPEN_MAX);
 
     if(current_process_in_ll == NULL) {
         new->next_process_to_run = new;// just one process, so point at myself
@@ -135,7 +135,7 @@ void replace_current_process(struct LoadedProgram program) {
         //TODO signals and stuff
         .next_process_to_run = current_process_in_ll->next_process_to_run,
     };
-    memcpy(&new.file_descriptors, current_process_in_ll->file_descriptors, sizeof(struct FileOperations*) * MAX_FD_COUNT);
+    memcpy(&new.file_descriptors, current_process_in_ll->file_descriptors, sizeof(struct FileOperations*) * OPEN_MAX);
 
     //replace the current process
     *current_process_in_ll = new;
@@ -223,7 +223,7 @@ uint8_t reap(int pid) {
     //destroy file descriptors:
     // TODO should this happen when they go zombie, not now
     struct FileOperations** file_descriptors = to_reap->file_descriptors;
-    for(uint64_t fd_idx=0; fd_idx < MAX_FD_COUNT; fd_idx++) {
+    for(uint64_t fd_idx=0; fd_idx < OPEN_MAX; fd_idx++) {
         struct FileOperations* fd = file_descriptors[fd_idx];
         if(fd == NULL) continue;
         fd->close(fd->special_data);

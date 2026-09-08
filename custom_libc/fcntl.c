@@ -1,4 +1,6 @@
+#include "fcntl.h"
 #include "sys/types.h"
+#include "uapi/stdarg.h"
 #include "uapi/syscalls.h"
 #include <stdarg.h>
 #include <stdio.h>
@@ -36,11 +38,22 @@ int open64(const char *pathname, int flags, ...) {
     return open(pathname, flags, mode);
 }
 
-// int fcntl(int fildes, int cmd, ...) {
-//     switch (cmd) {
+int fcntl(int fildes, int cmd, ...) {
+    va_list args;
+    va_start(args, cmd);
+    switch (cmd) {
+        
+        case F_DUPFD:
+        int fd = va_arg(args, int);
+        struct DupFdData dupfd = {
+            .fildes = fildes,
+            .min_new_fd = fd
+        };
+        do_syscall(&dupfd, DUPFD_SYSCALL);
+        return dupfd.result_fd;
 
-//         default:
-//         printf("UNKNOWN FCNTL!!!");
-//         abort();
-//     }
-// }
+        default:
+        printf("UNKNOWN FCNTL!!!");
+        abort();
+    }
+}

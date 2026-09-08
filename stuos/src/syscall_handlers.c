@@ -40,7 +40,7 @@ void syscall_request_page(struct RequsetPageData* data) {
     if(DEBUG_SYSCALLS) printf("%s: requested %p\n", __func__, data->page_virt_addr);
     if ((uint64_t)data->page_virt_addr >> 63) {
         //higher half
-        return;
+        HCF
     }
     allocate_ram_page(data->page_virt_addr);
 }
@@ -57,21 +57,21 @@ void syscall_write_fd(struct WriteFDData* data) {
     data->num_bytes_actually_written = file_operations->write(file_operations->special_data, data->buffer, data->num_bytes);
 }
 
-static int find_free_fd() {
-    //find a free file descriptor
-    int fd_num = 0;
-    while(get_process(0)->file_descriptors[fd_num] != 0) {
-        fd_num++;
-        if(fd_num == MAX_FD_COUNT) {HCF}//out of file descriptors
+//find a free file descriptor >= min_fd
+static int find_free_fd(int min_fd) {
+    for(int fd_num=min_fd; fd_num < OPEN_MAX; fd_num++) {
+        if(get_process(0)->file_descriptors[fd_num] == 0) {
+            return fd_num;
+        }
     }
-    return fd_num;
+    HCF
 }
 
 void syscall_open_file(struct OpenFileData* data) {
     if(DEBUG_SYSCALLS) printf("%s: path: %s\n", __func__, data->path);
     struct FileOperations** fd_list = get_process(0)->file_descriptors;
     struct FileOperations* file = fop_generate_file(get_process(0)->cwd, data->path, data->open_flags);
-    int fd_num = find_free_fd();
+    int fd_num = find_free_fd(0);
     fd_list[fd_num] = file;
     data->output_file_descriptor_number = fd_num;
 }
@@ -120,7 +120,7 @@ void syscall_fork(struct ForkData* data, struct ProcessorState* parent_state) {
     };
     
     //add 1 to ref count as the child will have cloned the file descriptors
-    for(int i=0; i<MAX_FD_COUNT; i++) {
+    for(int i=0; i<OPEN_MAX; i++) {
         struct FileOperations* fd = get_process(0)->file_descriptors[i];
         if (fd != NULL) fd->reference_count++;
         child.file_descriptors[i] = fd;
@@ -145,27 +145,17 @@ void syscall_get_pid(struct GetPidData* data) {
     data->result = get_process(0)->pid;
 }
 
-void syscall_dup2(struct Dup2Data* data) {
-    if(DEBUG_SYSCALLS) printf("%s: fd %d => fd %d\n", __func__, data->oldfd, data->newfd);
+void syscall_dupfd(struct DupFdData* data) {
+    if(DEBUG_SYSCALLS) printf("%s: fd %d => fd >= %d\n", __func__, data->fildes, data->min_new_fd);
     struct FileOperations **fd = get_process(0)->file_descriptors;
 
-    if(data->newfd >= MAX_FD_COUNT || data->newfd < 0) {HCF}
-    //if it's stupid and it works...
-    #define old fd[data->oldfd]
-    #define new fd[data->newfd]
-    if(old == NULL) {HCF}
+    assert(data->min_new_fd >= 0 && data->min_new_fd < OPEN_MAX)
+    assert(data->fildes >= 0 && data->fildes < OPEN_MAX);
+    assert(fd[data->fildes] != NULL);
 
-    if(new == old) {
-        return;//do nothing as the file descriptor is already cloned
-    }
-    //close new if already open
-    if(new) {
-        new->close(new->special_data);
-    }
-    new = old;
-    old->reference_count++;
-    #undef old
-    #undef new
+    data->result_fd = find_free_fd(data->min_new_fd);
+    fd[data->result_fd] = fd[data->fildes];
+    fd[data->result_fd]->reference_count++;
 }
 
 void syscall_getcwd(struct GetCwdData* data) {
@@ -246,9 +236,9 @@ void syscall_pipe(struct PipeData* data) {
     struct FileOperations *fds[2] = {NULL, NULL};
     fop_generate_pipe(fds);
 
-    int fd_a = find_free_fd();
+    int fd_a = find_free_fd(0);
     get_process(0)->file_descriptors[fd_a] = fds[0];
-    int fd_b = find_free_fd();
+    int fd_b = find_free_fd(fd_a+1);//skip the first fd_a entries as they are guaranteed full
     get_process(0)->file_descriptors[fd_b] = fds[1];
 
     data->fd_a = fd_a;
@@ -343,7 +333,7 @@ void *syscall_table[] = {
     syscall_fork,
     syscall_get_pgrp,
     syscall_get_pid,
-    syscall_dup2,
+    syscall_dupfd,
     syscall_getcwd,
     syscall_chdir,
     syscall_execve,

@@ -90,10 +90,12 @@ struct GetPidData {
     int result;
 };
 
-static const uint64_t DUP2_SYSCALL = 21;
-struct Dup2Data {
-    int oldfd;
-    int newfd;
+static const uint64_t DUPFD_SYSCALL = 21;
+struct DupFdData {
+    int fildes;
+    //find a fd >= to this
+    int min_new_fd;
+    int result_fd;
 };
 
 static const uint64_t GET_CWD_SYSCALL = 22;
