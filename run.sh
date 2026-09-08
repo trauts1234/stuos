@@ -13,6 +13,6 @@ qemu-system-x86_64 $FLAGS -m 4096M \
   -device qemu-xhci,id=xhci \
   -device usb-storage,drive=usbstick \
   -device usb-kbd \
-  -serial stdio -no-reboot -no-shutdown \
+  -serial stdio -no-reboot -no-shutdown
 
 # qemu-system-x86_64 $FLAGS -m 4096M -drive if=virtio,file=filesystem.img,format=raw -serial stdio -no-reboot -no-shutdown

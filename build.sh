@@ -52,7 +52,6 @@ build_libc() {
 }
 
 build_tcc() {
-    make -C ports/tcc cross-x86_64 install
     cp ports/tcc/linux_to_stuos/lib/tcc/x86_64-libtcc1.a "${OUTPUT_SYSROOT}/usr/lib/libtcc1.a"
     cp ports/tcc/linux_to_stuos/bin/x86_64-tcc ./x86_64-tcc
 }
