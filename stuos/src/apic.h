@@ -7,6 +7,9 @@
 
 void apic_init(void *rsdp_response_phys);
 
+// maps irq to vector
+void map_ioapic_interrupt(uint8_t irq, uint8_t vector);
+
 //write an interrupt number here to call an interrupt
 uint64_t get_lapic_magic_address();
 

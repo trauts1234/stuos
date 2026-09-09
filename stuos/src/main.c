@@ -8,6 +8,7 @@
 #include "memory.h"
 #include "elf.h"
 #include "debugging.h"
+#include "ps2_driver.h"
 #include "scheduling.h"
 #include "tty.h"
 #include "pci.h"
@@ -104,6 +105,7 @@ void kmain(void) {
     devfs_init();
     syscall_init();
     initialise_pci();
+    initialise_ps2();
     mount_fat16(vfs_get("/", "/dev/blkAp1", 0), "/");
 
     // struct VNode fuzz = vfs_get("/", "testing.out", 0);

@@ -241,22 +241,22 @@ static void setup_ioapic(uint32_t ioapic_phys_addr) {
     ioapic.max_redirection_entry = ioapic.access->io_win >> 16; //max irqs
 }
 
-// static uint32_t io_red_tbl(uint32_t i) {return 0x10 + 2*i;}
-//maps irq to vector
-// static void map_ioapic_interrupt(uint8_t irq, uint8_t vector) {
-//     assert(irq < ioapic.max_redirection_entry);
-//     union RedirectionEntry entry = {
-//         .vector = vector,
-//         .destination = ioapic.interrupt_destination_apic_id,
-//         .mask = 0,
-//     };
+static uint32_t io_red_tbl(uint32_t i) {return 0x10 + 2*i;}
 
-//     ioapic.access->io_reg_sel = io_red_tbl(irq);
-//     ioapic.access->io_win = entry.lower;
+void map_ioapic_interrupt(uint8_t irq, uint8_t vector) {
+    assert(irq < ioapic.max_redirection_entry);
+    union RedirectionEntry entry = {
+        .vector = vector,
+        .destination = ioapic.interrupt_destination_apic_id,
+        .mask = 0,
+    };
 
-//     ioapic.access->io_reg_sel = io_red_tbl(irq) + 1;
-//     ioapic.access->io_win = entry.upper;
-// }
+    ioapic.access->io_reg_sel = io_red_tbl(irq);
+    ioapic.access->io_win = entry.lower;
+
+    ioapic.access->io_reg_sel = io_red_tbl(irq) + 1;
+    ioapic.access->io_win = entry.upper;
+}
 
 static void handle_sdt(struct SDTHeader* curr) {
     //TODO handle revision

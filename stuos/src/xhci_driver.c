@@ -13,6 +13,8 @@
 #include <uapi/stdbool.h>
 #include <uapi/stddef.h>
 
+#define DEBUG_XHCI true
+
 //TODO I am missing tons of volatile in here!!!!!
 
 //https://www.intel.com/content/dam/www/public/us/en/documents/technical-specifications/extensible-host-controler-interface-usb-xhci.pdf
@@ -439,6 +441,8 @@ static void set_up_port(struct xHCIData *xhci, uint8_t port_idx) {
 
     if(!((portsc & PORTSC_CCS) && (portsc & PORTSC_CSC))) return;//port is empty
 
+    if(DEBUG_XHCI) printf("initialising port %d\n", port_idx);
+
     bool is_usb3 = xhci->port_is_usb3[port_idx];
     //write to clear some status bits?
     portsc |= PORTSC_CSC | PORTSC_PEC | PORTSC_PRC;
@@ -542,7 +546,7 @@ static void set_up_port(struct xHCIData *xhci, uint8_t port_idx) {
     
     for(uint16_t i=0; i<config_descriptor.num_interfaces; i++) {
         const struct ExternIfDesc desc = config_descriptor.interfaces[i];
-        printf("found device on port %d: class 0x%x, sub class: 0x%x, protocol 0x%x\n", port_idx, desc.class_code, desc.sub_class, desc.protocol);
+        if(DEBUG_XHCI) printf("found device on port %d: class 0x%x, sub class: 0x%x, protocol 0x%x\n", port_idx, desc.class_code, desc.sub_class, desc.protocol);
 
         if(desc.protocol == ExternIfProtocolBulkOnly && desc.sub_class == ExternIfSubClassSCSI) {
             initialise_msd(xhci, slot_number, config_descriptor, i);
@@ -558,6 +562,7 @@ static void set_up_port(struct xHCIData *xhci, uint8_t port_idx) {
 }
 
 void initialise_xhci(struct PciDevice dev, struct PciData *dev_data) {
+    if(DEBUG_XHCI) printf("initialising XHCI\n");
     initialise_idt_entry(dev_data->allocated_interrupt, handle_incoming_event);
     struct BarInfo bar = dev_data->bar_list[0];
     uint8_t cap_length = CAPLENGTH_CAPLENGTH(read_bar_32(bar, CAPLENGTH_AND_VERSION_OFFSET));
@@ -719,6 +724,7 @@ void initialise_xhci(struct PciDevice dev, struct PciData *dev_data) {
     }
     delay();
 
+    if(DEBUG_XHCI) printf("setting up %d ports\n", max_ports);
     for(uint8_t port_idx = 0; port_idx < max_ports; port_idx++) {
         set_up_port(xhci, port_idx);
     }
