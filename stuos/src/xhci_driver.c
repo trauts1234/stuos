@@ -542,6 +542,7 @@ static void set_up_port(struct xHCIData *xhci, uint8_t port_idx) {
     
     for(uint16_t i=0; i<config_descriptor.num_interfaces; i++) {
         const struct ExternIfDesc desc = config_descriptor.interfaces[i];
+        printf("found device on port %d: class 0x%x, sub class: 0x%x, protocol 0x%x\n", port_idx, desc.class_code, desc.sub_class, desc.protocol);
 
         if(desc.protocol == ExternIfProtocolBulkOnly && desc.sub_class == ExternIfSubClassSCSI) {
             initialise_msd(xhci, slot_number, config_descriptor, i);
