@@ -7,6 +7,9 @@
 #include "kern_libc.h"
 #include "ps2_driver.h"
 
+#define SCANCODE_VERSION 2
+
+#if SCANCODE_VERSION == 1
 #define LEFT_SHIFT 0x2A
 #define RIGHT_SHIFT 0x36
 #define CAPS_LOCK 0x3A
@@ -66,6 +69,68 @@ char lookup_nonextended[128][2] = {
     {'/', '?'},
     [0x39] = {' '}
 };
+#elif SCANCODE_VERSION == 2
+
+#define LEFT_SHIFT 0x12
+#define RIGHT_SHIFT 0x59
+#define CAPS_LOCK 0x58
+
+//indexed by [keycode][is_shifted]
+//if [keycode][1] == 0, then use [keycode][0] as there is no shifted key
+//for caps OR shift, apply toupper() afterwards too
+char lookup_nonextended[128][2] = {
+    [0x1C]= {'a'},
+    [0x32]= {'b'},
+    [0x21]= {'c'},
+    [0x23]= {'d'},
+    [0x24]= {'e'},
+    [0x2b]= {'f'},
+    [0x34]= {'g'},
+    [0x33]= {'h'},
+    [0x43]= {'i'},
+    [0x3B]= {'j'},
+    [0x42]= {'k'},
+    [0x4b]= {'l'},
+    [0x3a]= {'m'},
+    [0x31]= {'n'},
+    [0x44]= {'o'},
+    [0x4d]= {'p'},
+
+    [0x15]= {'q'},
+    [0x2d]= {'r'},
+    [0x1b]= {'s'},
+    [0x2c]= {'t'},
+    [0x3c]= {'u'},
+    [0x2a]= {'v'},
+    [0x1d]= {'w'},
+    [0x22]= {'x'},
+    [0x35]= {'y'},
+    [0x1a]= {'z'},
+
+    [0x16]= {'1', '!'},
+    [0x1e]= {'2', '"'},
+    [0x26]= {'3'},
+    [0x25]= {'4', '$'},
+    [0x2e]= {'5', '%'},
+    [0x36]= {'6', '^'},
+    [0x3d]= {'7', '!'},
+    [0x3e]= {'8', '*'},
+    [0x46]= {'9', '('},
+    [0x45]= {'0', ')'},
+    [0x4e]= {'-', '_'},
+
+    [0x5a]= {'\n'},
+    [0x66]= {'\b'},
+    [0x29]= {' '},
+    [0x4a]= {'/', '?'},
+    [0x49]= {'.', '>'},
+    [0x41]= {',', '<'},
+    [0x5d]= {'\\', '|'},
+    [0x4c]= {';', ':'},
+    [0x52]= {'\'', '@'},
+};
+
+#endif
 
 #define DATA_PORT 0x60
 #define COMMAND_PORT 0x64
@@ -183,9 +248,12 @@ union BufferData {
         uint8_t first_byte;
         //middle byte
         uint8_t second_byte;
+        //most significant
+        uint8_t third_byte;
     };
 };
 
+#if SCANCODE_VERSION == 1
 static char parse_full_buffer(union BufferData buffer) {
     static bool capslock = false;
     static bool shift = false;
@@ -264,6 +332,107 @@ void handle_incoming_byte(int) {
         }
     }
 }
+#elif SCANCODE_VERSION == 2
+static char parse_full_buffer(union BufferData buffer) {
+    static bool capslock = false;
+    static bool shift = false;
+
+    if (buffer.data == 0xE11477E1F014E077) {
+        return 0;//pause
+    }
+    if (buffer.data == 0xE012E07C) {
+        return 0;//printscreen
+    }
+    if (buffer.data == 0xE0F07CE0F012) {
+        return 0; //printscreen break
+    }
+    
+
+    //only 0xF0XX, 0xXX, 0xE0F0XX, 0xE0XX exist
+
+    bool is_break = false, is_extended = false;
+
+    if(buffer.third_byte == 0xE0) {
+        //must be 0xE0F0XX
+        if(buffer.second_byte != 0xF0) HCF
+        is_break = true;
+        is_extended = true;
+    } else {
+        if(buffer.third_byte) HCF // since not 0xE0F0XX, third byte must be 0
+
+        //detect what second byte is used
+        switch (buffer.second_byte) {
+            case 0xF0:
+            is_break = true;
+            break;
+            
+            case 0xE0:
+            is_extended = true;
+            break;
+
+            case 0:
+            break;
+
+            default:
+            HCF//second byte wasn't valid
+        }
+    }
+
+    if(!is_extended && buffer.first_byte == CAPS_LOCK) {
+        //capslock toggle
+        if(!is_break) capslock ^= true;//toggle capslock on press
+        return 0;
+    }
+    if((buffer.first_byte == LEFT_SHIFT || buffer.first_byte == RIGHT_SHIFT) && !is_extended) {
+        //shift enable/disable
+        shift = !is_break;
+        return 0;
+    }
+
+    if(is_break) return 0;
+
+    //parse the remaining byte
+    assert(buffer.first_byte < 128);//must be in range
+
+    char value = lookup_nonextended[buffer.first_byte][shift];
+    if(value == 0) value = lookup_nonextended[buffer.first_byte][0];//if there is no value, try the non-shift version
+    if(value == 0) return 0;//still no value, give up
+
+    if(shift || capslock) {
+        value = toupper(value);
+    }
+
+    return value;
+
+}
+
+void handle_incoming_byte(int) {
+    static int expected_number_of_bytes = 1;
+    static union BufferData buffer;
+
+    while(read_status_register().output_buffer_status) {
+        uint8_t first = blocking_read_data();
+        buffer.data = (buffer.data << 8) | first;
+        if(first == 0xE0 || first == 0xF0) {
+            //extended code or break code, need at least one more byte
+            expected_number_of_bytes++;
+        }
+        if(first == 0xE1) {
+            //pause key is weird
+            expected_number_of_bytes = 7;
+        }
+        expected_number_of_bytes--;
+
+        if(expected_number_of_bytes == 0) {
+            //finished one keypress, handle it and reset
+            expected_number_of_bytes = 1;
+            tty_provide_stdin(parse_full_buffer(buffer));
+            buffer.data = 0;
+            continue;
+        }
+    }
+}
+#endif
 
 void initialise_ps2() {
 
@@ -294,7 +463,7 @@ void initialise_ps2() {
 
     //controller self-test
     send_command(TEST_CONTROLLER);
-    if(blocking_read_data() != 0x55) HCF
+    assert(blocking_read_data() == 0x55);
 
     //TODO detect if the second PS2 port exists:
     /*To determine if the controller is a dual channel one, send a command 0xA8 to enable the second PS/2 port and read the Controller Configuration Byte (command 0x20). Bit 5 of the Controller Configuration Byte should be clear - if it's set then it can't be a dual channel PS/2 controller, because the second PS/2 port should be enabled. If it is a dual channel device, send a command 0xA7 to disable the second PS/2 port again and clear bits 1 and 5 of the Controller Configuration Byte to disable IRQs and enable the clock for port 2 (You need not worry about disabling translation, because it is never supported by the second port).
@@ -319,21 +488,21 @@ void initialise_ps2() {
 
     //set scan code
     send_byte_to_first_ps2(KB_SET_GET_SCAN_CODE);
-    if(blocking_read_data() != 0xFA) HCF
-    blocking_write_data(1);
-    if(blocking_read_data() != 0xFA) HCF
+    assert(blocking_read_data() == 0xFA);
+    blocking_write_data(SCANCODE_VERSION);
+    assert(blocking_read_data() == 0xFA);
     //check that the scan code was set (broken on laptop due to hardware bug?)
     // send_byte_to_first_ps2(KB_SET_GET_SCAN_CODE);
-    // if(blocking_read_data() != 0xFA) HCF
+    // assert(blocking_read_data() == 0xFA);
     // blocking_write_data(0);
-    // if(blocking_read_data() != 0xFA) HCF
+    // assert(blocking_read_data() == 0xFA);
     // printf("got ack\n");
     // if(blocking_read_data() != 1) HCF
     // printf("got response\n");
 
     //enable scanning (maybe)
     send_byte_to_first_ps2(KB_ENABLE_SCANNING);
-    if(blocking_read_data() != 0xFA) HCF
+    assert(blocking_read_data() == 0xFA);
 
     //ensure port is populated and that the controller has a second port first!
     // send_byte_to_second_ps2(0xFF);

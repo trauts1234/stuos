@@ -13,7 +13,7 @@
 #include <uapi/stdbool.h>
 #include <uapi/stddef.h>
 
-#define DEBUG_XHCI true
+#define DEBUG_XHCI false
 
 //TODO I am missing tons of volatile in here!!!!!
 
