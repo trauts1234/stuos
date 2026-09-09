@@ -1,7 +1,7 @@
 #include <uapi/stdint.h>
 #include "debugging.h"
 #include "memory.h"
-#include "physical_slab_allocation.h"
+#include "uapi/page_size.h"
 #include <uapi/stddef.h>
 
 uint64_t _malloc_expand_heap (void*kheap_end, uint64_t size) {

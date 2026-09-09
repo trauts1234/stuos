@@ -13,6 +13,7 @@
 #include "tty.h"
 #include "apic.h"
 #include "kern_libc.h"
+#include "uapi/page_size.h"
 
 #define DEBUG_SYSCALLS false
 
@@ -36,12 +37,20 @@ void syscall_get_uptime_ms(struct GetUptimeMsData* data) {
     data->ms = get_uptime_ms();
 }
 
-void syscall_request_page(struct RequsetPageData* data) {
+void syscall_request_page(struct RequestPageData* data) {
     if(DEBUG_SYSCALLS) printf("%s: requested %p\n", __func__, data->page_virt_addr);
     if ((uint64_t)data->page_virt_addr >> 63) {
         //higher half
         HCF
     }
+    assert(((uint64_t)data->page_virt_addr & PAGE_MASK) == 0);
+
+    struct LimitData *lim = &get_process(0)->limit_data[RLIMIT_DATA];
+    if(lim->current_value + PAGE_SIZE > lim->limit.rlim_cur) {
+        data->err = ENOMEM;
+        return;
+    }
+    
     allocate_ram_page(data->page_virt_addr);
 }
 
@@ -311,6 +320,26 @@ void syscall_tcgetattr(struct TcGetAttrData *data) {
     data->output = tty_settings;
 }
 
+void syscall_setrlimit(struct SetRLimitData *data) {
+    if(DEBUG_SYSCALLS) printf("%s: limit %d = soft: %llu, hard: %llu\n", __func__, data->resource, data->limit.rlim_cur, data->limit.rlim_max);
+
+    assert(data->resource >= 0 && data->resource < _RLIMIT_MAX);
+    get_process(0)->limit_data[data->resource].limit = data->limit;
+}
+void syscall_getrlimit(struct GetRLimitData *data) {
+    if(DEBUG_SYSCALLS) printf("%s: limit %d = soft: %llu, hard: %llu\n", __func__, data->resource, data->limit.rlim_cur, data->limit.rlim_max);
+
+    if(data->resource < 0 || data->resource >= _RLIMIT_MAX) {
+        data->err = EINVAL;
+        return;
+    }
+    if(data->limit.rlim_cur > data->limit.rlim_max) {
+        data->err = EINVAL;
+        return;
+    }
+    data->limit = get_process(0)->limit_data[data->resource].limit;
+}
+
 void *syscall_table[] = {
     syscall_halt,
     NULL,
@@ -342,6 +371,8 @@ void *syscall_table[] = {
     syscall_pipe,
     syscall_stat,
     syscall_sigprocmask,
-    syscall_tcgetattr,
+    [TCGETATTR_SYSCALL] = syscall_tcgetattr,
+    [SETRLIMIT_SYSCALL] = syscall_setrlimit,
+    [GETRLIMIT_SYSCALL] = syscall_getrlimit,
 
 };

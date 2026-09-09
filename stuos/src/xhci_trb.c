@@ -1,5 +1,6 @@
 #include "xhci_trb.h"
 #include "physical_slab_allocation.h"
+#include "uapi/page_size.h"
 #include "memory.h"
 #include "kern_libc.h"
 #include "debugging.h"

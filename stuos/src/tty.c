@@ -130,6 +130,7 @@ static void do_newline() {
 }
 
 static void write_from_multiple_sources(char c, bool is_from_keyboard) {
+    if(!buffer) return;//tty isn't initialised, stop
     if(c < 0) c = '?';
     if(c == '\b' && is_from_keyboard && tty_settings.c_lflag & ICANON) {
         if(current_run_of_keyboard_inputs == 0) return;

@@ -2,6 +2,7 @@
 #include "pci.h"
 #include "physical_slab_allocation.h"
 #include "uapi/stdint.h"
+#include "uapi/page_size.h"
 #include "kern_libc.h"
 #include "debugging.h"
 #include "memory.h"

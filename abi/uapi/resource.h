@@ -4,7 +4,12 @@
 
 typedef uint64_t rlim_t;
 
-#define RLIM_INFINITY ((__rlim_t) -1)
+#define RLIM_INFINITY ((rlim_t) -1)
+
+//the biggest of RLIMIT_* + 1
+#define _RLIMIT_MAX 1
+
+#define RLIMIT_DATA 0
 
 struct rlimit {
     rlim_t rlim_cur;  /* Soft limit */

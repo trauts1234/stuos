@@ -2,6 +2,7 @@
 #define SCHEDULING_H
 
 #include "signal.h"
+#include <uapi/resource.h>
 #include <uapi/signal.h>
 #include <uapi/stdint.h>
 #include <uapi/limits.h>
@@ -56,6 +57,11 @@ struct WaitingData {
     };
 };
 
+struct LimitData {
+    rlim_t current_value;
+    struct rlimit limit;
+};
+
 struct ProcessData {
     /// PAGE_SIZE aligned, represents where the ELF's heap starts - This is only to tell the ELF if they request this information via syscall
     void* heap_start;
@@ -87,8 +93,8 @@ struct ProcessData {
 
     /// Assuming the thread is paused, this is the state
     struct ProcessorState paused_state;
-
     struct WaitingData waiting_data;
+    struct LimitData limit_data[_RLIMIT_MAX];
 
     struct ProcessData* next_process_to_run;
 };

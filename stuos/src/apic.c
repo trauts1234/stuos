@@ -2,7 +2,7 @@
 #include "debugging.h"
 #include "kern_libc.h"
 #include "io.h"
-#include "physical_slab_allocation.h"
+#include "uapi/page_size.h"
 #include "memory.h"
 #include "xhci_driver.h"
 #include <uapi/stddef.h>

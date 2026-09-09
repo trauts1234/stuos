@@ -5,6 +5,7 @@
 #include "pci.h"
 #include "memory.h"
 #include "physical_slab_allocation.h"
+#include "uapi/page_size.h"
 #include <uapi/stdint.h>
 #include "virtio_driver.h"
 

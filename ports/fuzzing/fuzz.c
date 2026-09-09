@@ -17,6 +17,7 @@
 #include "mbrtowc_test.h"
 #include "mbsrtowcs_test.h"
 #include "strtod_test.h"
+#include "rlim_test.h"
 
 #include "tools.h"
 #include "unistd.h"
@@ -127,6 +128,8 @@ int main(int argc, char *argv[]) {
         abort();
     }
 
+    printf("running rlim test\n");
+    rlim_test();
     printf("running strtod test\n");
     strtod_test();
     printf("running setjmp test\n");

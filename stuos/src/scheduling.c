@@ -3,6 +3,7 @@
 #include "kern_libc.h"
 #include "pipes_and_files.h"
 #include "memory.h"
+#include <uapi/resource.h>
 #include <uapi/signal.h>
 #include <uapi/wait.h>
 
@@ -105,6 +106,12 @@ int add_new_process(struct LoadedProgram program) {
     };
 
     memcpy(&new->file_descriptors, program.file_descriptors, sizeof(struct FileOperations*) * OPEN_MAX);
+    for(int i=0; i<_RLIMIT_MAX; i++) {
+        new->limit_data[i].limit = (struct rlimit) {
+            .rlim_cur = RLIM_INFINITY,
+            .rlim_max = RLIM_INFINITY
+        };
+    }
 
     if(current_process_in_ll == NULL) {
         new->next_process_to_run = new;// just one process, so point at myself
@@ -136,6 +143,7 @@ void replace_current_process(struct LoadedProgram program) {
         .next_process_to_run = current_process_in_ll->next_process_to_run,
     };
     memcpy(&new.file_descriptors, current_process_in_ll->file_descriptors, sizeof(struct FileOperations*) * OPEN_MAX);
+    memcpy(new.limit_data, current_process_in_ll->limit_data, sizeof(current_process_in_ll->limit_data));
 
     //replace the current process
     *current_process_in_ll = new;

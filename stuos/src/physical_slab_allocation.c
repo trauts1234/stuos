@@ -2,6 +2,7 @@
 #include "debugging.h"
 #include <uapi/stdint.h>
 #include <uapi/stdbool.h>
+#include <uapi/page_size.h>
 #include "kern_libc.h"
 
 /// The physical memory addresses that can be allocated, and aren't used for keeping track of which pages are malloc'ed

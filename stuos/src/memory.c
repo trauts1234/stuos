@@ -5,6 +5,7 @@
 #include "limine.h"
 #include "debugging.h"
 #include "physical_slab_allocation.h"
+#include "uapi/page_size.h"
 #include "required.h"
 
 extern void invalidate_page(void* ptr);

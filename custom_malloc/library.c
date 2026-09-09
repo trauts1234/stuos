@@ -39,9 +39,7 @@ static struct LinkedListItem *find_or_make_free(uint64_t size) {
     
     uint64_t remaining_to_request = size - last_size;
     bool result = expand_heap(remaining_to_request);
-    if(!result) {
-        HCF
-    }
+    if(!result) return 0;
     lli_try_merge_after(old_last_item_ptr, &allocator.tail);
     if(!allocator.tail->is_free) HCF
     if(lli_region_size(allocator.tail, allocator.heap_end) < size) HCF
@@ -69,6 +67,7 @@ void* malloc(size_t size) {
     //sometimes give more RAM than needed, to maintain alignment
     size = ((size+MALLOC_ALIGNMENT-1)/MALLOC_ALIGNMENT) * MALLOC_ALIGNMENT;
     struct LinkedListItem *reserved_metadata_ptr = find_or_make_free(size);
+    if(reserved_metadata_ptr == 0) {return 0;}
     //mark area as used
     lli_mark_as(reserved_metadata_ptr, false);
     //get size and data pointer

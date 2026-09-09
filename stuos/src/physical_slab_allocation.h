@@ -2,8 +2,6 @@
 #define PHYSICAL_SLAB_ALLOCATION_H
 
 #include <uapi/stdint.h>
-#define PAGE_SIZE 4096
-#define PAGE_MASK (PAGE_SIZE-1)
 
 //returns the number of pages required to store that many bytes
 uint64_t round_up_pages(uint64_t num_bytes);

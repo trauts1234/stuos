@@ -2,6 +2,7 @@
 #include "debugging.h"
 #include "fs.h"
 #include "kern_libc.h"
+#include "uapi/page_size.h"
 #include "physical_slab_allocation.h"
 #include "memory.h"
 #include "pipes_and_files.h"
