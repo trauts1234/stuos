@@ -3,10 +3,22 @@
 #include "kern_libc.h"
 #include "memory.h"
 #include "limine.h"
+#include "limine_settings.h"
 #include "debugging.h"
 #include "physical_slab_allocation.h"
 #include "uapi/page_size.h"
 #include "required.h"
+
+__attribute__((used, section(".limine_requests")))
+static volatile struct limine_memmap_request memmap_request =  {
+    .id = LIMINE_MEMMAP_REQUEST_ID,
+    .revision = LIMINE_API_REVISION,
+};
+__attribute__((used, section(".limine_requests")))
+static volatile struct limine_hhdm_request hhdm_request = {
+    .id = LIMINE_HHDM_REQUEST_ID,
+    .revision = LIMINE_API_REVISION
+};
 
 extern void invalidate_page(void* ptr);
 
@@ -419,13 +431,17 @@ static void init_tss_descriptor(struct TssDescriptor *desc, struct TssEntry *tss
 /// disables interrupts
 extern void apply_gdt_tss(struct GdtTablePtr* gdt_base);
 
-void memory_init(volatile struct limine_memmap_response *memmap_response, uint64_t hhdm_ofs) {
-    hhdm_offset = hhdm_ofs;
+void memory_init() {
+    assert(memmap_request.response);
+    assert(hhdm_request.response);
+
+    hhdm_offset = hhdm_request.response->offset;
+    
     original_kernel_page_table = (struct PageTableEntry*)phys_to_hhdm(get_pml4_phys());//cr3 is the physical address
 
     struct limine_memmap_entry *result = NULL;
-    for(uint64_t range_idx=0; range_idx < memmap_response->entry_count; range_idx++) {
-        result = memmap_response->entries[range_idx];
+    for(uint64_t range_idx=0; range_idx < memmap_request.response->entry_count; range_idx++) {
+        result = memmap_request.response->entries[range_idx];
         //find a contiguous memory region
         if(result->length >= 1000000000 && result->type == LIMINE_MEMMAP_USABLE) {
             break;

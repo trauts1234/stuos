@@ -5,6 +5,7 @@
 #include "fs.h"
 #include "idt.h"
 #include "limine.h"
+#include "limine_settings.h"
 #include "memory.h"
 #include "elf.h"
 #include "debugging.h"
@@ -21,9 +22,6 @@ extern void loop_hlt();
 extern void enable_sse();
 extern void syscall_init();
 
-// Set the base revision
-#define LIMINE_API_REVISION 6
-
 __attribute__((used, section(".limine_requests")))
 static volatile uint64_t limine_base_revision[3] = LIMINE_BASE_REVISION(LIMINE_API_REVISION);
 
@@ -32,31 +30,6 @@ static volatile struct limine_stack_size_request stack_size_request = {
     .id = LIMINE_STACK_SIZE_REQUEST_ID,
     .revision = LIMINE_API_REVISION,
     .stack_size = 1024*1024
-};
-
-__attribute__((used, section(".limine_requests")))
-static volatile struct limine_framebuffer_request framebuffer_request = {
-    .id = LIMINE_FRAMEBUFFER_REQUEST_ID,
-    .revision = LIMINE_API_REVISION
-};
-
-__attribute__((used, section(".limine_requests")))
-static volatile struct limine_memmap_request memmap_request =  {
-    .id = LIMINE_MEMMAP_REQUEST_ID,
-    .revision = LIMINE_API_REVISION,
-};
-
-__attribute__((used, section(".limine_requests")))
-static volatile struct limine_hhdm_request hhdm_request = {
-    .id = LIMINE_HHDM_REQUEST_ID,
-    .revision = LIMINE_API_REVISION
-};
-
-__attribute__((used, section(".limine_requests")))
-static volatile struct limine_rsdp_request rsdp_request = {
-    .id = LIMINE_RSDP_REQUEST_ID,
-    .revision = LIMINE_API_REVISION,
-    .response = NULL,
 };
 
 // Finally, define the start and end markers for the Limine requests.
@@ -69,39 +42,23 @@ static volatile uint64_t limine_requests_end_marker[4] = LIMINE_REQUESTS_END_MAR
 
 // The following will be our kernel's entry point.
 void kmain(void) {
-    // Ensure the bootloader actually understands our base revision (see spec).
+    // Ensure the bootloader actually understands our base revision
     if (LIMINE_BASE_REVISION_SUPPORTED(limine_base_revision) == false) {
-        HCF
+        loop_hlt();
     }
-
-    // Ensure we got a framebuffer and a filesystem
-    if (framebuffer_request.response == NULL
-     || framebuffer_request.response->framebuffer_count != 1
-     || memmap_request.response == NULL
-     || hhdm_request.response == NULL
-     || rsdp_request.response == NULL) {
-        HCF
-    }
-
-    // Fetch the first framebuffer.
-    volatile struct limine_framebuffer *framebuffer = framebuffer_request.response->framebuffers[0];
-    volatile struct limine_memmap_response *memmap_response = memmap_request.response;
-    uint64_t hhdm_offset = hhdm_request.response->offset;
-    
-    if(sse_supported()) {
-        enable_sse();
-    } else {
+    if(!sse_supported()) {
         //how did we get here? what sort of weird processor is this running on?
         loop_hlt();
     }
 
+    enable_sse();
     debugging_init();
-    display_init(framebuffer);
-    memory_init(memmap_response, hhdm_offset);
+    display_init();
+    memory_init();
     initialise_tty();
     printf("stuos booting\n");
     setup_idt();
-    apic_init(rsdp_request.response->address);
+    apic_init();
     devfs_init();
     syscall_init();
     initialise_pci();

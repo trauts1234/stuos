@@ -2,7 +2,6 @@
 #define DISPLAY_H
 
 #include <uapi/stdint.h>
-#include "limine.h"
 
 struct Colour {
     uint8_t r;
@@ -13,11 +12,10 @@ struct Colour {
 
 /// Sets up the display
 /// @warning This must be run before writing to the display
-void display_init(volatile struct limine_framebuffer* framebuffer_ptr);
+void display_init();
 
 /// Draws a pixel at the specified coordinates
 void display_write_pixel(uint64_t x, uint64_t y, struct Colour colour);
-struct Colour display_read_pixel(uint64_t x, uint64_t y);
 
 
 uint64_t display_get_width();

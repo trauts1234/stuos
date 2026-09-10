@@ -6,6 +6,15 @@
 #include "memory.h"
 #include "xhci_driver.h"
 #include <uapi/stddef.h>
+#include "limine.h"
+#include "limine_settings.h"
+
+__attribute__((used, section(".limine_requests")))
+static volatile struct limine_rsdp_request rsdp_request = {
+    .id = LIMINE_RSDP_REQUEST_ID,
+    .revision = LIMINE_API_REVISION,
+    .response = NULL,
+};
 
 struct LapicReg {uint32_t data; uint32_t reserved[3];};
 
@@ -333,7 +342,9 @@ static uint32_t read_pm_timer() {
     return res;
 }
 
-void apic_init(void *rsdp_response) {
+void apic_init() {
+
+    assert(rsdp_request.response);
 
     //memory map the local APIC
     lapic_registers = setup_mmio(LAPIC_PHYS_ADDR, PAGE_SIZE);
@@ -348,7 +359,7 @@ void apic_init(void *rsdp_response) {
     lapic_registers->lvt_timer.data = 32 | (1 << 17);
 
     //this will enable the IOAPIC and handle timer things
-    handle_rsdp(rsdp_response);
+    handle_rsdp(rsdp_request.response->address);
 }
 
 //call to restart interrupts once this one is done

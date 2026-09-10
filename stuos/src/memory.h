@@ -10,7 +10,7 @@ void* phys_to_hhdm(uint64_t phys);
 /// Sets up physical RAM, by allocating a region to track which pages are free
 ///
 /// Also Sets up archaic paginging things, and allows interrupts to work properly
-void memory_init(volatile struct limine_memmap_response *memmap_response, uint64_t hhdm_offset);
+void memory_init();
 /// Copies the original kernel page tables, and returns the physical address of the tree's root (set CR3 to point at them)
 uint64_t generate_clean_virtual_addressing();
 /// Removes the page table' userland pages under the current virtual addressing. sets CR3 back to a default (the original kernel page tables)
