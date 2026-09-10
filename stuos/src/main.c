@@ -22,6 +22,8 @@ extern void loop_hlt();
 extern void enable_sse();
 extern void syscall_init();
 
+extern int32_t givethree();
+
 __attribute__((used, section(".limine_requests")))
 static volatile uint64_t limine_base_revision[3] = LIMINE_BASE_REVISION(LIMINE_API_REVISION);
 
@@ -57,6 +59,7 @@ void kmain(void) {
     memory_init();
     initialise_tty();
     printf("stuos booting\n");
+    assert(givethree() == 3);
     setup_idt();
     apic_init();
     devfs_init();

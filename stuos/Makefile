@@ -2,9 +2,9 @@ CC = x86_64-elf-gcc
 # /home/stuart/Programming/C/stuos_core/toolchain_output/x86_64-tcc
 LD = x86_64-elf-ld
 
-
 SRC_DIR := ./src
 C_SRCS = $(wildcard $(SRC_DIR)/*.c)
+RUST_LIB = ./target/debug/libstuos.a
 ASM_SRCS = $(wildcard $(SRC_DIR)/*.asm)
 MALLOC_SRC_DIR = ../custom_malloc
 MALLOC_SRCS = $(wildcard $(MALLOC_SRC_DIR)/*.c)
@@ -24,7 +24,7 @@ OBJS := $(C_SRCS:$(SRC_DIR)/%.c=$(OBJ_DIR)/%.o)  $(ASM_SRCS:$(SRC_DIR)/%.asm=$(O
 all: $(OS_BINARY)
 
 # linking the os requires the .o files and the malloc library
-$(OS_BINARY): $(OBJS)
+$(OS_BINARY): $(OBJS) $(RUST_LIB)
 	$(LD) $^ $(LDFLAGS) -o $@
 
 # .o files require the .c source files
@@ -41,5 +41,12 @@ $(OBJ_DIR)/%.o: $(SRC_DIR)/%.asm
 	@mkdir -p $(dir $@)
 	nasm -f elf64 $< -o $@
 
+$(RUST_LIB): FORCE
+	cargo build
+
+FORCE:
+
 clean:
 	rm -rf $(BUILD_DIR)
+
+.PHONY: all clean FORCE
