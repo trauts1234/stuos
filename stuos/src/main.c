@@ -55,6 +55,7 @@ void kmain(void) {
     debugging_init();
     display_init();
     memory_init();
+    //rust can run from here, now I can do float things, print things, and malloc
     initialise_tty();
     printf("stuos booting\n");
     setup_idt();

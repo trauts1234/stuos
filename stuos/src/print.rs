@@ -1,5 +1,4 @@
 use core::fmt::{self, Write};
-// use crate::print::KernelWriter;
 
 unsafe extern "C" {
     fn printf(fmt: *const u8, ...);
