@@ -18,6 +18,7 @@
 #include "mbsrtowcs_test.h"
 #include "strtod_test.h"
 #include "rlim_test.h"
+#include "alloca_test.h"
 
 #include "tools.h"
 #include "unistd.h"
@@ -128,6 +129,8 @@ int main(int argc, char *argv[]) {
         abort();
     }
 
+    printf("running alloca test\n");
+    alloca_test();
     printf("running rlim test\n");
     rlim_test();
     printf("running strtod test\n");

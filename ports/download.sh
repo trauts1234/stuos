@@ -2,6 +2,8 @@
 
 git clone https://github.com/limine-bootloader/limine.git --branch=v11.x-binary --depth=1 ./limine
 
+git clone https://github.com/micropython/micropython.git ./micropython
+
 git clone https://github.com/Tiny-C-Compiler/tinycc-mirror-repository.git ./tcc
 
 #build tcc since I will soon use ./tcc to build a native compiler
