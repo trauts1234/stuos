@@ -66,27 +66,13 @@ extern const union __nan_un {
 #endif
 //VBS end
 
-#ifdef __MATH_BUILTIN_CONSTANTS
-#define	HUGE_VAL	__builtin_huge_val()
-#else
-#define	HUGE_VAL	(__infinity.__ud)
-#endif
+//HUGE_VAL defined in main math.h
 
 #if __ISO_C_VISIBLE >= 1999
 #define	FP_ILOGB0	(-INT_MAX)
 #define	FP_ILOGBNAN	INT_MAX
 
-#ifdef __MATH_BUILTIN_CONSTANTS
-#define	HUGE_VALF	__builtin_huge_valf()
-#define	HUGE_VALL	__builtin_huge_vall()
-#define	INFINITY	__builtin_inff()
-#define	NAN		__builtin_nanf("")
-#else
-#define	HUGE_VALF	(float)HUGE_VAL
-#define	HUGE_VALL	(long double)HUGE_VAL
-#define	INFINITY	HUGE_VALF
-#define	NAN		(__nan.__uf)
-#endif /* __MATH_BUILTIN_CONSTANTS */
+//defined in main math.h
 
 #define	MATH_ERRNO	1
 #define	MATH_ERREXCEPT	2

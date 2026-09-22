@@ -5,4 +5,6 @@
 #include "stdint.h"
 typedef uint32_t wchar_t;
 
+#define offsetof(type, field) ((size_t) &((type *)0)->field)
+
 #endif

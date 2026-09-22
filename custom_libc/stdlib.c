@@ -29,3 +29,13 @@ int atoi(const char *nptr) {
 double atof(const char *nptr) {
     return strtod(nptr, NULL);
 }
+
+int abs(int j) {
+    return (j<0) ? -j : j;
+}
+long int labs(long int j){
+    return (j<0l) ? -j : j;
+}
+long long int llabs(long long int j){
+    return (j<0ll) ? -j : j;
+}

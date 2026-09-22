@@ -57,7 +57,9 @@ build_tcc() {
 }
 
 build_binaries() {
+    make -C ports/fuzzing clean
     make -C ports/fuzzing
+    make -C ports/coreutils clean
     make -C ports/coreutils
 }
 

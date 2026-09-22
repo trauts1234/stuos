@@ -19,6 +19,7 @@
 #include "strtod_test.h"
 #include "rlim_test.h"
 #include "alloca_test.h"
+#include "strto_test.h"
 
 #include "tools.h"
 #include "unistd.h"
@@ -129,6 +130,11 @@ int main(int argc, char *argv[]) {
         abort();
     }
 
+    printf("running strto* test\n");
+    strto_test();
+    printf("running offsetof test\n");
+    assert(offsetof(struct {int a;}, a) == 0);
+    assert(offsetof(struct {int a; int b;}, b) == sizeof(int));
     printf("running alloca test\n");
     alloca_test();
     printf("running rlim test\n");
