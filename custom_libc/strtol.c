@@ -3,7 +3,6 @@
 #include <ctype.h>
 #include <errno.h>
 #include <limits.h>
-#include <stdio.h>
 
 static int digit_value(char c) {
     c = tolower(c);
@@ -20,21 +19,16 @@ struct StrToResult {
 
 //base <= 36 please
 static struct StrToResult strto(const char *nptr, char **endptr, int base) {
-    printf("strto running on %s\n", nptr);
     struct StrToResult result = {};
     const char* current = nptr;
     //eat up whitespace if any
     while(isspace(*current)) {current++;}
 
-    printf("ate %ld whitespace\n", current - nptr);
-
     //eat a + or -
     switch (*current) {
         case '+':
-        printf("leading + found\n");
         current++;break;
         case '-':
-        printf("leading - found\n");
         result.sign = true;
         current++;break;
         default:
@@ -45,14 +39,11 @@ static struct StrToResult strto(const char *nptr, char **endptr, int base) {
     if(base == 0)
     {
         if (current[0] == '0' && tolower(current[1]) == 'x') {
-            printf("base detected as 16\n");
             base = 16;
             current += 2;
         } else if (*current == '0') {
-            printf("base detected as 8\n");
             base = 8;
         } else {
-            printf("base defaulted to 10\n");
             base = 10;
         }
     }
@@ -61,26 +52,20 @@ static struct StrToResult strto(const char *nptr, char **endptr, int base) {
 
     while(*current)
     {
-        printf("char %c -> ", *current);
         int d = digit_value(*current++);
-        printf("digit %d\n", d);
         if (d < 0 || d >= base) break;
 
         if(result.overflow) continue;
         
         if(result.magnitude > (ULONG_MAX - d) / base) {
-            printf("overflow of unsigned long long found\n");
             result.overflow = true;//this means that accumulator*base + d > LONG_MAX, and overflowing
         } else {
             result.magnitude = result.magnitude*base + d;
         }
     }
 
-    printf("value %llu, sign %d, overflow %d", result.magnitude, result.sign, result.overflow);
-
     //if no digits consumed
     if(current == current_checkpoint) {
-        printf("no digits consumed\n");
         if (endptr) *endptr = (char*)nptr;
         return result;
     }
