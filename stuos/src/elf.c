@@ -32,7 +32,7 @@ struct __attribute__((__packed__)) ElfFile {
 };
 
 struct ElfProgramHeader {
-    uint32_t segment_type;//0 = ignore entry; 1 = load; 2 = dynamic - requires dynamic linking; 3 = interp - contains a file path to an executable to use as an interpreter for the following segment; 4 = note section
+    uint32_t segment_type;//0 = ignore entry; 1 = load; 2 = dynamic - requires dynamic linking; 3 = interp - contains a file path to an executable to use as an interpreter for the following segment; 4 = note section; 6 = PHDR
     uint32_t flags;//0b1 = x, 0b10 = w, 0b100 = r
     uint64_t p_offset;//where the data is in the file
     uint64_t p_vaddr;//where the virtual address is
@@ -220,28 +220,34 @@ struct LoadedProgram instantiate_ELF(struct VNode exe, char*const *argv) {
         const struct ElfProgramHeader curr_header = prog_headers[i];//get the i'th program header
 
         switch (curr_header.segment_type) {
-            case 1:break;//load segment
+            case 6://program header segment
+            assert(curr_header.flags == 0b100);
+            assert(curr_header.p_offset == header.program_header_table_offset)
+            assert(curr_header.p_filesz == sizeof(struct ElfProgramHeader) * header.program_header_table_num_entries);
+            assert(curr_header.p_memsz == curr_header.p_filesz);
+            //fallthrough
+            case 1://load segment
+            void* page_alloc_start = (void*)(curr_header.p_vaddr & ~PAGE_MASK);//find the page containing p_vaddr
+            void* page_alloc_end = (void*)((curr_header.p_vaddr + curr_header.p_memsz + PAGE_SIZE-1) & ~PAGE_MASK);//round page up to find which is the first free page after the allocated region
+            allocate_virtual_range(virtual_memory_tracker_head, page_alloc_start, page_alloc_end);
+            uint64_t read = exe.read_file(exe.id, curr_header.p_offset, (uint8_t*)curr_header.p_vaddr, curr_header.p_filesz);//copy data from file
+            if(read != curr_header.p_filesz) HCF
+            //zero the remaining data
+            memset((void*)(curr_header.p_vaddr+curr_header.p_filesz), 0, curr_header.p_memsz - curr_header.p_filesz);
+            break;
+
+            case 3:
+            char* data = malloc(1024);
+            exe.read_file(exe.id, curr_header.p_offset, (void*)data, curr_header.p_filesz);
+            printf("interpreter %s", data);
+            HCF
+
             case 1685382482://don't know what this one is
             case 1685382481:continue;//GNU_STACK (gives us permissions information but idc)
             default: 
                 printf("unknown ELF segment type %d\n", curr_header.segment_type);
                 HCF//not a load segment? not sure how to deal with this
         }
-
-        if(curr_header.required_alignment != 0 && (curr_header.p_vaddr % curr_header.required_alignment != curr_header.p_offset % curr_header.required_alignment)) {
-            //alignment required, and page is not aligned to the file offset
-            //apparently ELF doesn't like this
-            HCF
-        }
-
-        void* page_alloc_start = (void*)(curr_header.p_vaddr & ~PAGE_MASK);//find the page containing p_vaddr
-        void* page_alloc_end = (void*)((curr_header.p_vaddr + curr_header.p_memsz + PAGE_SIZE-1) & ~PAGE_MASK);//round page up to find which is the first free page after the allocated region
-        allocate_virtual_range(virtual_memory_tracker_head, page_alloc_start, page_alloc_end);
-
-        uint64_t read = exe.read_file(exe.id, curr_header.p_offset, (uint8_t*)curr_header.p_vaddr, curr_header.p_filesz);//copy data from file
-        if(read != curr_header.p_filesz) HCF
-        //zero the remaining data
-        memset((void*)(curr_header.p_vaddr+curr_header.p_filesz), 0, curr_header.p_memsz - curr_header.p_filesz);
     }
     free(prog_headers);
 

@@ -25,17 +25,21 @@ LIBM_OBJS := $(wildcard /home/stuart/Programming/C/openlibm/objectfiles/*)
 LIBC_ARTIFACTS := $(C_SRCS:%.c=$(ARTIFACT_DIR)/%.o) $(ASM_SRCS:%.asm=$(ARTIFACT_DIR)/%.o) $(MALLOC_SRCS:$(MALLOC_SRC_DIR)/%.c=$(ARTIFACT_DIR)/%.o)
 
 #output files
-OUTPUT_A = $(ARTIFACT_DIR)/libc.a
-OUTPUT_SO = $(ARTIFACT_DIR)/libc.so
+OUTPUT_LIBC_A = $(ARTIFACT_DIR)/libc.a
+OUTPUT_LIBM_A = $(ARTIFACT_DIR)/libm.a
+OUTPUT_LIBC_SO = $(ARTIFACT_DIR)/libc.so
 OUTPUT_CRTS = $(CRT_SRCS:$(CRT_DIR)/%.asm=$(ARTIFACT_DIR)/%.o)
 
-all: $(OUTPUT_A) $(OUTPUT_SO) $(OUTPUT_CRTS)
+all: $(OUTPUT_LIBC_A) $(OUTPUT_LIBM_A) $(OUTPUT_LIBC_SO) $(OUTPUT_CRTS)
 
-$(OUTPUT_A): $(LIBC_ARTIFACTS) $(LIBM_OBJS)
+$(OUTPUT_LIBC_A): $(LIBC_ARTIFACTS) $(LIBM_OBJS)
 	ar rcs $@ $(LIBC_ARTIFACTS) $(LIBM_OBJS)
 # Create a dynamic library from the static one
-$(OUTPUT_SO): $(OUTPUT_A)
+$(OUTPUT_LIBC_SO): $(OUTPUT_LIBC_A)
 	$(LD) -shared --whole-archive -o $@ $<
+
+$(OUTPUT_LIBM_A):
+	ar rcs $@
 
 $(ARTIFACT_DIR)/crt%.o: $(CRT_DIR)/crt%.asm
 	nasm -f elf64 $< -o $@

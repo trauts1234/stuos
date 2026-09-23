@@ -198,4 +198,6 @@ struct GetRLimitData {
     int err;
 };
 
+#define YIELD_SYSCALL 35
+
 #endif

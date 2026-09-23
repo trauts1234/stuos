@@ -340,6 +340,10 @@ void syscall_getrlimit(struct GetRLimitData *data) {
     data->limit = get_process(0)->limit_data[data->resource].limit;
 }
 
+void syscall_yield(void*, struct ProcessorState *processor_state) {
+    run_next_task(processor_state);
+}
+
 void *syscall_table[] = {
     syscall_halt,
     NULL,
@@ -374,5 +378,5 @@ void *syscall_table[] = {
     [TCGETATTR_SYSCALL] = syscall_tcgetattr,
     [SETRLIMIT_SYSCALL] = syscall_setrlimit,
     [GETRLIMIT_SYSCALL] = syscall_getrlimit,
-
+    [YIELD_SYSCALL] = syscall_yield,
 };

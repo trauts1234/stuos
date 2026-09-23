@@ -48,7 +48,7 @@ build_os() {
 build_libc() {
     make -C custom_libc/
     cp -r custom_libc/include/. "${OUTPUT_SYSROOT}/usr/include/"
-    cp custom_libc/.build/crt*.o custom_libc/.build/libc.a "${OUTPUT_SYSROOT}/usr/lib/"
+    cp custom_libc/.build/crt*.o custom_libc/.build/libc.a custom_libc/.build/libm.a "${OUTPUT_SYSROOT}/usr/lib/"
 }
 
 build_tcc() {
@@ -61,6 +61,8 @@ build_binaries() {
     make -C ports/fuzzing
     make -C ports/coreutils clean
     make -C ports/coreutils
+    make -C ports/micropython/ports/minimal
+    cp ports/micropython/ports/minimal/build/firmware.elf "${OUTPUT_SYSROOT}/python"
 }
 
 create_disk_image() {
