@@ -6,7 +6,11 @@ global enable_apic
 global vector_n_handlers
 
 extern run_next_task
+
 extern memory_exception_handle
+extern invalid_opcode_exception_handle
+extern other_exception_handle
+
 extern apic_eoi
 extern apic_timer_counter
 extern handle_incoming_byte
@@ -16,12 +20,8 @@ section .data
 
 ; the error handlers, vector 32 is the timer interrupt, and then general purpose interrupts
 vector_n_handlers:
-    resq 14
-    dq vector_14_handler
-    resq 17
-    dq vector_32_handler
-    %assign i 33
-    %rep 222
+    %assign i 0
+    %rep 255
     dq vector_%+i%+_handler
     %assign i i+1
     %endrep
@@ -36,13 +36,49 @@ enable_apic:
     wrmsr
     ret
 
+vector_0_handler:
+vector_1_handler:
+vector_2_handler:
+vector_3_handler:
+vector_4_handler:
+vector_5_handler:
+
+vector_7_handler:
+vector_8_handler:
+vector_9_handler:
+vector_10_handler:
+vector_11_handler:
+vector_12_handler:
+vector_13_handler:
+
+vector_15_handler:
+vector_16_handler:
+vector_17_handler:
+vector_18_handler:
+vector_19_handler:
+vector_20_handler:
+vector_21_handler:
+vector_22_handler:
+vector_23_handler:
+vector_24_handler:
+vector_25_handler:
+vector_26_handler:
+vector_27_handler:
+vector_28_handler:
+vector_29_handler:
+vector_30_handler:
+vector_31_handler:
+    call other_exception_handle
+
+vector_6_handler:
+    mov rdi, rsp
+    call invalid_opcode_exception_handle
+
+
 ; interrupt 14
 vector_14_handler:
-    add rsp, 8; get rid of error code
-    pop rsi
-    mov rdi, cr2
-    ; TODO stack may not be aligned here!!
-    ; and rsp, 0xFFFFFFFFFFFFFFF0
+    mov rsi, rsp; iretq data(second)
+    mov rdi, cr2; addr that caused the fault (first)
     ;this function doesn't return
     call memory_exception_handle
 

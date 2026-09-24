@@ -392,8 +392,47 @@ uint64_t get_uptime_ms() {
 }
 
 /// Handles interrupt 14
+
+struct ExceptionWithErrorCode {
+    uint64_t error_code;
+    uint64_t rip;
+    uint64_t cs;
+    uint64_t rflags;
+    uint64_t rsp;
+    uint64_t ss;
+};
+struct ExceptionWithoutErrorCode {
+    uint64_t rip;
+    uint64_t cs;
+    uint64_t rflags;
+    uint64_t rsp;
+    uint64_t ss;
+};
+
 __attribute__((noreturn))
-void memory_exception_handle(void* bad_address, void* rip) {
-    printf("failed to access address: %p with RIP=%p\n", bad_address, rip);
+void memory_exception_handle(void* bad_address, struct ExceptionWithErrorCode *data) {
+    printf("failed to access address: %p with RIP=0x%llx\n", bad_address, data->rip);
+    if(data->error_code & 0b01) printf("error caused by page not being present\n");
+    printf("error caused by %s access\n", (data->error_code & 0b10) ? "write" : "read");
+    if(data->error_code & 0b100) printf("error occured in userspace\n");
+    if(data->error_code & 0b1000) printf("page table entry contained a 1 in a reserved field\n");
+    if(data->error_code & 0b10000) printf("error occured on instruction fetch\n");
+    if(data->error_code & 0b100000) printf("protection key violation\n");
+    if(data->error_code & 0b1000000) printf("shadow stack access\n");
+    if(data->error_code & 0b10000000) printf("SGX violation\n");
+    printf("cs:%llu\nrflags:0x%llx\nrsp:0x%llx\nss:%lld\n", data->cs, data->rflags, data->rsp, data->ss);
+    HCF
+}
+
+__attribute__((noreturn))
+void invalid_opcode_exception_handle(struct ExceptionWithoutErrorCode *data) {
+    printf("unknown opcode at RIP=0x%llx\n", data->rip);
+    printf("cs:%llu\nrflags:0x%llx\nrsp:0x%llx\nss:%lld\n", data->cs, data->rflags, data->rsp, data->ss);
+    HCF
+}
+
+__attribute__((noreturn))
+void other_exception_handle() {
+    printf("unknown exception handler\n");
     HCF
 }

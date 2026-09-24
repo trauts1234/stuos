@@ -23,7 +23,7 @@ extern void set_pml4_phys(uint64_t physical_addr);
 extern uint64_t get_pml4_phys();
 /// @brief allocates and zeroes a new page, and you can pick what the address is
 /// @param virtual_addr virtual address of the start of an unmapped page
-void allocate_ram_page(void* virtual_addr);
+void allocate_ram_page(void* virtual_addr, bool can_execute);
 /// @brief Releases a virtual page by walking the paging tree and marking as free - This doesn't free the underlying memory, just means that virtual addresses don't point to it
 // void deallocate_page(void* virtual_addr);
 

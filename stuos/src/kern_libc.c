@@ -10,7 +10,7 @@ uint64_t _malloc_expand_heap (void*kheap_end, uint64_t size) {
 
     for(uint64_t i = 0; i<rounded_up_pages; i++) {
         void *const ptr = kheap_end + (PAGE_SIZE * i);
-        allocate_ram_page(ptr);
+        allocate_ram_page(ptr, false);
     }
 
     return PAGE_SIZE * rounded_up_pages;

@@ -7,6 +7,7 @@
 #include "memory.h"
 #include "pipes_and_files.h"
 #include "scheduling.h"
+#include <uapi/stdbool.h>
 #include <uapi/stddef.h>
 
 struct __attribute__((__packed__)) ElfFile {
@@ -54,7 +55,7 @@ struct VirtualMemoryRegion {
 };
 
 /// Allocates addresses from page_start up to but not including page_end for the elf
-static void allocate_virtual_range(struct VirtualMemoryRegion* virtual_memory_tracker_head, void* page_start, void* page_end) {
+static void allocate_virtual_range(struct VirtualMemoryRegion* virtual_memory_tracker_head, void* page_start, void* page_end, bool can_execute) {
     if((size_t)page_start & PAGE_MASK || (size_t)page_end & PAGE_MASK) {HCF}//not page-aligned
 
     struct VirtualMemoryRegion* curr = virtual_memory_tracker_head;
@@ -90,7 +91,7 @@ static void allocate_virtual_range(struct VirtualMemoryRegion* virtual_memory_tr
 
     //allocate the physical memory and make the virtual addresses that I just marked as free point to the memory
     for(void* page_ptr = page_start; page_ptr < page_end; page_ptr += PAGE_SIZE) {
-        allocate_ram_page(page_ptr);//also zeroes the page
+        allocate_ram_page(page_ptr, can_execute);//also zeroes the page
     }
 }
 
@@ -136,7 +137,7 @@ static void setup_args_for_new_process(struct VirtualMemoryRegion* virtual_memor
 
     void* args_data_start = find_contiguous_virtual_range(virtual_memory_tracker_head, num_bytes_for_args_and_argc);
     void* args_data_end = args_data_start + num_bytes_for_args_and_argc;
-    allocate_virtual_range(virtual_memory_tracker_head, args_data_start, args_data_end);
+    allocate_virtual_range(virtual_memory_tracker_head, args_data_start, args_data_end, false);
 
     *output_allocated_argv = args_data_start;//array of char pointers is at the start
     *output_argc = argc;
@@ -229,7 +230,7 @@ struct LoadedProgram instantiate_ELF(struct VNode exe, char*const *argv) {
             case 1://load segment
             void* page_alloc_start = (void*)(curr_header.p_vaddr & ~PAGE_MASK);//find the page containing p_vaddr
             void* page_alloc_end = (void*)((curr_header.p_vaddr + curr_header.p_memsz + PAGE_SIZE-1) & ~PAGE_MASK);//round page up to find which is the first free page after the allocated region
-            allocate_virtual_range(virtual_memory_tracker_head, page_alloc_start, page_alloc_end);
+            allocate_virtual_range(virtual_memory_tracker_head, page_alloc_start, page_alloc_end, curr_header.flags & 0b1);
             uint64_t read = exe.read_file(exe.id, curr_header.p_offset, (uint8_t*)curr_header.p_vaddr, curr_header.p_filesz);//copy data from file
             if(read != curr_header.p_filesz) HCF
             //zero the remaining data
@@ -253,7 +254,7 @@ struct LoadedProgram instantiate_ELF(struct VNode exe, char*const *argv) {
 
     const size_t STACK_SIZE = 16 * PAGE_SIZE;//must be a multiple of PAGE_SIZE otherwise allocating a range will fail
     void* stack_virt_base = find_contiguous_virtual_range(virtual_memory_tracker_head, STACK_SIZE);
-    allocate_virtual_range(virtual_memory_tracker_head, stack_virt_base, stack_virt_base + STACK_SIZE);
+    allocate_virtual_range(virtual_memory_tracker_head, stack_virt_base, stack_virt_base + STACK_SIZE, false);
     void* stack_start = stack_virt_base + STACK_SIZE;//start stack at high address
 
     uint64_t argc;

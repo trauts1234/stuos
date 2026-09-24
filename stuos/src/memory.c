@@ -161,7 +161,7 @@ uint64_t generate_clean_virtual_addressing() {
 }
 
 //for each virtual page allocated, calls leaf_callback(virtual page start, physical location of page) then once each page at each level is exhausted, calls table_entry_callback(physical location of start of array)
-static void walk_virtual_tree(uint64_t page_table_phys, void (*leaf_callback)(void* virt, uint64_t phys), void (*table_entry_callback)(uint64_t table_start_phys)) {
+static void walk_virtual_tree(uint64_t page_table_phys, void (*leaf_callback)(void* virt, uint64_t phys, bool can_execute), void (*table_entry_callback)(uint64_t table_start_phys)) {
     struct PageTableEntry* pml4_table = phys_to_hhdm(page_table_phys);
 
     for(int pml4_idx=0; pml4_idx < 256; pml4_idx++) {//up to 255 so no walking kernel pages
@@ -190,7 +190,7 @@ static void walk_virtual_tree(uint64_t page_table_phys, void (*leaf_callback)(vo
                         .pt_index = pt_idx,
                         .page_offset = 0,
                     };
-                    leaf_callback(virt_ptr.raw_ptr, phys_ptr);
+                    leaf_callback(virt_ptr.raw_ptr, phys_ptr, !pt->nx);
                 }
 
                 table_entry_callback(pd->addr << 12);
@@ -203,7 +203,7 @@ static void walk_virtual_tree(uint64_t page_table_phys, void (*leaf_callback)(vo
 }
 
 //a leaf callback, that frees the physical page
-static void leaf_callback_remove_page(void*, uint64_t phys) {
+static void leaf_callback_remove_page(void*, uint64_t phys, bool) {
     void* virt = phys_to_hhdm(phys);
     memset(virt, 0xEE, PAGE_SIZE);
     free4k_phys(phys);
@@ -219,8 +219,8 @@ void remove_virtual_addressing() {
     walk_virtual_tree(tree_root_phys, leaf_callback_remove_page, table_entry_callback_remove_page);
 }
 
-static void leaf_callback_clone_page(void* virt, uint64_t phys) {
-    allocate_ram_page(virt);
+static void leaf_callback_clone_page(void* virt, uint64_t phys, bool can_execute) {
+    allocate_ram_page(virt, can_execute);
     memcpy(virt, phys_to_hhdm(phys), PAGE_SIZE);
 }
 
@@ -269,7 +269,7 @@ static void fill_kernel_pml4() {
     }
 }
 
-static void map_page(uint64_t physical_addr, void* virtual_addr, bool can_cache) {
+static void map_page(uint64_t physical_addr, void* virtual_addr, bool can_cache, bool can_execute) {
     union PointerBitmap virt_addr_bitmap;
     virt_addr_bitmap.raw_ptr = virtual_addr;
 
@@ -315,7 +315,7 @@ static void map_page(uint64_t physical_addr, void* virtual_addr, bool can_cache)
     my_pt->user = true;//user mode
     my_pt->read_write = true;
     my_pt->present = true;//since it is in memory now
-    my_pt->nx = false;//don't want execute disable
+    my_pt->nx = !can_execute;//execute disable
 
     //refresh the cache
     invalidate_page(virtual_addr);
@@ -328,16 +328,16 @@ volatile void *setup_mmio(uint64_t phys_addr, uint64_t size) {
     void *result = mmio_start;
 
     for(uint64_t i=phys_addr; i<phys_addr + size; i += PAGE_SIZE) {
-        map_page(i, mmio_start, false);
+        map_page(i, mmio_start, false, false);
         mmio_start += PAGE_SIZE;
     }
 
     return result;
 }
 
-void allocate_ram_page(void* virtual_addr) {
+void allocate_ram_page(void* virtual_addr, bool can_execute) {
     uint64_t new_page_phys = malloc4k_phys();
-    map_page(new_page_phys, virtual_addr, true);
+    map_page(new_page_phys, virtual_addr, true, can_execute);
 }
 
 void deallocate_page(void* virtual_addr) {

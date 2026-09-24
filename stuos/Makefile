@@ -12,7 +12,6 @@ MALLOC_SRCS = $(wildcard $(MALLOC_SRC_DIR)/*.c)
 #frame pointer is needed for HCF backtraces
 #-Wno-packed-bitfield-compat gcc fixed a packing issue with chars in 4.4
 CFLAGS = -ffreestanding -m64 -nostdlib -O0 -fno-omit-frame-pointer -Wall -Wextra -Wunused -Werror -Wno-packed-bitfield-compat -mcmodel=kernel -fno-pie -mno-red-zone -march=x86-64 -I../abi -I ../custom_malloc/
-DBGFLAGS = -g
 LDFLAGS = -T $(SRC_DIR)/linker.lds -nostdlib
 
 # location of build artifacts
@@ -30,16 +29,16 @@ $(OS_BINARY): $(OBJS) $(RUST_LIB)
 # .o files require the .c source files
 $(OBJ_DIR)/%.o: $(SRC_DIR)/%.c
 	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) $(DBGFLAGS) -c $< -o $@
+	$(CC) $(CFLAGS) -g -c $< -o $@
 
 $(OBJ_DIR)/%.o: $(MALLOC_SRC_DIR)/%.c
 	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) $(DBGFLAGS) -c $< -o $@
+	$(CC) $(CFLAGS) -g -c $< -o $@
 
 # .o files could also require the corresponding .asm assembly file
 $(OBJ_DIR)/%.o: $(SRC_DIR)/%.asm
 	@mkdir -p $(dir $@)
-	nasm -f elf64 $< -o $@
+	nasm -g -f elf64 $< -o $@
 
 $(RUST_LIB): FORCE
 	cargo build
