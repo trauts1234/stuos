@@ -2,7 +2,7 @@
 
 FLAGS=""
 if [[ "$1" == "debug" ]]; then
-    FLAGS="-S -s -d cpu_reset,int"
+    FLAGS="-S -s"
 fi
 
 #-trace 'usb_*' -trace 'scsi_*' -D ./qemu.log

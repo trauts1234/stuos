@@ -59,12 +59,11 @@ void syscall_get_heap_start(struct GetHeapStartData* data) {
     data->output = get_process(0)->heap_start;
 }
 
-void syscall_write_fd(struct WriteFDData* data, struct ProcessorState *state) {
+void syscall_write_fd(struct WriteFDData* data) {
     if(DEBUG_SYSCALLS) printf("%s: write %llu bytes to fd %d\n", __func__, data->num_bytes, data->file_descriptor_number);
     struct FileOperations* file_operations = get_process(0)->file_descriptors[data->file_descriptor_number];
     if(file_operations == NULL) {HCF}
     data->num_bytes_actually_written = file_operations->write(file_operations->special_data, data->buffer, data->num_bytes);
-    printf("write success, returning to 0x%llx\n", state->rip);
 }
 
 //find a free file descriptor >= min_fd
@@ -87,7 +86,6 @@ void syscall_open_file(struct OpenFileData* data) {
 }
 
 void syscall_read_fd(struct ReadFDData* data, struct ProcessorState* processor_state) {
-    printf("reading\n");
     if(DEBUG_SYSCALLS) printf("%s: read up to %llu bytes from fd %d\n", __func__, data->num_bytes, data->file_descriptor_number);
     register_as_waiting((struct WaitingData) {
         .status = WAITING_FOR_READ,
@@ -98,7 +96,6 @@ void syscall_read_fd(struct ReadFDData* data, struct ProcessorState* processor_s
             .output_num_bytes_ptr = &data->num_bytes_actually_read,
         }
     });
-    printf("read\n");
     run_next_task(processor_state);
 }
 
