@@ -68,8 +68,11 @@ void kmain(void) {
 
     // struct VNode fuzz = vfs_get("/", "testing.out", 0);
     // const struct LoadedProgram elf = instantiate_ELF(fuzz, (char*[]){"testing.out", "helloworld", NULL});
-    struct VNode fuzz = vfs_get("/", "stush", 0);
-    const struct LoadedProgram elf = instantiate_ELF(fuzz, (char*[]){"stush", NULL});
+    // struct VNode fuzz = vfs_get("/", "stush", 0);
+    // const struct LoadedProgram elf = instantiate_ELF(fuzz, (char*[]){"stush", NULL});
+
+    struct VNode fuzz = vfs_get("/", "python", 0);
+    const struct LoadedProgram elf = instantiate_ELF(fuzz, (char*[]){"python", NULL});
 
     add_new_process(elf);
     run_next_task(NULL);
