@@ -1,9 +1,9 @@
 use core::{ops::{Index, IndexMut}, sync::atomic::{AtomicI32, Ordering}};
 
-use alloc::{string::String, vec::Vec};
+use alloc::{string::{String, ToString}, vec::Vec};
 use spin::Mutex;
 
-use crate::{pipes_and_files::FileOperations, rs_uapi::limits::OPEN_MAX};
+use crate::{pipes_and_files::{FileOperations, fop_generate_stdin, fop_generate_stdout}, rs_uapi::limits::OPEN_MAX};
 
 pub static PROCESSES: Mutex<ProcessList> = Mutex::new(ProcessList::new());
 
@@ -57,7 +57,6 @@ pub enum WaitingState {
 pub struct LoadedProgram {
     heap_start: *const (),
     page_table_root: u64,//or usize?
-    file_descriptors: [Option<FileOperations>; OPEN_MAX],
     initial_state: ProcessorState,
 }
 
@@ -91,8 +90,6 @@ pub struct ProcessorState {
 
 #[derive(Clone, Copy)]
 pub struct ProcessIdentity {
-    //only for searching - you should already know this
-    pid: Pid,
     pub pgrp: Pid,
     pub ppid: Pid,
 }
@@ -100,6 +97,9 @@ pub struct ProcessIdentity {
 //can I be sure this send is OK? perhaps heap_start should just be usize
 unsafe impl Send for Process{}
 pub struct Process {
+    //only for searching - you should already know this
+    pid: Pid,
+    
     /// PAGE_SIZE aligned, represents where the ELF's heap starts - This is only to tell the ELF if they request this information via syscall
     pub heap_start: *const (),
 
@@ -117,6 +117,20 @@ pub struct Process {
     pub waiting_state: Option<WaitingState>,
 }
 
+fn default_fd() -> [Option<FileOperations>; OPEN_MAX] {
+    let mut result = [const { None }; OPEN_MAX];
+    result[0] = Some(unsafe {
+        (*fop_generate_stdin()).clone()
+    });
+    result[1] = Some(unsafe {
+        (*fop_generate_stdout()).clone()
+    });
+    result[2] = Some(unsafe {
+        (*fop_generate_stdout()).clone()
+    });
+
+    result
+}
 pub struct ProcessList {
     inner: Vec<Process>
 }
@@ -124,22 +138,57 @@ impl ProcessList {
     const fn new() -> Self {
         Self { inner: Vec::new() }
     }
-    pub fn push(&mut self, process: LoadedProgram) {
-        self.inner.push(process);
+    #[unsafe(no_mangle)]
+    pub extern "C" fn push_init_process(&mut self, program: LoadedProgram) {
+
+        let new_proc = Process {
+            pid: allocate_pid(),
+            heap_start: program.heap_start,
+            file_descriptors: default_fd(),
+            page_table_root: program.page_table_root,
+            cwd: "/".to_string(),
+            paused_state: program.initial_state,
+            waiting_state: None,
+            identity: ProcessIdentity {pgrp: 1, ppid: 0}
+        };
+
+        self.inner.push(new_proc);
+    }
+    #[unsafe(no_mangle)]
+    pub extern "C" fn push(&mut self, program: LoadedProgram, parent: Pid) {
+        let curr_proc = &self[parent];
+
+        let new_proc = Process {
+            pid: allocate_pid(),
+            heap_start: program.heap_start,
+            file_descriptors: default_fd(),
+            page_table_root: program.page_table_root,
+            cwd: curr_proc.cwd.clone(),
+            paused_state: program.initial_state,
+            waiting_state: None,
+            identity: curr_proc.identity
+        };
+
+        self.inner.push(new_proc);
     }
     pub fn remove(&mut self, pid: Pid) {
-
+        let idx = self.inner.iter().enumerate().find(|(_, x)| x.pid == pid).map(|(i, _)| i).unwrap();
+        let removed = self.inner.remove(idx);
+        assert!(matches!(removed.waiting_state, Some(WaitingState::AmZombie {..})));
+        for fd in removed.file_descriptors.into_iter().filter_map(|x| x) {
+            (fd.close)(fd.special_data);
+        }
     }
 }
 impl Index<Pid> for ProcessList {
     type Output = Process;
 
     fn index(&self, index: Pid) -> &Self::Output {
-        self.inner.iter().find(|x| x.identity.pid == index).unwrap()
+        self.inner.iter().find(|x| x.pid == index).unwrap()
     }
 }
 impl IndexMut<Pid> for ProcessList {
     fn index_mut(&mut self, index: Pid) -> &mut Self::Output {
-        self.inner.iter_mut().find(|x| x.identity.pid == index).unwrap()
+        self.inner.iter_mut().find(|x| x.pid == index).unwrap()
     }
 }

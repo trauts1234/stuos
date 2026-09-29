@@ -17,7 +17,7 @@ impl ProcessQueue {
         Self{ others: VecDeque::new() }
     }
 
-    pub fn get_current(&self) -> Option<Pid> {
+    fn get_current(&self) -> Option<Pid> {
         self.others.front().copied()
     }
     fn get_others(&self) -> &VecDeque<Pid> {
@@ -30,6 +30,13 @@ impl ProcessQueue {
             self.others.push_back(curr);
         }
         return self.others.front().copied().unwrap()
+    }
+    fn schedule_process(&mut self, pid: Pid) {
+        self.others.push_back(pid);
+    }
+    //stops the current process from being scheduled, but it stays in the process list
+    fn deschedule_current_process(&mut self) {
+        self.others.pop_front().expect("tried to remove current process but there wasn't one");
     }
 
     fn run_next_task(&mut self, interrupted_processor_state: *const ProcessorState) -> ! {
@@ -76,7 +83,9 @@ impl ProcessQueue {
                         }
                     }
                 }
-                Some(WaitingState::AmZombie { exit_code: _ }) => {}
+                Some(WaitingState::AmZombie { exit_code: _ }) => {
+                    self.deschedule_current_process();
+                }
             }
         }
     }
@@ -88,4 +97,9 @@ impl ProcessQueue {
 pub extern "C" fn run_next_task(interrupted_processor_state: *const ProcessorState) -> ! {
     let mut queue = PROCESSES_QUEUE.lock();
     queue.run_next_task(interrupted_processor_state);
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn schedule_process(pid: Pid) {
+    let mut queue = PROCESSES_QUEUE.lock();
+    queue.schedule_process(pid);
 }

@@ -30,7 +30,7 @@ static void just_free_close(void* special_data) {
     free(special_data);
 }
 
-static uint64_t pipe_write(void* special_data, const uint8_t* output_buf, uint64_t num) {
+static size_t pipe_write(void* special_data, const void* output_buf, size_t num) {
     if(special_data == NULL) {HCF}
     struct PipeSpecialData* data = ((struct PipeSpecialData*)special_data)->other_pipe_data;
     if(data == NULL) {HCF}//TODO return error, as this can happen
@@ -50,7 +50,7 @@ static uint64_t pipe_write(void* special_data, const uint8_t* output_buf, uint64
     return num;
 }
 
-static struct FopReadResult pipe_read(void* special_data, uint8_t* output_buf, uint64_t num) {
+static struct FopReadResult pipe_read(void* special_data, void* output_buf, size_t num) {
     if(special_data == NULL) {HCF}
     struct PipeSpecialData* data = special_data;
 
@@ -95,14 +95,15 @@ static void pipe_close(void* special_data) {
 }
 
 /// Prints to stdout, and can be put as a file operation
-static uint64_t stdout_write(void* special_data, const uint8_t* output_buf, uint64_t num) {
+static size_t stdout_write(void* special_data, const void* output_buf, size_t num) {
     if(special_data != NULL) {HCF}
+    const char *output = output_buf;
     for(uint64_t i=0; i<num; i++) {
-        tty_write_char(output_buf[i]);
+        tty_write_char(output[i]);
     }
     return num;
 }
-static struct FopReadResult stdin_read(void* special_data, uint8_t* output_buf, uint64_t num) {
+static struct FopReadResult stdin_read(void* special_data, void* output_buf, size_t num) {
     if(special_data != NULL) {HCF}
 
     uint64_t bytes_read = tty_read((char*)output_buf, num);
@@ -118,12 +119,12 @@ static struct FopReadResult stdin_read(void* special_data, uint8_t* output_buf, 
         .bytes_read = bytes_read,
     };
 }
-static uint64_t file_write(void* special_data, const uint8_t* input_buf, uint64_t num) {
+static size_t file_write(void* special_data, const void* input_buf, size_t num) {
     struct OpenVnodeSpecialData* data = special_data;
     return data->file.write_file(data->file.id, data->offset, input_buf, num);
 }
 
-static struct FopReadResult file_read(void* special_data, uint8_t* output_buf, uint64_t num) {
+static struct FopReadResult file_read(void* special_data, void* output_buf, size_t num) {
     struct OpenVnodeSpecialData* data = special_data;
     uint64_t bytes_read = data->file.read_file(data->file.id, data->offset, output_buf, num);
     data->offset += bytes_read;//skip forward

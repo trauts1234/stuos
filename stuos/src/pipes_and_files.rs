@@ -4,7 +4,7 @@ use core::ffi::{c_int, c_void};
 ///
 /// Multiple file descriptors can point to me
 #[repr(C)]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FileOperations {
     /// How many file descriptors point to me
     pub reference_count: u64,
@@ -55,3 +55,8 @@ pub type FopLseekFn = extern "C" fn(
 
 /// Destructs the FileOperations
 pub type FopCloseFn = extern "C" fn(special_data: *mut c_void);
+
+unsafe extern "C" {
+    pub fn fop_generate_stdout() -> *mut FileOperations;
+    pub fn fop_generate_stdin() -> *mut FileOperations;
+}
