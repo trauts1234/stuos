@@ -1,7 +1,7 @@
 #ifndef UAPI_LIMITS_H
 #define UAPI_LIMITS_H
 
-#define OPEN_MAX 10
+#define OPEN_MAX 10LLU
 
 #define SCHAR_MAX 127
 #define SHRT_MAX 32767

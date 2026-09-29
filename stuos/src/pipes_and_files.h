@@ -4,16 +4,17 @@
 
 #include <uapi/stdint.h>
 #include <uapi/stdbool.h>
+#include <uapi/stddef.h>
 
 struct FopReadResult {
     // Set as true if the operation has completed
     bool read_something;
     // if read_something, 0 = EOF, >0 = bytes read
-    uint64_t bytes_read;
+    size_t bytes_read;
 };
-typedef struct FopReadResult (*FopReadFn)(void* special_data, uint8_t* output_buf, uint64_t num_bytes);
+typedef struct FopReadResult (*FopReadFn)(void* special_data, void* output_buf, size_t num_bytes);
 /// Attempts to write `num_bytes` from `output_buf` using `special_data`, returning the number of bytes actually written
-typedef uint64_t (*FopWriteFn)(void* special_data, const uint8_t* input_buf, uint64_t num_bytes);
+typedef size_t (*FopWriteFn)(void* special_data, const void* input_buf, size_t num_bytes);
 
 typedef uint64_t (*FopLseekFn)(void* special_data, int64_t off, int whence);
 /// Destructs the FileOperations

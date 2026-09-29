@@ -1,0 +1,1 @@
+pub const WIFEXITED_MASK: i32 = 0x100;

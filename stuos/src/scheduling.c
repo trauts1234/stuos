@@ -7,22 +7,7 @@
 #include <uapi/signal.h>
 #include <uapi/wait.h>
 
-#define MAX_THREADS_COUNT 1
-
 #define DEBUG_SCHEDULER false
-
-/// @brief Starts a userland program
-__attribute__((noreturn))
-extern void start_userland(struct ProcessorState* processor_state);
-
-int allocate_pid() {
-    static int next = 1;
-    if(next < 0) HCF
-    return next++;
-}
-
-//current item in the looping process linked list of doom
-struct ProcessData* current_process_in_ll = NULL;
 
 // previous can be null
 // pid can be 0, for current process
@@ -71,57 +56,6 @@ struct ProcessData* get_process_and_previous(int pid, struct ProcessData** previ
 
     if(previous) *previous = prev_ptr;
     return ptr;
-}
-
-int add_new_process(struct LoadedProgram program) {
-
-    int pgrp = 1;
-    int ppid = 0;
-    char* cwd;
-    if(current_process_in_ll) {
-        //inherit
-        pgrp = current_process_in_ll->pgrp;
-        ppid = current_process_in_ll->pid;
-        cwd = malloc(strlen(current_process_in_ll->cwd) + 1);
-        strcpy(cwd, current_process_in_ll->cwd);
-    } else {
-        cwd = malloc(2);
-        strcpy(cwd, "/");
-    }
-
-    struct ProcessData* new = malloc(sizeof(struct ProcessData));
-    *new = (struct ProcessData) {
-        .heap_start = program.heap_start,
-        //file_descriptors is set later
-        .pid = allocate_pid(),
-        .pgrp = pgrp,
-        .ppid = ppid,
-        .page_table_root = program.page_table_root,
-        .cwd = cwd,
-        .paused_state = program.initial_state,
-        .waiting_data = {
-            .status = NOT_WAITING,
-        }
-        //next_process_to_run is set later
-    };
-
-    memcpy(&new->file_descriptors, program.file_descriptors, sizeof(struct FileOperations*) * OPEN_MAX);
-    for(int i=0; i<_RLIMIT_MAX; i++) {
-        new->limit_data[i].limit = (struct rlimit) {
-            .rlim_cur = RLIM_INFINITY,
-            .rlim_max = RLIM_INFINITY
-        };
-    }
-
-    if(current_process_in_ll == NULL) {
-        new->next_process_to_run = new;// just one process, so point at myself
-        current_process_in_ll = new;
-    } else {
-        //insert new just after the current process
-        new->next_process_to_run = current_process_in_ll->next_process_to_run;
-        current_process_in_ll->next_process_to_run = new;
-    }
-    return new->pid;
 }
 
 void replace_current_process(struct LoadedProgram program) {

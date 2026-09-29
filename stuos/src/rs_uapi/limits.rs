@@ -1,0 +1,1 @@
+pub const OPEN_MAX: usize = 10;
