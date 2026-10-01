@@ -23,12 +23,7 @@ uint8_t *const syscall_stack_top = syscall_stack + sizeof(syscall_stack);
 
 void syscall_halt(struct HaltSyscallData *data) {
     if(DEBUG_SYSCALLS) printf("%s: exit code %d\n", __func__, data->exit_code);
-    register_as_waiting((struct WaitingData) {
-        .status = I_AM_ZOMBIE,
-        .zombie = {
-            .exit_code=data->exit_code
-        }
-    });
+    set_current_as_zombie(data->exit_code);//TODO this should be a KILL-esque signal????
     run_next_task(NULL);
 }
 

@@ -1,13 +1,11 @@
-use core::{ops::{Index, IndexMut}, sync::atomic::{AtomicI32, Ordering}};
+use core::sync::atomic::{AtomicI32, Ordering};
+use alloc::string::{String, ToString};
+use crate::{pipes_and_files::{FileOperations, fop_generate_stdin, fop_generate_stdout}, rs_uapi::{limits::OPEN_MAX, types::Pid, wait::WIFEXITED_MASK}};
 
-use alloc::{string::{String, ToString}, vec::Vec};
-use spin::Mutex;
+unsafe extern "C" {
+    fn start_userland(processor_state: *const ProcessorState) -> !;
+}
 
-use crate::{pipes_and_files::{FileOperations, fop_generate_stdin, fop_generate_stdout}, rs_uapi::limits::OPEN_MAX};
-
-pub static PROCESSES: Mutex<ProcessList> = Mutex::new(ProcessList::new());
-
-pub type Pid = i32;
 static NEXT_FREE_PID: AtomicI32 = AtomicI32::new(1);
 fn allocate_pid() -> Pid {
     let next = NEXT_FREE_PID.fetch_add(1, Ordering::Relaxed);
@@ -90,16 +88,19 @@ pub struct ProcessorState {
 
 #[derive(Clone, Copy)]
 pub struct ProcessIdentity {
+    pub pid: Pid,
     pub pgrp: Pid,
     pub ppid: Pid,
+}
+
+pub struct PollResult {
+    pub stop_waiting: bool,
+    pub remove_zombie: Option<Pid>
 }
 
 //can I be sure this send is OK? perhaps heap_start should just be usize
 unsafe impl Send for Process{}
 pub struct Process {
-    //only for searching - you should already know this
-    pid: Pid,
-    
     /// PAGE_SIZE aligned, represents where the ELF's heap starts - This is only to tell the ELF if they request this information via syscall
     pub heap_start: *const (),
 
@@ -117,6 +118,78 @@ pub struct Process {
     pub waiting_state: Option<WaitingState>,
 }
 
+impl Drop for Process {
+    fn drop(&mut self) {
+        assert!(matches!(self.waiting_state, Some(WaitingState::AmZombie {..})));
+        for fd in self.file_descriptors.iter().filter_map(|x| x.as_ref()) {
+            (fd.close)(fd.special_data);
+        }
+        todo!();
+    }
+}
+
+impl Process {
+    pub fn create(program: LoadedProgram) -> Self {
+        Self {
+            heap_start: program.heap_start,
+            file_descriptors: default_fd(),
+            page_table_root: program.page_table_root,
+            cwd: "/".to_string(),
+            paused_state: program.initial_state,
+            waiting_state: None,
+            identity: ProcessIdentity {pgrp: 1, ppid: 0, pid: allocate_pid()}
+        }
+    }
+    pub fn create_with_parent(program: LoadedProgram, parent: &Self) -> Self {
+        Process {
+            heap_start: program.heap_start,
+            file_descriptors: default_fd(),
+            page_table_root: program.page_table_root,
+            cwd: parent.cwd.clone(),
+            paused_state: program.initial_state,
+            waiting_state: None,
+            identity: ProcessIdentity { pid: allocate_pid(), pgrp: parent.identity.pgrp, ppid: parent.identity.ppid }
+        }
+    }
+
+    pub fn poll<'a>(&'a self, others: impl IntoIterator<Item=&'a Process>) -> PollResult {
+        match self.waiting_state {
+            None => {
+                unsafe {start_userland(&self.paused_state)}
+            },
+            Some(WaitingState::WaitingRead { fd_num, output_buf, num_bytes, output_num_bytes_ptr }) => {
+                let fop = self.file_descriptors[fd_num].as_ref().unwrap();
+                let result = (fop.read_nonblocking)(fop.special_data, output_buf, num_bytes);
+                if result.read_something {
+                    unsafe {*output_num_bytes_ptr = result.bytes_read}
+                    PollResult{ stop_waiting: true, remove_zombie: None }
+                } else {
+                    PollResult { stop_waiting: false, remove_zombie: None }
+                }
+            }
+            Some(WaitingState::WaitingChild {child_type, status, options, output_pid }) => {
+                assert!(options == 0);//TODO options
+                //TODO what if I wait for myself
+                for proc in others {
+                    if proc.identity.ppid != self.identity.pid {continue;}//only find children
+                    if !child_type.is_valid(self.identity.pid, proc.identity.pid, proc.identity.pgrp) {continue;}//only find acceptable children
+                    if let Some(WaitingState::AmZombie { exit_code }) = proc.waiting_state {
+                        assert!(!output_pid.is_null());
+                        unsafe {*output_pid = exit_code.into();}
+                        if !status.is_null() {
+                            unsafe {*status = exit_code as i32 | WIFEXITED_MASK}
+                            return PollResult { stop_waiting: true, remove_zombie: Some(proc.identity.pid) };
+                        }
+
+                    }
+                }
+                PollResult { stop_waiting: false, remove_zombie: None }
+            }
+            Some(WaitingState::AmZombie { .. }) => {PollResult { stop_waiting: false, remove_zombie: None }}
+        }
+    }
+}
+
 fn default_fd() -> [Option<FileOperations>; OPEN_MAX] {
     let mut result = [const { None }; OPEN_MAX];
     result[0] = Some(unsafe {
@@ -130,65 +203,4 @@ fn default_fd() -> [Option<FileOperations>; OPEN_MAX] {
     });
 
     result
-}
-pub struct ProcessList {
-    inner: Vec<Process>
-}
-impl ProcessList {
-    const fn new() -> Self {
-        Self { inner: Vec::new() }
-    }
-    #[unsafe(no_mangle)]
-    pub extern "C" fn push_init_process(&mut self, program: LoadedProgram) {
-
-        let new_proc = Process {
-            pid: allocate_pid(),
-            heap_start: program.heap_start,
-            file_descriptors: default_fd(),
-            page_table_root: program.page_table_root,
-            cwd: "/".to_string(),
-            paused_state: program.initial_state,
-            waiting_state: None,
-            identity: ProcessIdentity {pgrp: 1, ppid: 0}
-        };
-
-        self.inner.push(new_proc);
-    }
-    #[unsafe(no_mangle)]
-    pub extern "C" fn push(&mut self, program: LoadedProgram, parent: Pid) {
-        let curr_proc = &self[parent];
-
-        let new_proc = Process {
-            pid: allocate_pid(),
-            heap_start: program.heap_start,
-            file_descriptors: default_fd(),
-            page_table_root: program.page_table_root,
-            cwd: curr_proc.cwd.clone(),
-            paused_state: program.initial_state,
-            waiting_state: None,
-            identity: curr_proc.identity
-        };
-
-        self.inner.push(new_proc);
-    }
-    pub fn remove(&mut self, pid: Pid) {
-        let idx = self.inner.iter().enumerate().find(|(_, x)| x.pid == pid).map(|(i, _)| i).unwrap();
-        let removed = self.inner.remove(idx);
-        assert!(matches!(removed.waiting_state, Some(WaitingState::AmZombie {..})));
-        for fd in removed.file_descriptors.into_iter().filter_map(|x| x) {
-            (fd.close)(fd.special_data);
-        }
-    }
-}
-impl Index<Pid> for ProcessList {
-    type Output = Process;
-
-    fn index(&self, index: Pid) -> &Self::Output {
-        self.inner.iter().find(|x| x.pid == index).unwrap()
-    }
-}
-impl IndexMut<Pid> for ProcessList {
-    fn index_mut(&mut self, index: Pid) -> &mut Self::Output {
-        self.inner.iter_mut().find(|x| x.pid == index).unwrap()
-    }
 }

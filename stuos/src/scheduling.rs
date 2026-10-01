@@ -1,94 +1,66 @@
-use crate::{processes::{PROCESSES, Pid, ProcessIdentity, ProcessorState, WaitingState}, rs_uapi::wait::WIFEXITED_MASK};
-use alloc::collections::VecDeque;
+use crate::{processes::{LoadedProgram, Process, ProcessorState, WaitingState}, rs_uapi::types::Pid};
+use alloc::{boxed::Box, collections::VecDeque};
 use spin::Mutex;
-
-unsafe extern "C" {
-    fn start_userland(processor_state: *const ProcessorState) -> !;
-}
 
 //the front element is the currently running process
 static PROCESSES_QUEUE: Mutex<ProcessQueue> = Mutex::new(ProcessQueue::new());
 
 struct ProcessQueue {
-    others: VecDeque<Pid>
+    processes: VecDeque<Box<Process>>,
 }
 impl ProcessQueue {
     const fn new() -> Self {
-        Self{ others: VecDeque::new() }
+        Self{ processes: VecDeque::new() }
     }
 
-    fn get_current(&self) -> Option<Pid> {
-        self.others.front().copied()
+    fn get_current(&self) -> Option<&Process> {
+        self.processes.front().map(|b| b.as_ref())
     }
-    fn get_others(&self) -> &VecDeque<Pid> {
-        &self.others
+    fn get_current_mut(&mut self) -> Option<&mut Process> {
+        self.processes.front_mut().map(|b| b.as_mut())
     }
 
-    //panics if there are no processes
-    fn skip_to_next_process(&mut self) -> Pid {
-        if let Some(curr) = self.others.pop_front() {
-            self.others.push_back(curr);
-        }
-        return self.others.front().copied().unwrap()
-    }
-    fn schedule_process(&mut self, pid: Pid) {
-        self.others.push_back(pid);
-    }
-    //stops the current process from being scheduled, but it stays in the process list
-    fn deschedule_current_process(&mut self) {
-        self.others.pop_front().expect("tried to remove current process but there wasn't one");
+    fn push(&mut self, program: LoadedProgram) -> Pid {
+
+        let new_proc = match self.get_current() {
+            Some(parent) => Process::create_with_parent(program,parent),
+            None => Process::create(program)
+        };
+        let new_pid = new_proc.identity.pid;
+        self.processes.push_back(Box::new(new_proc));
+        new_pid
     }
 
     fn run_next_task(&mut self, interrupted_processor_state: *const ProcessorState) -> ! {
-        let mut procs = PROCESSES.lock();
-
-        if let Some(curr_pid) = self.get_current() {
+        if let Some(curr) = self.get_current_mut() {
             assert!(!interrupted_processor_state.is_null());
-            unsafe{procs[curr_pid].paused_state = *interrupted_processor_state;}
+            unsafe{curr.paused_state = *interrupted_processor_state;}
         } else {
             assert!(interrupted_processor_state.is_null())
         }
 
         loop {
-            let curr_pid = self.skip_to_next_process();
-            let curr = &mut procs[curr_pid];
+            //move the previous process to the back
+            let prev = self.processes.pop_front().unwrap();
+            self.processes.push_back(prev);
 
-            match curr.waiting_state {
-                None => {
-                    unsafe {start_userland(&curr.paused_state)}
-                },
-                Some(WaitingState::WaitingRead { fd_num, output_buf, num_bytes, output_num_bytes_ptr }) => {
-                    let fop = curr.file_descriptors[fd_num].as_ref().unwrap();
-                    let result = (fop.read_nonblocking)(fop.special_data, output_buf, num_bytes);
-                    if result.read_something {
-                        unsafe {*output_num_bytes_ptr = result.bytes_read}
-                        curr.waiting_state = None;
-                    }
-                }
-                Some(WaitingState::WaitingChild {child_type, status, options, output_pid }) => {
-                    assert!(options == 0);//TODO options
-                    //TODO what if I wait for myself
-                    for &proc_pid in self.get_others() {
-                        let ProcessIdentity{pgrp: proc_pgrp, ppid: proc_ppid, ..} = procs[proc_pid].identity;
-                        
-                        if proc_ppid != curr_pid {continue;}//only find children
-                        if !child_type.is_valid(curr_pid, proc_pid, proc_pgrp) {continue;}//only find acceptable children
-                        if let Some(WaitingState::AmZombie { exit_code }) = procs[proc_pid].waiting_state {
-                            assert!(!output_pid.is_null());
-                            unsafe {*output_pid = exit_code.into();}
-                            if !status.is_null() {
-                                unsafe {*status = exit_code as i32 | WIFEXITED_MASK}
-                            }
-
-                        }
-                    }
-                }
-                Some(WaitingState::AmZombie { exit_code: _ }) => {
-                    self.deschedule_current_process();
-                }
+            let curr = self.get_current().unwrap();
+            let result = curr.poll(self.processes.iter().map(|b| b.as_ref()));
+            if result.stop_waiting {
+                self.get_current_mut().unwrap().waiting_state = None;
+            }
+            if let Some(pid) = result.remove_zombie {
+                let (index, _) = self.processes.iter().enumerate().find(|(_,x)| x.identity.pid == pid).unwrap();
+                self.processes.swap_remove_back(index);
             }
         }
     }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn add_new_process(program: LoadedProgram) -> Pid {
+    let mut queue = PROCESSES_QUEUE.lock();
+    queue.push(program)
 }
 
 /// Called by an assembly interrupt handler
@@ -98,8 +70,9 @@ pub extern "C" fn run_next_task(interrupted_processor_state: *const ProcessorSta
     let mut queue = PROCESSES_QUEUE.lock();
     queue.run_next_task(interrupted_processor_state);
 }
+
 #[unsafe(no_mangle)]
-pub extern "C" fn schedule_process(pid: Pid) {
+pub extern "C" fn set_current_as_zombie(exit_code: u8) {
     let mut queue = PROCESSES_QUEUE.lock();
-    queue.schedule_process(pid);
+    queue.processes[0].waiting_state = Some(WaitingState::AmZombie { exit_code })
 }
