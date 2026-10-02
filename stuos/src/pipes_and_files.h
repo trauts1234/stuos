@@ -24,8 +24,6 @@ typedef void (*FopCloseFn) (void* special_data);
 ///
 /// Multiple file descriptors can point to me
 struct FileOperations {
-    /// How many file descriptors point to me
-    uint64_t reference_count;
     /// Heap allocated extra data that the FileOperations uses to do stuff
     void* special_data;
     /// Call this with `special_data` to try and read nonblocking - this should be polled instead of the calling process getting a turn on the scheduler
@@ -40,13 +38,7 @@ struct FileOperations {
     bool is_a_tty;
 };
 
-// these functions generate FileOperations that can be put in the file descriptor table of a process
-struct FileOperations* fop_generate_stdout();
-struct FileOperations* fop_generate_stdin();
 struct FileOperations* fop_generate_file(const char* cwd, const char* path, int open_flags);
 void fop_generate_pipe(struct FileOperations* output[2]);
-
-/// decrements reference count and/or frees, as required
-void free_file_operations(struct FileOperations* ptr);
 
 #endif

@@ -40,8 +40,8 @@ void syscall_request_page(struct RequestPageData* data) {
     }
     assert(((uint64_t)data->page_virt_addr & PAGE_MASK) == 0);
 
-    struct LimitData *lim = &get_process(0)->limit_data[RLIMIT_DATA];
-    if(lim->current_value + PAGE_SIZE > lim->limit.rlim_cur) {
+    struct LimitData lim = get_rlimit(RLIMIT_DATA);
+    if(lim.current_value + PAGE_SIZE > lim.limit.rlim_cur) {
         data->err = ENOMEM;
         return;
     }
@@ -51,12 +51,12 @@ void syscall_request_page(struct RequestPageData* data) {
 
 void syscall_get_heap_start(struct GetHeapStartData* data) {
     if(DEBUG_SYSCALLS) printf("%s: \n", __func__);
-    data->output = get_process(0)->heap_start;
+    data->output = get_current_heap_start();
 }
 
 void syscall_write_fd(struct WriteFDData* data) {
     if(DEBUG_SYSCALLS) printf("%s: write %llu bytes to fd %d\n", __func__, data->num_bytes, data->file_descriptor_number);
-    struct FileOperations* file_operations = get_process(0)->file_descriptors[data->file_descriptor_number];
+    const struct FileOperations* file_operations = get_file_descriptor(data->file_descriptor_number);
     if(file_operations == NULL) {HCF}
     data->num_bytes_actually_written = file_operations->write(file_operations->special_data, data->buffer, data->num_bytes);
 }
@@ -64,7 +64,7 @@ void syscall_write_fd(struct WriteFDData* data) {
 //find a free file descriptor >= min_fd
 static int find_free_fd(int min_fd) {
     for(int fd_num=min_fd; fd_num < OPEN_MAX; fd_num++) {
-        if(get_process(0)->file_descriptors[fd_num] == 0) {
+        if(get_file_descriptor(fd_num) == 0) {
             return fd_num;
         }
     }
@@ -73,10 +73,9 @@ static int find_free_fd(int min_fd) {
 
 void syscall_open_file(struct OpenFileData* data) {
     if(DEBUG_SYSCALLS) printf("%s: path: %s\n", __func__, data->path);
-    struct FileOperations** fd_list = get_process(0)->file_descriptors;
-    struct FileOperations* file = fop_generate_file(get_process(0)->cwd, data->path, data->open_flags);
+    struct FileOperations* file = fop_generate_file(get_cwd(), data->path, data->open_flags);
     int fd_num = find_free_fd(0);
-    fd_list[fd_num] = file;
+    *get_file_descriptor(fd_num) = file;
     data->output_file_descriptor_number = fd_num;
 }
 
@@ -317,21 +316,12 @@ void syscall_tcgetattr(struct TcGetAttrData *data) {
 void syscall_setrlimit(struct SetRLimitData *data) {
     if(DEBUG_SYSCALLS) printf("%s: limit %d = soft: %llu, hard: %llu\n", __func__, data->resource, data->limit.rlim_cur, data->limit.rlim_max);
 
-    assert(data->resource >= 0 && data->resource < _RLIMIT_MAX);
-    get_process(0)->limit_data[data->resource].limit = data->limit;
+    set_rlimit(data->resource, data->limit);
 }
 void syscall_getrlimit(struct GetRLimitData *data) {
-    if(DEBUG_SYSCALLS) printf("%s: limit %d = soft: %llu, hard: %llu\n", __func__, data->resource, data->limit.rlim_cur, data->limit.rlim_max);
+    if(DEBUG_SYSCALLS) printf("%s: limit %d\n", __func__, data->resource);
 
-    if(data->resource < 0 || data->resource >= _RLIMIT_MAX) {
-        data->err = EINVAL;
-        return;
-    }
-    if(data->limit.rlim_cur > data->limit.rlim_max) {
-        data->err = EINVAL;
-        return;
-    }
-    data->limit = get_process(0)->limit_data[data->resource].limit;
+    data->limit = get_rlimit(data->resource).limit
 }
 
 void syscall_yield(void*, struct ProcessorState *processor_state) {

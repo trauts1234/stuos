@@ -1,6 +1,7 @@
 #ifndef SCHEDULING_H
 #define SCHEDULING_H
 
+#include "pipes_and_files.h"
 #include "signal.h"
 #include <uapi/resource.h>
 #include <uapi/signal.h>
@@ -22,7 +23,7 @@ struct ProcessorState {
 };
 
 struct LoadedProgram {
-    const void* heap_start;
+    void* heap_start;
     uint64_t page_table_root;
     struct ProcessorState initial_state;
 };
@@ -42,6 +43,14 @@ pid_t add_new_process(struct LoadedProgram program);
 void run_next_task(const struct ProcessorState* const interrupted_processor_state) __attribute__((noreturn));
 
 void set_current_as_zombie(uint8_t exit_code);
+
+void *get_current_heap_start();
+
+const struct FileOperations *get_file_descriptor(int fd_number);
+void set_file_descriptor(int fd_number, struct FileOperations operations);
+const char *get_cwd();
+struct LimitData get_rlimit(int resource);
+void set_rlimit(int resource, struct rlimit new_limit);
 
 
 #endif

@@ -1,6 +1,6 @@
-use core::sync::atomic::{AtomicI32, Ordering};
-use alloc::string::{String, ToString};
-use crate::{pipes_and_files::{FileOperations, fop_generate_stdin, fop_generate_stdout}, rs_uapi::{limits::OPEN_MAX, types::Pid, wait::WIFEXITED_MASK}};
+use core::{ptr::null_mut, sync::atomic::{AtomicI32, Ordering}};
+use alloc::{ffi::CString, rc::Rc};
+use crate::{pipes_and_files::{FileOperations, do_nothing_close, invalid_lseek, invalid_read, invalid_write, stdin_read, stdout_write}, rs_uapi::{limits::OPEN_MAX, resource::{RLim, RLimit}, types::Pid, wait::WIFEXITED_MASK}};
 
 unsafe extern "C" {
     fn start_userland(processor_state: *const ProcessorState) -> !;
@@ -11,6 +11,13 @@ fn allocate_pid() -> Pid {
     let next = NEXT_FREE_PID.fetch_add(1, Ordering::Relaxed);
     assert!(next > 0);
     next
+}
+
+#[derive(Default, Clone, Copy)]
+#[repr(C)]
+pub struct LimitData {
+    pub current_value: RLim,
+    pub limit: RLimit
 }
 
 #[derive(Clone, Copy)]
@@ -53,7 +60,7 @@ pub enum WaitingState {
 
 #[repr(C)]
 pub struct LoadedProgram {
-    heap_start: *const (),
+    heap_start: *mut (),
     page_table_root: u64,//or usize?
     initial_state: ProcessorState,
 }
@@ -102,9 +109,9 @@ pub struct PollResult {
 unsafe impl Send for Process{}
 pub struct Process {
     /// PAGE_SIZE aligned, represents where the ELF's heap starts - This is only to tell the ELF if they request this information via syscall
-    pub heap_start: *const (),
+    pub heap_start: *mut (),
 
-    pub file_descriptors: [Option<FileOperations>; OPEN_MAX],
+    pub file_descriptors: [Option<Rc<FileOperations>>; OPEN_MAX],
 
     pub page_table_root: u64,//or usize?
 
@@ -112,7 +119,9 @@ pub struct Process {
 
     //TODO signals
 
-    pub cwd: String,//or some sort of CString
+    pub cwd: CString,
+
+    pub memory_limit: LimitData,
 
     pub paused_state: ProcessorState,
     pub waiting_state: Option<WaitingState>,
@@ -121,10 +130,7 @@ pub struct Process {
 impl Drop for Process {
     fn drop(&mut self) {
         assert!(matches!(self.waiting_state, Some(WaitingState::AmZombie {..})));
-        for fd in self.file_descriptors.iter().filter_map(|x| x.as_ref()) {
-            (fd.close)(fd.special_data);
-        }
-        todo!();
+        todo!("file descriptors do their own thing, I just need to handle everything else (page table, etc.)");
     }
 }
 
@@ -134,10 +140,11 @@ impl Process {
             heap_start: program.heap_start,
             file_descriptors: default_fd(),
             page_table_root: program.page_table_root,
-            cwd: "/".to_string(),
+            cwd: CString::new("/").unwrap(),
+            memory_limit: Default::default(),
             paused_state: program.initial_state,
             waiting_state: None,
-            identity: ProcessIdentity {pgrp: 1, ppid: 0, pid: allocate_pid()}
+            identity: ProcessIdentity {pgrp: 1, ppid: 0, pid: allocate_pid()},
         }
     }
     pub fn create_with_parent(program: LoadedProgram, parent: &Self) -> Self {
@@ -146,6 +153,7 @@ impl Process {
             file_descriptors: default_fd(),
             page_table_root: program.page_table_root,
             cwd: parent.cwd.clone(),
+            memory_limit: Default::default(),
             paused_state: program.initial_state,
             waiting_state: None,
             identity: ProcessIdentity { pid: allocate_pid(), pgrp: parent.identity.pgrp, ppid: parent.identity.ppid }
@@ -159,7 +167,7 @@ impl Process {
             },
             Some(WaitingState::WaitingRead { fd_num, output_buf, num_bytes, output_num_bytes_ptr }) => {
                 let fop = self.file_descriptors[fd_num].as_ref().unwrap();
-                let result = (fop.read_nonblocking)(fop.special_data, output_buf, num_bytes);
+                let result = unsafe {(fop.read_nonblocking)(fop.special_data, output_buf, num_bytes)};
                 if result.read_something {
                     unsafe {*output_num_bytes_ptr = result.bytes_read}
                     PollResult{ stop_waiting: true, remove_zombie: None }
@@ -190,17 +198,35 @@ impl Process {
     }
 }
 
-fn default_fd() -> [Option<FileOperations>; OPEN_MAX] {
+fn default_fd() -> [Option<Rc<FileOperations>>; OPEN_MAX] {
     let mut result = [const { None }; OPEN_MAX];
-    result[0] = Some(unsafe {
-        (*fop_generate_stdin()).clone()
-    });
-    result[1] = Some(unsafe {
-        (*fop_generate_stdout()).clone()
-    });
-    result[2] = Some(unsafe {
-        (*fop_generate_stdout()).clone()
-    });
+    //stdout
+    result[0] = Some(Rc::new(FileOperations {
+        special_data: null_mut(),
+        read_nonblocking: invalid_read,
+        write: stdout_write,
+        offset: invalid_lseek,
+        close: do_nothing_close,
+        is_a_tty: true
+    }));
+    //stdin
+    result[1] = Some(Rc::new(FileOperations {
+        special_data: null_mut(),
+        read_nonblocking: stdin_read,
+        write: invalid_write,
+        offset: invalid_lseek,
+        close: do_nothing_close,
+        is_a_tty: true,
+    }));
+    //stderr
+    result[2] = Some(Rc::new(FileOperations {
+        special_data: null_mut(),
+        read_nonblocking: stdin_read,
+        write: invalid_write,
+        offset: invalid_lseek,
+        close: do_nothing_close,
+        is_a_tty: true,
+    }));
 
     result
 }

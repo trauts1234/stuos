@@ -21,10 +21,6 @@ struct PipeSpecialData {
 
 };
 
-/// When nothing is required to close the special data, run this
-static void do_nothing_close(void* special_data) {
-    if(special_data != NULL) {HCF}
-}
 /// When the data just needs to be freed to close the special data, run this
 static void just_free_close(void* special_data) {
     free(special_data);
@@ -95,7 +91,7 @@ static void pipe_close(void* special_data) {
 }
 
 /// Prints to stdout, and can be put as a file operation
-static size_t stdout_write(void* special_data, const void* output_buf, size_t num) {
+size_t stdout_write(void* special_data, const void* output_buf, size_t num) {
     if(special_data != NULL) {HCF}
     const char *output = output_buf;
     for(uint64_t i=0; i<num; i++) {
@@ -103,7 +99,7 @@ static size_t stdout_write(void* special_data, const void* output_buf, size_t nu
     }
     return num;
 }
-static struct FopReadResult stdin_read(void* special_data, void* output_buf, size_t num) {
+struct FopReadResult stdin_read(void* special_data, void* output_buf, size_t num) {
     if(special_data != NULL) {HCF}
 
     uint64_t bytes_read = tty_read((char*)output_buf, num);
@@ -156,35 +152,6 @@ static uint64_t file_lseek(void* special_data, int64_t off, int whence) {
     return data->offset;
 }
 
-struct FileOperations* fop_generate_stdout(){
-    struct FileOperations* heap_allocation = malloc(sizeof(struct FileOperations));
-    *heap_allocation = (struct FileOperations){
-        .reference_count = 1,
-        .special_data = NULL,
-        .read_nonblocking = 0,
-        .write = stdout_write,
-        .close = do_nothing_close,
-        .offset = 0,
-        .is_a_tty = true,
-    };
-
-    return heap_allocation;
-}
-struct FileOperations* fop_generate_stdin(){
-    struct FileOperations* heap_allocation = malloc(sizeof(struct FileOperations));
-    *heap_allocation = (struct FileOperations){
-        .reference_count = 1,
-        .special_data = NULL,
-        .read_nonblocking = stdin_read,
-        .write = 0,
-        .close = do_nothing_close,
-        .offset = 0,
-        .is_a_tty = true,
-    };
-
-    return heap_allocation;
-}
-
 struct FileOperations* fop_generate_file(const char* cwd, const char* path, int open_flags) {
     struct OpenVnodeSpecialData* file = malloc(sizeof(struct OpenVnodeSpecialData));
     *file = (struct OpenVnodeSpecialData) {
@@ -196,7 +163,6 @@ struct FileOperations* fop_generate_file(const char* cwd, const char* path, int 
 
     struct FileOperations* heap_allocation = malloc(sizeof(struct FileOperations));
     *heap_allocation = (struct FileOperations) {
-        .reference_count = 1,
         .special_data = (void*)file,
         .read_nonblocking = file_read,
         .write = file_write,
@@ -229,7 +195,6 @@ void fop_generate_pipe(struct FileOperations* output[2]) {
     struct FileOperations* b_ops = malloc(sizeof(struct FileOperations));
 
     *a_ops = (struct FileOperations) {
-        .reference_count= 1,
         .special_data = a,
         .read_nonblocking = pipe_read,
         .write = pipe_write,
@@ -238,7 +203,6 @@ void fop_generate_pipe(struct FileOperations* output[2]) {
         .is_a_tty = false,
     };
     *b_ops = (struct FileOperations) {
-        .reference_count= 1,
         .special_data = b,
         .read_nonblocking = pipe_read,
         .write = pipe_write,
@@ -249,13 +213,4 @@ void fop_generate_pipe(struct FileOperations* output[2]) {
 
     output[0] = a_ops;
     output[1] = b_ops;
-}
-
-void free_file_operations(struct FileOperations* ptr){
-    if(ptr->reference_count == 0) {HCF}
-    ptr->reference_count--;
-    if(ptr->reference_count == 0) {
-        ptr->close(ptr->special_data);
-        free(ptr);
-    }
 }
