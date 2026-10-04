@@ -16,19 +16,19 @@ impl Write for KernelWriter {
 
 #[macro_export]
 macro_rules! print {
-    ($($arg:tt)*) => {
+    ($($arg:tt)*) => {{
         use core::fmt::Write;
         ::core::write!(crate::print::KernelWriter {}, $($arg)*).unwrap()
-    };
+    }};
 }
 #[macro_export]
 macro_rules! println {
-    () => {
+    () => {{
         use core::fmt::Write;
         ::core::write!(crate::print::KernelWriter {}, "\n").unwrap()
-    };
-    ($($arg:tt)*) => {
+    }};
+    ($($arg:tt)*) => {{
         use core::fmt::Write;
         ::core::writeln!(crate::print::KernelWriter{}, $($arg)*).unwrap()
-    };
+    }};
 }
