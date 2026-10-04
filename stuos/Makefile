@@ -4,14 +4,15 @@ LD = x86_64-elf-ld
 
 SRC_DIR := ./src
 C_SRCS = $(wildcard $(SRC_DIR)/*.c)
-RUST_LIB = ./target/debug/libstuos.a
+RUST_LIB = ./target/x86_64-unknown-none/debug/libstuos.a
 ASM_SRCS = $(wildcard $(SRC_DIR)/*.asm)
 MALLOC_SRC_DIR = ../custom_malloc
 MALLOC_SRCS = $(wildcard $(MALLOC_SRC_DIR)/*.c)
 
 #frame pointer is needed for HCF backtraces
 #-Wno-packed-bitfield-compat gcc fixed a packing issue with chars in 4.4
-CFLAGS = -ffreestanding -m64 -nostdlib -O0 -fno-omit-frame-pointer -Wall -Wextra -Wunused -Werror -Wno-packed-bitfield-compat -mcmodel=kernel -fno-pie -mno-red-zone -march=x86-64 -I../abi -I ../custom_malloc/
+#-Werror TODO
+CFLAGS = -ffreestanding -m64 -nostdlib -O0 -fno-omit-frame-pointer -Wall -Wextra -Wunused -Wno-packed-bitfield-compat -mcmodel=kernel -fno-pie -mno-red-zone -march=x86-64 -I../abi -I ../custom_malloc/
 LDFLAGS = -T $(SRC_DIR)/linker.lds -nostdlib
 
 # location of build artifacts
@@ -41,7 +42,7 @@ $(OBJ_DIR)/%.o: $(SRC_DIR)/%.asm
 	nasm -g -f elf64 $< -o $@
 
 $(RUST_LIB): FORCE
-	cargo build
+	cargo build --target x86_64-unknown-none
 
 FORCE:
 

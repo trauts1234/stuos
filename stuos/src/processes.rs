@@ -1,4 +1,4 @@
-use core::{ptr::null_mut, sync::atomic::{AtomicI32, Ordering}};
+use core::{ffi::c_void, ptr::null_mut, sync::atomic::{AtomicI32, Ordering}};
 use alloc::{ffi::CString, rc::Rc};
 use crate::{pipes_and_files::{FileOperations, do_nothing_close, invalid_lseek, invalid_read, invalid_write, stdin_read, stdout_write}, rs_uapi::{limits::OPEN_MAX, resource::{RLim, RLimit}, types::Pid, wait::WIFEXITED_MASK}};
 
@@ -28,6 +28,15 @@ pub enum ChildType {
     WithPid(Pid)
 }
 impl ChildType {
+    //follows the rules from wait() on what to filter based on pid value
+    pub fn from_pid(pid: Pid) -> Self {
+        match pid {
+            -1 => Self::Any,
+            0 => Self::PgrpIsMyPid,
+            x@1.. => Self::WithPid(x),
+            x@Pid::MIN..-1 => Self::WithPgrp(x.abs())
+        }
+    }
     pub fn is_valid(&self, my_pid: Pid, candidate_pid: Pid, candidate_pgrp: Pid) -> bool {
         match *self {
             Self::WithPgrp(x) => x == candidate_pid,
@@ -42,7 +51,7 @@ impl ChildType {
 pub enum WaitingState {
     WaitingRead {
         fd_num: usize,//type?
-        output_buf: *mut (),
+        output_buf: *mut c_void,
         num_bytes: usize,
         output_num_bytes_ptr: *mut usize
     },
@@ -60,9 +69,9 @@ pub enum WaitingState {
 
 #[repr(C)]
 pub struct LoadedProgram {
-    heap_start: *mut (),
-    page_table_root: u64,//or usize?
-    initial_state: ProcessorState,
+    pub heap_start: *mut (),
+    pub page_table_root: u64,//or usize?
+    pub initial_state: ProcessorState,
 }
 
 #[repr(C)]
@@ -150,7 +159,7 @@ impl Process {
     pub fn create_with_parent(program: LoadedProgram, parent: &Self) -> Self {
         Process {
             heap_start: program.heap_start,
-            file_descriptors: default_fd(),
+            file_descriptors: parent.file_descriptors.clone(),
             page_table_root: program.page_table_root,
             cwd: parent.cwd.clone(),
             memory_limit: Default::default(),
@@ -158,6 +167,14 @@ impl Process {
             waiting_state: None,
             identity: ProcessIdentity { pid: allocate_pid(), pgrp: parent.identity.pgrp, ppid: parent.identity.ppid }
         }
+    }
+    pub fn find_free_fd(&mut self, minimum: usize) -> Result<(usize, &mut Option<Rc<FileOperations>>), ()> {
+        for (i, item) in self.file_descriptors.iter_mut().enumerate() {
+            if item.is_none() && i >= minimum {
+                return Ok((i, item))
+            }
+        }
+        Err(())
     }
 
     pub fn poll<'a>(&'a self, others: impl IntoIterator<Item=&'a Process>) -> PollResult {

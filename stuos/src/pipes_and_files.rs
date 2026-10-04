@@ -37,14 +37,14 @@ pub struct FopReadResult {
 /// Returns a `FopReadResult`
 pub type FopReadFn = unsafe extern "C" fn(
     special_data: *mut c_void,
-    output_buf: *mut (),
+    output_buf: *mut c_void,
     num_bytes: usize,
 ) -> FopReadResult;
 
 /// Attempts to write `num_bytes` from `input_buf` using `special_data`, returning the number of bytes actually written
 pub type FopWriteFn = unsafe extern "C" fn(
     special_data: *mut c_void,
-    input_buf: *const (),
+    input_buf: *const c_void,
     num_bytes: usize,
 ) -> usize;
 
@@ -58,10 +58,10 @@ pub type FopLseekFn = unsafe extern "C" fn(
 /// Destructs the FileOperations
 pub type FopCloseFn = unsafe extern "C" fn(special_data: *mut c_void);
 
-pub extern "C" fn invalid_read(_special_data: *mut c_void, _output_buf: *mut (), _num_bytes: usize) -> FopReadResult {
+pub extern "C" fn invalid_read(_special_data: *mut c_void, _output_buf: *mut c_void, _num_bytes: usize) -> FopReadResult {
     panic!("tried to read a file descriptor that can't read")
 }
-pub extern "C" fn invalid_write(_special_data: *mut c_void, _input_buf: *const (), _num_bytes: usize) -> usize {
+pub extern "C" fn invalid_write(_special_data: *mut c_void, _input_buf: *const c_void, _num_bytes: usize) -> usize {
     panic!("tried to write a file descriptor that can't write");
 }
 pub extern "C" fn invalid_lseek(_special_data: *mut c_void, _off: i64, _whence: c_int) -> u64 {
@@ -72,6 +72,9 @@ pub extern "C" fn do_nothing_close(special_data: *mut c_void) {
 }
 
 unsafe extern "C" {
-    pub fn stdout_write(special_data: *mut c_void, output_buf: *const (), num: usize) -> usize;
-    pub fn stdin_read(special_data: *mut c_void, _output_buf: *mut (), num: usize) -> FopReadResult;
+    pub fn stdout_write(special_data: *mut c_void, output_buf: *const c_void, num: usize) -> usize;
+    pub fn stdin_read(special_data: *mut c_void, _output_buf: *mut c_void, num: usize) -> FopReadResult;
+
+    pub fn fop_generate_file(cwd: *const i8, path: *const i8, open_flags: c_int) -> FileOperations;
+    pub fn fop_generate_pipe(output: *mut FileOperations);
 }

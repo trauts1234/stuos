@@ -29,7 +29,7 @@ int closedir(DIR *dirp) {
 struct dirent *readdir(DIR *dirp) {
     struct ReadFDData data = {
         .file_descriptor_number = dirp->file_descriptor_number,
-        .buffer = (uint8_t*)&dirp->current,
+        .buffer = (void*)&dirp->current,
         .num_bytes = sizeof(struct dirent),
         .num_bytes_actually_read = 0
     };

@@ -1,4 +1,5 @@
 #include <uapi/stdint.h>
+#include "uapi/stdbool.h"
 #include "limine.h"
 
 #ifndef MEMORY_H

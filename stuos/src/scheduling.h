@@ -51,6 +51,7 @@ void set_file_descriptor(int fd_number, struct FileOperations operations);
 const char *get_cwd();
 struct LimitData get_rlimit(int resource);
 void set_rlimit(int resource, struct rlimit new_limit);
+void replace_current_process(struct LoadedProgram program);
 
 
 #endif

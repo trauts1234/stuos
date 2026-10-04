@@ -152,7 +152,7 @@ static uint64_t file_lseek(void* special_data, int64_t off, int whence) {
     return data->offset;
 }
 
-struct FileOperations* fop_generate_file(const char* cwd, const char* path, int open_flags) {
+struct FileOperations fop_generate_file(const char* cwd, const char* path, int open_flags) {
     struct OpenVnodeSpecialData* file = malloc(sizeof(struct OpenVnodeSpecialData));
     *file = (struct OpenVnodeSpecialData) {
         .file = vfs_get(cwd, path, open_flags),
@@ -161,8 +161,7 @@ struct FileOperations* fop_generate_file(const char* cwd, const char* path, int 
 
     if(open_flags & O_APPEND) HCF// need to set offset to point at EOF
 
-    struct FileOperations* heap_allocation = malloc(sizeof(struct FileOperations));
-    *heap_allocation = (struct FileOperations) {
+    return (struct FileOperations) {
         .special_data = (void*)file,
         .read_nonblocking = file_read,
         .write = file_write,
@@ -170,11 +169,9 @@ struct FileOperations* fop_generate_file(const char* cwd, const char* path, int 
         .offset = file_lseek,
         .is_a_tty = false,
     };
-
-    return heap_allocation;
 }
 
-void fop_generate_pipe(struct FileOperations* output[2]) {
+void fop_generate_pipe(struct FileOperations output[2]) {
     struct PipeSpecialData* a = malloc(sizeof(struct PipeSpecialData));
     struct PipeSpecialData* b = malloc(sizeof(struct PipeSpecialData));
 
@@ -191,10 +188,7 @@ void fop_generate_pipe(struct FileOperations* output[2]) {
         .reader_next_byte = 0
     };
 
-    struct FileOperations* a_ops = malloc(sizeof(struct FileOperations));
-    struct FileOperations* b_ops = malloc(sizeof(struct FileOperations));
-
-    *a_ops = (struct FileOperations) {
+    output[0] = (struct FileOperations) {
         .special_data = a,
         .read_nonblocking = pipe_read,
         .write = pipe_write,
@@ -202,7 +196,7 @@ void fop_generate_pipe(struct FileOperations* output[2]) {
         .offset = 0,
         .is_a_tty = false,
     };
-    *b_ops = (struct FileOperations) {
+    output[1] = (struct FileOperations) {
         .special_data = b,
         .read_nonblocking = pipe_read,
         .write = pipe_write,
@@ -210,7 +204,4 @@ void fop_generate_pipe(struct FileOperations* output[2]) {
         .offset = 0,
         .is_a_tty = false,
     };
-
-    output[0] = a_ops;
-    output[1] = b_ops;
 }

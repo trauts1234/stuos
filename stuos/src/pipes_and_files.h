@@ -22,7 +22,6 @@ typedef void (*FopCloseFn) (void* special_data);
 
 /// Represents an open Device - This is not a file descriptor
 ///
-/// Multiple file descriptors can point to me
 struct FileOperations {
     /// Heap allocated extra data that the FileOperations uses to do stuff
     void* special_data;
@@ -38,7 +37,7 @@ struct FileOperations {
     bool is_a_tty;
 };
 
-struct FileOperations* fop_generate_file(const char* cwd, const char* path, int open_flags);
-void fop_generate_pipe(struct FileOperations* output[2]);
+struct FileOperations fop_generate_file(const char* cwd, const char* path, int open_flags);
+void fop_generate_pipe(struct FileOperations output[2]);
 
 #endif

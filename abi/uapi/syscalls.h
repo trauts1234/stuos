@@ -54,11 +54,11 @@ struct OpenFileData {
 #define READ_FD_SYSCALL 15
 struct ReadFDData {
     int file_descriptor_number;
-    uint8_t* buffer;
+    void* buffer;
     //Try to read at most this many bytes
-    uint64_t num_bytes;
+    size_t num_bytes;
 
-    uint64_t num_bytes_actually_read;
+    size_t num_bytes_actually_read;
 };
 
 #define LSEEK_FD_SYSCALL 16

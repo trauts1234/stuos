@@ -61,117 +61,31 @@ void syscall_write_fd(struct WriteFDData* data) {
     data->num_bytes_actually_written = file_operations->write(file_operations->special_data, data->buffer, data->num_bytes);
 }
 
-//find a free file descriptor >= min_fd
-static int find_free_fd(int min_fd) {
-    for(int fd_num=min_fd; fd_num < OPEN_MAX; fd_num++) {
-        if(get_file_descriptor(fd_num) == 0) {
-            return fd_num;
-        }
-    }
-    HCF
-}
+void syscall_open_file(struct OpenFileData* data);
 
-void syscall_open_file(struct OpenFileData* data) {
-    if(DEBUG_SYSCALLS) printf("%s: path: %s\n", __func__, data->path);
-    struct FileOperations* file = fop_generate_file(get_cwd(), data->path, data->open_flags);
-    int fd_num = find_free_fd(0);
-    *get_file_descriptor(fd_num) = file;
-    data->output_file_descriptor_number = fd_num;
-}
+void syscall_read_fd(struct ReadFDData* data, struct ProcessorState* processor_state);
 
-void syscall_read_fd(struct ReadFDData* data, struct ProcessorState* processor_state) {
-    if(DEBUG_SYSCALLS) printf("%s: read up to %llu bytes from fd %d\n", __func__, data->num_bytes, data->file_descriptor_number);
-    register_as_waiting((struct WaitingData) {
-        .status = WAITING_FOR_READ,
-        .read = {
-            .fd_number = data->file_descriptor_number,
-            .output_buf = data->buffer,
-            .num_bytes = data->num_bytes,
-            .output_num_bytes_ptr = &data->num_bytes_actually_read,
-        }
-    });
-    run_next_task(processor_state);
-}
+void syscall_lseek_fd(struct LseekFDData* data);
 
-void syscall_lseek_fd(struct LseekFDData* data) {
-    if(DEBUG_SYSCALLS) printf("%s: offset %llu in fd %d. whence: %d\n", __func__, data->offset, data->file_descriptor_number, data->whence);
-    struct FileOperations* file_operations = get_process(0)->file_descriptors[data->file_descriptor_number];
-    if(file_operations == NULL) {HCF}
+void syscall_close_fd(struct CloseFDData* data);
 
-    data->actual_offset = file_operations->offset(file_operations->special_data, data->offset, data->whence);
-}
+void syscall_fork(struct ForkData* data, struct ProcessorState* parent_state);
 
-void syscall_close_fd(struct CloseFDData* data) {
-    if(DEBUG_SYSCALLS) printf("%s: fd %d\n", __func__, data->file_descriptor_number);
-    struct FileOperations** file_operations = get_process(0)->file_descriptors + data->file_descriptor_number;
+void syscall_get_pgrp(struct GetPgrpData* data);
 
-    (*file_operations)->close((*file_operations)->special_data);
-    *file_operations = NULL;
-}
+void syscall_get_pid(struct GetPidData* data);
 
-void syscall_fork(struct ForkData* data, struct ProcessorState* parent_state) {
-    if(DEBUG_SYSCALLS) printf("%s: \n", __func__);
-    uint64_t parent_page_table = get_pml4_phys();
-    uint64_t child_page_table = clone_virtual_addressing(parent_page_table);
-
-    struct LoadedProgram child = {
-        .heap_start = get_process(0)->heap_start,
-        .page_table_root = child_page_table,
-        //file_descriptors is done after
-        .initial_state = *parent_state
-    };
-    
-    //add 1 to ref count as the child will have cloned the file descriptors
-    for(int i=0; i<OPEN_MAX; i++) {
-        struct FileOperations* fd = get_process(0)->file_descriptors[i];
-        if (fd != NULL) fd->reference_count++;
-        child.file_descriptors[i] = fd;
-    }
-
-    int child_pid = add_new_process(child);
-
-    //now here's a mad bit - data is a userspace pointer, so changing CR3 will cause the same pointer to point to a different page
-    set_pml4_phys(child_page_table);
-    data->pid = 0;//give child 0
-    set_pml4_phys(parent_page_table);
-    data->pid = child_pid;// pass the child's PID to the parent
-}
-
-void syscall_get_pgrp(struct GetPgrpData* data) {
-    if(DEBUG_SYSCALLS) printf("%s: \n", __func__);
-    data->result = get_process(0)->pgrp;
-}
-
-void syscall_get_pid(struct GetPidData* data) {
-    if(DEBUG_SYSCALLS) printf("%s: \n", __func__);
-    data->result = get_process(0)->pid;
-}
-
-void syscall_dupfd(struct DupFdData* data) {
-    if(DEBUG_SYSCALLS) printf("%s: fd %d => fd >= %d\n", __func__, data->fildes, data->min_new_fd);
-    struct FileOperations **fd = get_process(0)->file_descriptors;
-
-    assert(data->min_new_fd >= 0 && data->min_new_fd < OPEN_MAX)
-    assert(data->fildes >= 0 && data->fildes < OPEN_MAX);
-    assert(fd[data->fildes] != NULL);
-
-    data->result_fd = find_free_fd(data->min_new_fd);
-    fd[data->result_fd] = fd[data->fildes];
-    fd[data->result_fd]->reference_count++;
-}
+void syscall_dupfd(struct DupFdData* data);
 
 void syscall_getcwd(struct GetCwdData* data) {
     if(DEBUG_SYSCALLS) printf("%s: \n", __func__);
-    const char* cwd = get_process(0)->cwd;
+    const char* cwd = get_cwd();
     if(strlen(cwd) + 1 > data->size) {HCF}
 
     strcpy(data->buf, cwd);
 }
 
-void syscall_chdir(struct ChdirData* data) {
-    if(DEBUG_SYSCALLS) printf("%s: %s\n", __func__, data->path);
-    set_current_cwd(data->path);
-}
+void syscall_chdir(struct ChdirData* data);
 
 void syscall_execve(const struct ExecveData* data) {
     if(DEBUG_SYSCALLS) {
@@ -183,7 +97,7 @@ void syscall_execve(const struct ExecveData* data) {
         }
         printf("\n");
     }
-    const struct VNode to_execute = vfs_get(get_process(0)->cwd, data->filename, 0);
+    const struct VNode to_execute = vfs_get(get_cwd(), data->filename, 0);
 
     uint64_t argc=0;
     for(;data->argv[argc]; argc++);
@@ -212,105 +126,80 @@ void syscall_execve(const struct ExecveData* data) {
     run_next_task(NULL);
 }
 
-void syscall_wait(struct WaitData* data, struct ProcessorState* state) {
-    if(DEBUG_SYSCALLS) printf("%s: for pid %d\n", __func__, data->pid);
-    register_as_waiting((struct WaitingData) {
-        .status = WAITING_FOR_CHILD,
-        .child = {
-            .number = data->pid,
-            .status = data->status,
-            .options = data->options,
-            .output_pid = &data->output_pid,
-        }
-    });
+void syscall_wait(struct WaitData* data, struct ProcessorState* state);
 
-    run_next_task(state);
-}
+void syscall_isatty(struct IsattyData* data);
 
-void syscall_isatty(struct IsattyData* data) {
-    if(DEBUG_SYSCALLS) printf("%s: \n", __func__);
-    struct FileOperations* fop = get_process(0)->file_descriptors[data->fd];
-    data->result = fop->is_a_tty;
-}
-
-void syscall_pipe(struct PipeData* data) {
-    if(DEBUG_SYSCALLS) printf("%s: \n", __func__);
-    struct FileOperations *fds[2] = {NULL, NULL};
-    fop_generate_pipe(fds);
-
-    int fd_a = find_free_fd(0);
-    get_process(0)->file_descriptors[fd_a] = fds[0];
-    int fd_b = find_free_fd(fd_a+1);//skip the first fd_a entries as they are guaranteed full
-    get_process(0)->file_descriptors[fd_b] = fds[1];
-
-    data->fd_a = fd_a;
-    data->fd_b = fd_b;
-}
+void syscall_pipe(struct PipeData* data);
 
 void syscall_stat(struct StatData* data) {
     if(DEBUG_SYSCALLS) printf("%s: %s\n", __func__, data->path);
-    struct VNode file = vfs_get(get_process(0)->cwd, data->path, 0);
+    struct VNode file = vfs_get(get_cwd(), data->path, 0);
     data->result = file.stat_file(file.id);
 }
 
 void syscall_sigprocmask(struct SigProcMaskData* data) {
-    if(DEBUG_SYSCALLS) printf("%s: \n", __func__);
-    sigset_t *curr = &get_process(0)->signal_mask;
-    data->oldset = *curr;
-    if(data->set) {
-        switch (data->how) {
-            case SIG_BLOCK:
-                *curr |= *data->set;break;
-            case SIG_UNBLOCK:
-                *curr &= ~*data->set;break;
-            case SIG_SETMASK:
-                *curr = *data->set;break;
-            default:
-                HCF
-        }
-    }
+    HCF
+    // if(DEBUG_SYSCALLS) printf("%s: \n", __func__);
+    // sigset_t *curr = &get_process(0)->signal_mask;
+    // data->oldset = *curr;
+    // if(data->set) {
+    //     switch (data->how) {
+    //         case SIG_BLOCK:
+    //             *curr |= *data->set;break;
+    //         case SIG_UNBLOCK:
+    //             *curr &= ~*data->set;break;
+    //         case SIG_SETMASK:
+    //             *curr = *data->set;break;
+    //         default:
+    //             HCF
+    //     }
+    // }
 }
 
 void syscall_setsignalhandler(struct SetSignalHandlerData *data) {
-    if(DEBUG_SYSCALLS) printf("%s: \n", __func__);
-    sighandler_t* sig = get_process(0)->signal_handlers + data->signal_number;
-    data->old_handler = *sig;
-    *sig = data->handler;
+    HCF
+    // if(DEBUG_SYSCALLS) printf("%s: \n", __func__);
+    // sighandler_t* sig = get_process(0)->signal_handlers + data->signal_number;
+    // data->old_handler = *sig;
+    // *sig = data->handler;
 }
 
 void syscall_kill(struct KillData *data, struct ProcessorState* state) {
-    if(DEBUG_SYSCALLS) printf("%s: \n", __func__);
-    if (data->pid > 0) {
-        struct ProcessData *proc = get_process(data->pid);
-        proc->signal_pending[data->sig] = true;
-    } else if (data->pid == -1) {
-        HCF //send to nearly all processes? nah.
-    } else {
-        // 0 -> -0 (current processes)
-        pid_t process_group = data->pid == 0 ? get_process(0)->pgrp : -data->pid;
-        pid_t elegible_processes[100];
-        uint64_t num_elegible_processes = get_pids(elegible_processes, process_group);
-        for(uint64_t i=0; i<num_elegible_processes; i++) {
-            struct ProcessData *proc = get_process(elegible_processes[i]);
-            proc->signal_pending[data->sig] = true;
-        }
-    }
+    HCF
+    // if(DEBUG_SYSCALLS) printf("%s: \n", __func__);
+    // if (data->pid > 0) {
+    //     struct ProcessData *proc = get_process(data->pid);
+    //     proc->signal_pending[data->sig] = true;
+    // } else if (data->pid == -1) {
+    //     HCF //send to nearly all processes? nah.
+    // } else {
+    //     // 0 -> -0 (current processes)
+    //     pid_t process_group = data->pid == 0 ? get_process(0)->pgrp : -data->pid;
+    //     pid_t elegible_processes[100];
+    //     uint64_t num_elegible_processes = get_pids(elegible_processes, process_group);
+    //     for(uint64_t i=0; i<num_elegible_processes; i++) {
+    //         struct ProcessData *proc = get_process(elegible_processes[i]);
+    //         proc->signal_pending[data->sig] = true;
+    //     }
+    // }
 
-    run_next_task(state);
+    // run_next_task(state);
 }
 
 void syscall_tcgetattr(struct TcGetAttrData *data) {
-    if(DEBUG_SYSCALLS) printf("%s: \n", __func__);
-    //DRY from isatty, TODO out of range file descriptors
-    struct FileOperations* fop = get_process(0)->file_descriptors[data->fd];
+    HCF
+    // if(DEBUG_SYSCALLS) printf("%s: \n", __func__);
+    // //DRY from isatty, TODO out of range file descriptors
+    // struct FileOperations* fop = get_process(0)->file_descriptors[data->fd];
 
-    data->err = 0;
-    if(!fop->is_a_tty) {
-        data->err = ENOTTY;
-        return;
-    }
+    // data->err = 0;
+    // if(!fop->is_a_tty) {
+    //     data->err = ENOTTY;
+    //     return;
+    // }
 
-    data->output = tty_settings;
+    // data->output = tty_settings;
 }
 
 void syscall_setrlimit(struct SetRLimitData *data) {
@@ -321,7 +210,7 @@ void syscall_setrlimit(struct SetRLimitData *data) {
 void syscall_getrlimit(struct GetRLimitData *data) {
     if(DEBUG_SYSCALLS) printf("%s: limit %d\n", __func__, data->resource);
 
-    data->limit = get_rlimit(data->resource).limit
+    data->limit = get_rlimit(data->resource).limit;
 }
 
 void syscall_yield(void*, struct ProcessorState *processor_state) {
