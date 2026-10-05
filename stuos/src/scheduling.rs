@@ -1,7 +1,11 @@
 use core::ptr::null;
-use crate::{pipes_and_files::FileOperations, processes::{LimitData, LoadedProgram, Process, ProcessorState, WaitingState}, rs_uapi::{resource::{RLIMIT_DATA, RLimit}, types::Pid}};
+use crate::{memory::set_pml4_phys, pipes_and_files::FileOperations, processes::{LimitData, LoadedProgram, Process, ProcessorState, WaitingState}, rs_uapi::{resource::{RLIMIT_DATA, RLimit}, types::Pid}};
 use alloc::{boxed::Box, collections::VecDeque};
 use spin::{Mutex, MutexGuard};
+
+unsafe extern "C" {
+    fn start_userland(processor_state: *const ProcessorState) -> !;
+}
 
 //the front element is the currently running process
 static PROCESSES_QUEUE: Mutex<ProcessQueue> = Mutex::new(ProcessQueue::new());
@@ -35,29 +39,6 @@ impl ProcessQueue {
         self.processes.push_back(Box::new(new_proc));
         new_pid
     }
-
-    fn run_next_task(&mut self, interrupted_processor_state: *const ProcessorState) -> ! {
-        if !interrupted_processor_state.is_null() {
-            let curr = self.processes.front_mut().unwrap();
-            unsafe{curr.paused_state = *interrupted_processor_state;}
-        }
-
-        loop {
-            //move the previous process to the back
-            let prev = self.processes.pop_front().unwrap();
-            self.processes.push_back(prev);
-
-            let curr = &self.processes[0];
-            let result = curr.poll(self.processes.iter().map(|b| b.as_ref()));
-            if result.stop_waiting {
-                self.processes[0].waiting_state = None;
-            }
-            if let Some(pid) = result.remove_zombie {
-                let (index, _) = self.processes.iter().enumerate().find(|(_,x)| x.identity.pid == pid).unwrap();
-                self.processes.swap_remove_back(index);
-            }
-        }
-    }
 }
 
 #[unsafe(no_mangle)]
@@ -69,7 +50,39 @@ pub extern "C" fn add_new_process(program: LoadedProgram) -> Pid {
 /// If you have just killed the current process, you can pass NULL here
 #[unsafe(no_mangle)]
 pub extern "C" fn run_next_task(interrupted_processor_state: *const ProcessorState) -> ! {
-    queue().run_next_task(interrupted_processor_state)
+    let mut q = queue();
+
+    if !interrupted_processor_state.is_null() {
+        unsafe{q.current_mut().paused_state = *interrupted_processor_state;}
+    }
+
+    loop {
+        //move the previous process to the back
+        let prev = q.processes.pop_front().unwrap();
+        q.processes.push_back(prev);
+
+        let curr = q.current();
+        unsafe {set_pml4_phys(curr.page_table_root)};
+        let result = curr.poll(q.processes.iter().map(|b| b.as_ref()));
+
+
+
+        match result {
+            crate::processes::PollResult::DoNothing => {},
+            crate::processes::PollResult::StartUserland(processor_state) => unsafe {
+                drop(q);
+                start_userland(&processor_state);
+            },
+            crate::processes::PollResult::HandleWaiting { remove_zombie } => {
+                q.current_mut().waiting_state = None;
+                if let Some(pid) = remove_zombie {
+                    let (index, _) = q.processes.iter().enumerate().find(|(_,x)| x.identity.pid == pid).unwrap();
+                    q.processes.swap_remove_back(index);
+                }
+            },
+        }
+        
+    }
 }
 
 #[unsafe(no_mangle)]

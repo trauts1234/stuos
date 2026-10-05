@@ -9,7 +9,7 @@ unsafe extern "C" {
 #[panic_handler]
 fn panic_handler(info: &PanicInfo) -> ! {
     println!(
-        "halt and catch fire! {}:{} with error {}",
+        "halt and catch fire! {}:{} with error:\n{}",
         info.location().map(|loc| loc.file()).unwrap_or("???"),
         info.location().map(|loc| loc.line()).unwrap_or(0),
         info.message().as_str().unwrap_or("")

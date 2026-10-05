@@ -12,8 +12,3 @@ pub mod processes;
 mod syscall_handlers;
 #[allow(dead_code, nonstandard_style)]
 pub mod memory;
-
-// #[unsafe(no_mangle)]
-// pub extern "C" fn givethree() -> i32 {
-//     return 3;
-// }

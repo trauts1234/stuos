@@ -2,10 +2,6 @@ use core::{ffi::c_void, ptr::null_mut, sync::atomic::{AtomicI32, Ordering}};
 use alloc::{ffi::CString, rc::Rc};
 use crate::{pipes_and_files::{FileOperations, do_nothing_close, invalid_lseek, invalid_read, invalid_write, stdin_read, stdout_write}, rs_uapi::{limits::OPEN_MAX, resource::{RLim, RLimit}, types::Pid, wait::WIFEXITED_MASK}};
 
-unsafe extern "C" {
-    fn start_userland(processor_state: *const ProcessorState) -> !;
-}
-
 static NEXT_FREE_PID: AtomicI32 = AtomicI32::new(1);
 fn allocate_pid() -> Pid {
     let next = NEXT_FREE_PID.fetch_add(1, Ordering::Relaxed);
@@ -109,9 +105,12 @@ pub struct ProcessIdentity {
     pub ppid: Pid,
 }
 
-pub struct PollResult {
-    pub stop_waiting: bool,
-    pub remove_zombie: Option<Pid>
+pub enum PollResult {
+    DoNothing,
+    StartUserland(ProcessorState),
+    HandleWaiting {
+        remove_zombie: Option<Pid>
+    }
 }
 
 //can I be sure this send is OK? perhaps heap_start should just be usize
@@ -180,16 +179,16 @@ impl Process {
     pub fn poll<'a>(&'a self, others: impl IntoIterator<Item=&'a Process>) -> PollResult {
         match self.waiting_state {
             None => {
-                unsafe {start_userland(&self.paused_state)}
+                PollResult::StartUserland(self.paused_state)
             },
             Some(WaitingState::WaitingRead { fd_num, output_buf, num_bytes, output_num_bytes_ptr }) => {
                 let fop = self.file_descriptors[fd_num].as_ref().unwrap();
                 let result = unsafe {(fop.read_nonblocking)(fop.special_data, output_buf, num_bytes)};
                 if result.read_something {
                     unsafe {*output_num_bytes_ptr = result.bytes_read}
-                    PollResult{ stop_waiting: true, remove_zombie: None }
+                    PollResult::HandleWaiting { remove_zombie: None }
                 } else {
-                    PollResult { stop_waiting: false, remove_zombie: None }
+                    PollResult::DoNothing
                 }
             }
             Some(WaitingState::WaitingChild {child_type, status, options, output_pid }) => {
@@ -203,37 +202,37 @@ impl Process {
                         unsafe {*output_pid = exit_code.into();}
                         if !status.is_null() {
                             unsafe {*status = exit_code as i32 | WIFEXITED_MASK}
-                            return PollResult { stop_waiting: true, remove_zombie: Some(proc.identity.pid) };
+                            return PollResult::HandleWaiting { remove_zombie: Some(proc.identity.pid) };
                         }
 
                     }
                 }
-                PollResult { stop_waiting: false, remove_zombie: None }
+                PollResult::DoNothing
             }
-            Some(WaitingState::AmZombie { .. }) => {PollResult { stop_waiting: false, remove_zombie: None }}
+            Some(WaitingState::AmZombie { .. }) => {PollResult::DoNothing}
         }
     }
 }
 
 fn default_fd() -> [Option<Rc<FileOperations>>; OPEN_MAX] {
     let mut result = [const { None }; OPEN_MAX];
-    //stdout
-    result[0] = Some(Rc::new(FileOperations {
-        special_data: null_mut(),
-        read_nonblocking: invalid_read,
-        write: stdout_write,
-        offset: invalid_lseek,
-        close: do_nothing_close,
-        is_a_tty: true
-    }));
     //stdin
-    result[1] = Some(Rc::new(FileOperations {
+    result[0] = Some(Rc::new(FileOperations {
         special_data: null_mut(),
         read_nonblocking: stdin_read,
         write: invalid_write,
         offset: invalid_lseek,
         close: do_nothing_close,
         is_a_tty: true,
+    }));
+    //stdout
+    result[1] = Some(Rc::new(FileOperations {
+        special_data: null_mut(),
+        read_nonblocking: invalid_read,
+        write: stdout_write,
+        offset: invalid_lseek,
+        close: do_nothing_close,
+        is_a_tty: true
     }));
     //stderr
     result[2] = Some(Rc::new(FileOperations {
