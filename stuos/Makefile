@@ -23,7 +23,7 @@ OBJS := $(C_SRCS:$(SRC_DIR)/%.c=$(OBJ_DIR)/%.o)  $(ASM_SRCS:$(SRC_DIR)/%.asm=$(O
 
 all: $(OS_BINARY)
 
-# linking the os requires the .o files and the malloc library
+# linking the os requires the .o files
 $(OS_BINARY): $(OBJS) $(RUST_LIB)
 	$(LD) $^ $(LDFLAGS) -o $@
 

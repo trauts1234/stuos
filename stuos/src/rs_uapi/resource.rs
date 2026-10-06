@@ -2,7 +2,7 @@ pub type RLim = u64;
 
 pub const RLIMIT_DATA: i32 = 0;
 
-#[derive(Clone,Copy)]
+#[derive(Clone,Copy, Debug)]
 #[repr(C)]
 pub struct RLimit {
     pub rlim_cur: RLim,

@@ -28,6 +28,7 @@ extern "C" fn syscall_read_fd(data: *mut ReadFDData, processor_state: *const Pro
         num_bytes: data.num_bytes.try_into().unwrap(),
         output_num_bytes_ptr: &raw mut data.num_bytes_actually_read
     });
+    drop(q);
     run_next_task(processor_state);
 }
 

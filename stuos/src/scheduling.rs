@@ -1,5 +1,5 @@
-use core::ptr::null;
-use crate::{memory::set_pml4_phys, pipes_and_files::FileOperations, processes::{LimitData, LoadedProgram, Process, ProcessorState, WaitingState}, rs_uapi::{resource::{RLIMIT_DATA, RLimit}, types::Pid}};
+use core::{fmt::Debug, ptr::null};
+use crate::{memory::set_pml4_phys, pipes_and_files::FileOperations, println, processes::{LimitData, LoadedProgram, PollResult, Process, ProcessorState, WaitingState}, rs_uapi::{resource::{RLIMIT_DATA, RLimit}, types::Pid}};
 use alloc::{boxed::Box, collections::VecDeque};
 use spin::{Mutex, MutexGuard};
 
@@ -11,7 +11,7 @@ unsafe extern "C" {
 static PROCESSES_QUEUE: Mutex<ProcessQueue> = Mutex::new(ProcessQueue::new());
 
 pub fn queue<'a>() -> MutexGuard<'a, ProcessQueue>{
-    PROCESSES_QUEUE.lock()
+    PROCESSES_QUEUE.try_lock().unwrap()
 }
 
 pub struct ProcessQueue {
@@ -32,7 +32,7 @@ impl ProcessQueue {
     pub fn push(&mut self, program: LoadedProgram) -> Pid {
 
         let new_proc = match self.processes.front() {
-            Some(parent) => Process::create_with_parent(program,parent),
+            Some(parent) => Process::create_with_parent(program, parent),
             None => Process::create(program)
         };
         let new_pid = new_proc.identity.pid;
@@ -65,19 +65,17 @@ pub extern "C" fn run_next_task(interrupted_processor_state: *const ProcessorSta
         unsafe {set_pml4_phys(curr.page_table_root)};
         let result = curr.poll(q.processes.iter().map(|b| b.as_ref()));
 
-
-
         match result {
-            crate::processes::PollResult::DoNothing => {},
-            crate::processes::PollResult::StartUserland(processor_state) => unsafe {
+            PollResult::DoNothing => {},
+            PollResult::StartUserland(processor_state) => unsafe {
                 drop(q);
                 start_userland(&processor_state);
             },
-            crate::processes::PollResult::HandleWaiting { remove_zombie } => {
+            PollResult::HandleWaiting { remove_zombie } => {
                 q.current_mut().waiting_state = None;
                 if let Some(pid) = remove_zombie {
                     let (index, _) = q.processes.iter().enumerate().find(|(_,x)| x.identity.pid == pid).unwrap();
-                    q.processes.swap_remove_back(index);
+                    q.processes.swap_remove_back(index).unwrap();
                 }
             },
         }
@@ -129,6 +127,6 @@ pub extern "C" fn set_rlimit(resource: i32, new_limit: RLimit) {
 #[unsafe(no_mangle)]
 pub extern "C" fn replace_current_process(program: LoadedProgram) {
     let mut q = queue();
-    let ready = Process::create_with_parent(program, q.current());
-    q.processes[0] = Box::new(ready);
+    let ready = Process::create_to_replace(program, *q.processes.pop_front().unwrap());
+    q.processes.push_front(Box::new(ready));
 }

@@ -14,7 +14,7 @@ void fork_test() {
         printf("Hello from parent. Child's pid is %d\n", result);
         int status = 0;
         waitpid(result, &status, 0);
-        assert(WIFEXITED(status));
+        assert(WIFEXITED(status) == 0);//process exited unsuccessfully (returned 2)
         assert(WEXITSTATUS(status) == 2);
     }
 

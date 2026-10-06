@@ -1,6 +1,6 @@
 use core::{ffi::c_void, ptr::null_mut, sync::atomic::{AtomicI32, Ordering}};
 use alloc::{ffi::CString, rc::Rc};
-use crate::{pipes_and_files::{FileOperations, do_nothing_close, invalid_lseek, invalid_read, invalid_write, stdin_read, stdout_write}, rs_uapi::{limits::OPEN_MAX, resource::{RLim, RLimit}, types::Pid, wait::WIFEXITED_MASK}};
+use crate::{memory::{get_pml4_phys, remove_virtual_addressing, set_pml4_phys}, pipes_and_files::{FileOperations, do_nothing_close, invalid_lseek, invalid_read, invalid_write, stdin_read, stdout_write}, println, rs_uapi::{limits::OPEN_MAX, resource::{RLim, RLimit}, types::Pid}};
 
 static NEXT_FREE_PID: AtomicI32 = AtomicI32::new(1);
 fn allocate_pid() -> Pid {
@@ -9,18 +9,18 @@ fn allocate_pid() -> Pid {
     next
 }
 
-#[derive(Default, Clone, Copy)]
+#[derive(Default, Clone, Copy, Debug)]
 #[repr(C)]
 pub struct LimitData {
     pub current_value: RLim,
     pub limit: RLimit
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum ChildType {
     WithPgrp(Pid),
     Any,
-    PgrpIsMyPid,
+    PgrpIsMyPgrp,
     WithPid(Pid)
 }
 impl ChildType {
@@ -28,22 +28,22 @@ impl ChildType {
     pub fn from_pid(pid: Pid) -> Self {
         match pid {
             -1 => Self::Any,
-            0 => Self::PgrpIsMyPid,
+            0 => Self::PgrpIsMyPgrp,
             x@1.. => Self::WithPid(x),
             x@Pid::MIN..-1 => Self::WithPgrp(x.abs())
         }
     }
-    pub fn is_valid(&self, my_pid: Pid, candidate_pid: Pid, candidate_pgrp: Pid) -> bool {
+    pub fn is_valid(&self, my_pgrp: Pid, candidate_pid: Pid, candidate_pgrp: Pid) -> bool {
         match *self {
             Self::WithPgrp(x) => x == candidate_pid,
             Self::Any => true,
-            Self::PgrpIsMyPid => my_pid == candidate_pgrp,
+            Self::PgrpIsMyPgrp => my_pgrp == candidate_pgrp,
             Self::WithPid(x) => x == candidate_pid,
         }
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum WaitingState {
     WaitingRead {
         fd_num: usize,//type?
@@ -98,7 +98,7 @@ pub struct ProcessorState {
     pub ss: u64,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct ProcessIdentity {
     pub pid: Pid,
     pub pgrp: Pid,
@@ -115,6 +115,7 @@ pub enum PollResult {
 
 //can I be sure this send is OK? perhaps heap_start should just be usize
 unsafe impl Send for Process{}
+#[derive(Debug)]
 pub struct Process {
     /// PAGE_SIZE aligned, represents where the ELF's heap starts - This is only to tell the ELF if they request this information via syscall
     pub heap_start: *mut (),
@@ -137,8 +138,16 @@ pub struct Process {
 
 impl Drop for Process {
     fn drop(&mut self) {
-        assert!(matches!(self.waiting_state, Some(WaitingState::AmZombie {..})));
-        todo!("file descriptors do their own thing, I just need to handle everything else (page table, etc.)");
+        //remove page tables
+        unsafe {
+            let pt = get_pml4_phys();
+            set_pml4_phys(self.page_table_root);
+            remove_virtual_addressing();
+            set_pml4_phys(pt);
+        }
+
+        //file descriptors are dropped implicitly
+        // TODO should this happen when they go zombie, not now
     }
 }
 
@@ -161,10 +170,22 @@ impl Process {
             file_descriptors: parent.file_descriptors.clone(),
             page_table_root: program.page_table_root,
             cwd: parent.cwd.clone(),
-            memory_limit: Default::default(),
+            memory_limit: parent.memory_limit,
             paused_state: program.initial_state,
             waiting_state: None,
-            identity: ProcessIdentity { pid: allocate_pid(), pgrp: parent.identity.pgrp, ppid: parent.identity.ppid }
+            identity: ProcessIdentity { pid: allocate_pid(), pgrp: parent.identity.pgrp, ppid: parent.identity.pid }
+        }
+    }
+    pub fn create_to_replace(program: LoadedProgram, parent: Self) -> Self {
+        Process {
+            heap_start: program.heap_start,
+            file_descriptors: parent.file_descriptors.clone(),
+            page_table_root: program.page_table_root,
+            cwd: parent.cwd.clone(),
+            memory_limit: parent.memory_limit,
+            paused_state: program.initial_state,
+            waiting_state: None,
+            identity: parent.identity
         }
     }
     pub fn find_free_fd(&mut self, minimum: usize) -> Result<(usize, &mut Option<Rc<FileOperations>>), ()> {
@@ -196,15 +217,14 @@ impl Process {
                 //TODO what if I wait for myself
                 for proc in others {
                     if proc.identity.ppid != self.identity.pid {continue;}//only find children
-                    if !child_type.is_valid(self.identity.pid, proc.identity.pid, proc.identity.pgrp) {continue;}//only find acceptable children
+                    if !child_type.is_valid(self.identity.pgrp, proc.identity.pid, proc.identity.pgrp) {continue;}//only find acceptable children
                     if let Some(WaitingState::AmZombie { exit_code }) = proc.waiting_state {
                         assert!(!output_pid.is_null());
                         unsafe {*output_pid = exit_code.into();}
                         if !status.is_null() {
-                            unsafe {*status = exit_code as i32 | WIFEXITED_MASK}
-                            return PollResult::HandleWaiting { remove_zombie: Some(proc.identity.pid) };
+                            unsafe {*status = exit_code as i32}
                         }
-
+                        return PollResult::HandleWaiting { remove_zombie: Some(proc.identity.pid) };
                     }
                 }
                 PollResult::DoNothing
@@ -237,11 +257,11 @@ fn default_fd() -> [Option<Rc<FileOperations>>; OPEN_MAX] {
     //stderr
     result[2] = Some(Rc::new(FileOperations {
         special_data: null_mut(),
-        read_nonblocking: stdin_read,
-        write: invalid_write,
+        read_nonblocking: invalid_read,
+        write: stdout_write,
         offset: invalid_lseek,
         close: do_nothing_close,
-        is_a_tty: true,
+        is_a_tty: true
     }));
 
     result
