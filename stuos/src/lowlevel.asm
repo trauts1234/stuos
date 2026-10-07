@@ -13,7 +13,7 @@ global apply_gdt_tss
 global apply_idt
 global syscall_init
 
-extern syscall_table
+extern process_syscall
 extern syscall_stack_top
 
 %define KERN_CS 0x08
@@ -120,15 +120,16 @@ apply_idt:
     ret
 
 ; stick with borrowing the user's stack for now
-; passed: syscall number in RAX, syscall data pointer in RDI
+; passed: syscall number in RDI, syscall data pointer in RSI
+; clobbers registers in line with SYSV ABI
 handle_syscall:
 
-    mov rsi, rsp ; put user RSP in RSI
+    mov rdx, rsp ; put user rsp in rdx
     mov rsp, [syscall_stack_top] ; set stack to syscall stack
 
     ; set up the stack for iretq
     push USER_SS
-    push rsi ; store user RSP
+    push rdx ; store user RSP
     push r11 ; store user RFLAGS
     push USER_CS
     push rcx; store user RIP
@@ -136,10 +137,10 @@ handle_syscall:
     push rax
     push rbx
     push 0; rcx is storing the user's RIP
-    push rdx
+    push 0; rdx is clobbered
     push rbp
-    push rdi
-    push 0; rsi is storing the old RSP
+    push 0; rdi is clobbered
+    push 0; rsi is clobbered
     push r8
     push r9
     push r10
@@ -151,9 +152,8 @@ handle_syscall:
 
     sti; start interrupts, since they get disabled at a syscall
 
-    mov rax, [syscall_table + rax*8]; calculate syscall address from syscall number
-    mov rsi, rsp; convert the stack into a struct, as it has the right layout - pass a pointer to it
-    call rax
+    mov rdx, rsp; processor state is third arg - convert the stack into a struct, as it has the right layout - pass a pointer to it
+    call process_syscall
 
     pop r15
     pop r14

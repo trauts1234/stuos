@@ -1,6 +1,6 @@
 use core::{ffi::c_void, ptr::null_mut, sync::atomic::{AtomicI32, Ordering}};
 use alloc::{ffi::CString, rc::Rc};
-use crate::{memory::{get_pml4_phys, remove_virtual_addressing, set_pml4_phys}, pipes_and_files::{FileOperations, do_nothing_close, invalid_lseek, invalid_read, invalid_write, stdin_read, stdout_write}, println, rs_uapi::{limits::OPEN_MAX, resource::{RLim, RLimit}, types::Pid}};
+use crate::{memory::{get_pml4_phys, remove_virtual_addressing, set_pml4_phys}, pipes_and_files::{FileOperations, do_nothing_close, invalid_lseek, invalid_read, invalid_write, stdin_read, stdout_write}, rs_uapi::{limits::OPEN_MAX, syscalls::{rlim_t, rlimit}, types::Pid}};
 
 static NEXT_FREE_PID: AtomicI32 = AtomicI32::new(1);
 fn allocate_pid() -> Pid {
@@ -9,11 +9,17 @@ fn allocate_pid() -> Pid {
     next
 }
 
+impl Default for rlimit {
+    fn default() -> Self {
+        Self { rlim_cur: rlim_t::MAX, rlim_max: rlim_t::MAX }
+    }
+}
+
 #[derive(Default, Clone, Copy, Debug)]
 #[repr(C)]
 pub struct LimitData {
-    pub current_value: RLim,
-    pub limit: RLimit
+    pub current_value: rlim_t,
+    pub limit: rlimit
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -195,6 +201,25 @@ impl Process {
             }
         }
         Err(())
+    }
+
+    pub fn get_rlimit(&self, resource: i32) -> LimitData {
+        match resource {
+            RLIMIT_DATA => self.memory_limit,
+            x => panic!("invalid resource {}", x)
+        }
+    }
+    pub fn set_rlimit(&mut self, resource: i32, new_limit: rlimit) {
+        let limit = match resource {
+            RLIMIT_DATA => &mut self.memory_limit.limit,
+            x => panic!("invalid resource {}", x)
+        };
+
+        assert!(new_limit.rlim_max <= limit.rlim_max);
+        limit.rlim_max = new_limit.rlim_max;
+
+        assert!(new_limit.rlim_cur <= limit.rlim_max);
+        limit.rlim_cur = new_limit.rlim_cur;
     }
 
     pub fn poll<'a>(&'a self, others: impl IntoIterator<Item=&'a Process>) -> PollResult {

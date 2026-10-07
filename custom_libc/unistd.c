@@ -13,13 +13,14 @@
 char **environ = {NULL};
 
 int fork() {
+    int pid = -1;
     struct ForkData data = {
-        .pid = -1
+        .pid = &pid
     };
 
     do_syscall(&data, FORK_SYSCALL);
     
-    return data.pid;
+    return pid;
 }
 
 int vfork() {
@@ -80,16 +81,17 @@ int dup(int fildes) {
 }
 
 ssize_t read(int fd, void *buf, size_t count) {
+    size_t num_bytes_actually_read = 0;
     struct ReadFDData data = {
         .file_descriptor_number = fd,
         .buffer = buf,
         .num_bytes = count,
-        .num_bytes_actually_read = 0
+        .num_bytes_actually_read = &num_bytes_actually_read
     };
     
     do_syscall(&data, READ_FD_SYSCALL);
 
-    return data.num_bytes_actually_read;
+    return num_bytes_actually_read;
 }
 ssize_t write(int fd, const void *buf, size_t count) {
     struct WriteFDData data = {.file_descriptor_number=fd, .buffer=buf, .num_bytes=count};

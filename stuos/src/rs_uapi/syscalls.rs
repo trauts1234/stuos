@@ -73,34 +73,6 @@ pub const O_DIRECTORY: u32 = 16;
 pub const O_TRUNC: u32 = 32;
 pub const O_NONBLOCK: u32 = 64;
 pub const ICANON: u32 = 2;
-pub const HALT_SYSCALL: u32 = 0;
-pub const CLEARSCREEN_SYSCALL: u32 = 6;
-pub const GET_UPTIME_MS_SYSCALL: u32 = 7;
-pub const REQUEST_PAGE_SYSCALL: u32 = 11;
-pub const GET_HEAP_START_SYSCALL: u32 = 12;
-pub const WRITE_FD_SYSCALL: u32 = 13;
-pub const OPEN_FILE_SYSCALL: u32 = 14;
-pub const READ_FD_SYSCALL: u32 = 15;
-pub const LSEEK_FD_SYSCALL: u32 = 16;
-pub const CLOSE_FD_SYSCALL: u32 = 17;
-pub const FORK_SYSCALL: u32 = 18;
-pub const GET_PGRP_SYSCALL: u32 = 19;
-pub const GET_PID_SYSCALL: u32 = 20;
-pub const DUPFD_SYSCALL: u32 = 21;
-pub const GET_CWD_SYSCALL: u32 = 22;
-pub const CHDIR_SYSCALL: u32 = 23;
-pub const EXECVE_SYSCALL: u32 = 24;
-pub const WAIT_SYSCALL: u32 = 25;
-pub const ISATTY_SYSCALL: u32 = 26;
-pub const PIPE_SYSCALL: u32 = 27;
-pub const STAT_SYSCALL: u32 = 28;
-pub const SIGPROCMASK_SYSCALL: u32 = 29;
-pub const SETSIGNALHANDLER_SYSCALL: u32 = 30;
-pub const KILL_SYSCALL: u32 = 31;
-pub const TCGETATTR_SYSCALL: u32 = 32;
-pub const SETRLIMIT_SYSCALL: u32 = 33;
-pub const GETRLIMIT_SYSCALL: u32 = 34;
-pub const YIELD_SYSCALL: u32 = 35;
 pub type int_least8_t = ::core::ffi::c_schar;
 pub type uint_least8_t = ::core::ffi::c_uchar;
 pub type int_least16_t = ::core::ffi::c_short;
@@ -203,6 +175,7 @@ const _: () = {
 unsafe extern "C" {
     pub fn do_syscall(data: *mut ::core::ffi::c_void, syscall_number: u64);
 }
+pub const HALT_SYSCALL: u64 = 0;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct HaltSyscallData {
@@ -215,6 +188,7 @@ const _: () = {
     ["Offset of field: HaltSyscallData::exit_code"]
         [::core::mem::offset_of!(HaltSyscallData, exit_code) - 0usize];
 };
+pub const GET_UPTIME_MS_SYSCALL: u64 = 7;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct GetUptimeMsData {
@@ -226,6 +200,7 @@ const _: () = {
     ["Alignment of GetUptimeMsData"][::core::mem::align_of::<GetUptimeMsData>() - 8usize];
     ["Offset of field: GetUptimeMsData::ms"][::core::mem::offset_of!(GetUptimeMsData, ms) - 0usize];
 };
+pub const REQUEST_PAGE_SYSCALL: u64 = 11;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct RequestPageData {
@@ -241,6 +216,7 @@ const _: () = {
     ["Offset of field: RequestPageData::err"]
         [::core::mem::offset_of!(RequestPageData, err) - 8usize];
 };
+pub const GET_HEAP_START_SYSCALL: u64 = 12;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct GetHeapStartData {
@@ -253,13 +229,14 @@ const _: () = {
     ["Offset of field: GetHeapStartData::output"]
         [::core::mem::offset_of!(GetHeapStartData, output) - 0usize];
 };
+pub const WRITE_FD_SYSCALL: u64 = 13;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct WriteFDData {
     pub file_descriptor_number: ::core::ffi::c_int,
-    pub buffer: *const u8,
-    pub num_bytes: u64,
-    pub num_bytes_actually_written: u64,
+    pub buffer: *const ::core::ffi::c_void,
+    pub num_bytes: usize,
+    pub num_bytes_actually_written: usize,
 }
 #[allow(clippy::unnecessary_operation, clippy::identity_op)]
 const _: () = {
@@ -273,6 +250,7 @@ const _: () = {
     ["Offset of field: WriteFDData::num_bytes_actually_written"]
         [::core::mem::offset_of!(WriteFDData, num_bytes_actually_written) - 24usize];
 };
+pub const OPEN_FILE_SYSCALL: u64 = 14;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct OpenFileData {
@@ -290,13 +268,14 @@ const _: () = {
     ["Offset of field: OpenFileData::open_flags"]
         [::core::mem::offset_of!(OpenFileData, open_flags) - 12usize];
 };
+pub const READ_FD_SYSCALL: u64 = 15;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct ReadFDData {
     pub file_descriptor_number: ::core::ffi::c_int,
     pub buffer: *mut ::core::ffi::c_void,
     pub num_bytes: usize,
-    pub num_bytes_actually_read: usize,
+    pub num_bytes_actually_read: *mut usize,
 }
 #[allow(clippy::unnecessary_operation, clippy::identity_op)]
 const _: () = {
@@ -310,6 +289,7 @@ const _: () = {
     ["Offset of field: ReadFDData::num_bytes_actually_read"]
         [::core::mem::offset_of!(ReadFDData, num_bytes_actually_read) - 24usize];
 };
+pub const LSEEK_FD_SYSCALL: u64 = 16;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct LseekFDData {
@@ -330,6 +310,7 @@ const _: () = {
     ["Offset of field: LseekFDData::actual_offset"]
         [::core::mem::offset_of!(LseekFDData, actual_offset) - 24usize];
 };
+pub const CLOSE_FD_SYSCALL: u64 = 17;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct CloseFDData {
@@ -342,17 +323,19 @@ const _: () = {
     ["Offset of field: CloseFDData::file_descriptor_number"]
         [::core::mem::offset_of!(CloseFDData, file_descriptor_number) - 0usize];
 };
+pub const FORK_SYSCALL: u64 = 18;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct ForkData {
-    pub pid: ::core::ffi::c_int,
+    pub pid: *mut ::core::ffi::c_int,
 }
 #[allow(clippy::unnecessary_operation, clippy::identity_op)]
 const _: () = {
-    ["Size of ForkData"][::core::mem::size_of::<ForkData>() - 4usize];
-    ["Alignment of ForkData"][::core::mem::align_of::<ForkData>() - 4usize];
+    ["Size of ForkData"][::core::mem::size_of::<ForkData>() - 8usize];
+    ["Alignment of ForkData"][::core::mem::align_of::<ForkData>() - 8usize];
     ["Offset of field: ForkData::pid"][::core::mem::offset_of!(ForkData, pid) - 0usize];
 };
+pub const GET_PGRP_SYSCALL: u64 = 19;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct GetPgrpData {
@@ -364,6 +347,7 @@ const _: () = {
     ["Alignment of GetPgrpData"][::core::mem::align_of::<GetPgrpData>() - 4usize];
     ["Offset of field: GetPgrpData::result"][::core::mem::offset_of!(GetPgrpData, result) - 0usize];
 };
+pub const GET_PID_SYSCALL: u64 = 20;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct GetPidData {
@@ -375,6 +359,7 @@ const _: () = {
     ["Alignment of GetPidData"][::core::mem::align_of::<GetPidData>() - 4usize];
     ["Offset of field: GetPidData::result"][::core::mem::offset_of!(GetPidData, result) - 0usize];
 };
+pub const DUPFD_SYSCALL: u64 = 21;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct DupFdData {
@@ -392,6 +377,7 @@ const _: () = {
     ["Offset of field: DupFdData::result_fd"]
         [::core::mem::offset_of!(DupFdData, result_fd) - 8usize];
 };
+pub const GET_CWD_SYSCALL: u64 = 22;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct GetCwdData {
@@ -405,6 +391,7 @@ const _: () = {
     ["Offset of field: GetCwdData::buf"][::core::mem::offset_of!(GetCwdData, buf) - 0usize];
     ["Offset of field: GetCwdData::size"][::core::mem::offset_of!(GetCwdData, size) - 8usize];
 };
+pub const CHDIR_SYSCALL: u64 = 23;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct ChdirData {
@@ -416,6 +403,7 @@ const _: () = {
     ["Alignment of ChdirData"][::core::mem::align_of::<ChdirData>() - 8usize];
     ["Offset of field: ChdirData::path"][::core::mem::offset_of!(ChdirData, path) - 0usize];
 };
+pub const EXECVE_SYSCALL: u64 = 24;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct ExecveData {
@@ -434,24 +422,26 @@ pub const WNOHANG: _bindgen_ty_1 = 1;
 pub const WUNTRACED: _bindgen_ty_1 = 2;
 pub const WCONTINUED: _bindgen_ty_1 = 4;
 pub type _bindgen_ty_1 = ::core::ffi::c_uint;
+pub const WAIT_SYSCALL: u64 = 25;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct WaitData {
     pub pid: ::core::ffi::c_int,
     pub status: *mut ::core::ffi::c_int,
     pub options: ::core::ffi::c_int,
-    pub output_pid: ::core::ffi::c_int,
+    pub output_pid: *mut ::core::ffi::c_int,
 }
 #[allow(clippy::unnecessary_operation, clippy::identity_op)]
 const _: () = {
-    ["Size of WaitData"][::core::mem::size_of::<WaitData>() - 24usize];
+    ["Size of WaitData"][::core::mem::size_of::<WaitData>() - 32usize];
     ["Alignment of WaitData"][::core::mem::align_of::<WaitData>() - 8usize];
     ["Offset of field: WaitData::pid"][::core::mem::offset_of!(WaitData, pid) - 0usize];
     ["Offset of field: WaitData::status"][::core::mem::offset_of!(WaitData, status) - 8usize];
     ["Offset of field: WaitData::options"][::core::mem::offset_of!(WaitData, options) - 16usize];
     ["Offset of field: WaitData::output_pid"]
-        [::core::mem::offset_of!(WaitData, output_pid) - 20usize];
+        [::core::mem::offset_of!(WaitData, output_pid) - 24usize];
 };
+pub const ISATTY_SYSCALL: u64 = 26;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct IsattyData {
@@ -465,6 +455,7 @@ const _: () = {
     ["Offset of field: IsattyData::fd"][::core::mem::offset_of!(IsattyData, fd) - 0usize];
     ["Offset of field: IsattyData::result"][::core::mem::offset_of!(IsattyData, result) - 4usize];
 };
+pub const PIPE_SYSCALL: u64 = 27;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct PipeData {
@@ -478,6 +469,7 @@ const _: () = {
     ["Offset of field: PipeData::fd_a"][::core::mem::offset_of!(PipeData, fd_a) - 0usize];
     ["Offset of field: PipeData::fd_b"][::core::mem::offset_of!(PipeData, fd_b) - 4usize];
 };
+pub const STAT_SYSCALL: u64 = 28;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct StatData {
@@ -491,6 +483,7 @@ const _: () = {
     ["Offset of field: StatData::result"][::core::mem::offset_of!(StatData, result) - 0usize];
     ["Offset of field: StatData::path"][::core::mem::offset_of!(StatData, path) - 32usize];
 };
+pub const SIGPROCMASK_SYSCALL: u64 = 29;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct SigProcMaskData {
@@ -509,6 +502,7 @@ const _: () = {
     ["Offset of field: SigProcMaskData::oldset"]
         [::core::mem::offset_of!(SigProcMaskData, oldset) - 16usize];
 };
+pub const SETSIGNALHANDLER_SYSCALL: u64 = 30;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct SetSignalHandlerData {
@@ -527,6 +521,7 @@ const _: () = {
     ["Offset of field: SetSignalHandlerData::old_handler"]
         [::core::mem::offset_of!(SetSignalHandlerData, old_handler) - 16usize];
 };
+pub const KILL_SYSCALL: u64 = 31;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct KillData {
@@ -540,6 +535,7 @@ const _: () = {
     ["Offset of field: KillData::pid"][::core::mem::offset_of!(KillData, pid) - 0usize];
     ["Offset of field: KillData::sig"][::core::mem::offset_of!(KillData, sig) - 4usize];
 };
+pub const TCGETATTR_SYSCALL: u64 = 32;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct TcGetAttrData {
@@ -556,37 +552,36 @@ const _: () = {
         [::core::mem::offset_of!(TcGetAttrData, output) - 4usize];
     ["Offset of field: TcGetAttrData::err"][::core::mem::offset_of!(TcGetAttrData, err) - 52usize];
 };
+pub const SETRLIMIT_SYSCALL: u64 = 33;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct SetRLimitData {
     pub resource: ::core::ffi::c_int,
     pub limit: rlimit,
-    pub err: ::core::ffi::c_int,
 }
 #[allow(clippy::unnecessary_operation, clippy::identity_op)]
 const _: () = {
-    ["Size of SetRLimitData"][::core::mem::size_of::<SetRLimitData>() - 32usize];
+    ["Size of SetRLimitData"][::core::mem::size_of::<SetRLimitData>() - 24usize];
     ["Alignment of SetRLimitData"][::core::mem::align_of::<SetRLimitData>() - 8usize];
     ["Offset of field: SetRLimitData::resource"]
         [::core::mem::offset_of!(SetRLimitData, resource) - 0usize];
     ["Offset of field: SetRLimitData::limit"]
         [::core::mem::offset_of!(SetRLimitData, limit) - 8usize];
-    ["Offset of field: SetRLimitData::err"][::core::mem::offset_of!(SetRLimitData, err) - 24usize];
 };
+pub const GETRLIMIT_SYSCALL: u64 = 34;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct GetRLimitData {
     pub resource: ::core::ffi::c_int,
     pub limit: rlimit,
-    pub err: ::core::ffi::c_int,
 }
 #[allow(clippy::unnecessary_operation, clippy::identity_op)]
 const _: () = {
-    ["Size of GetRLimitData"][::core::mem::size_of::<GetRLimitData>() - 32usize];
+    ["Size of GetRLimitData"][::core::mem::size_of::<GetRLimitData>() - 24usize];
     ["Alignment of GetRLimitData"][::core::mem::align_of::<GetRLimitData>() - 8usize];
     ["Offset of field: GetRLimitData::resource"]
         [::core::mem::offset_of!(GetRLimitData, resource) - 0usize];
     ["Offset of field: GetRLimitData::limit"]
         [::core::mem::offset_of!(GetRLimitData, limit) - 8usize];
-    ["Offset of field: GetRLimitData::err"][::core::mem::offset_of!(GetRLimitData, err) - 24usize];
 };
+pub const YIELD_SYSCALL: u64 = 35;

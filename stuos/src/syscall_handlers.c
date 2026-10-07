@@ -40,42 +40,15 @@ void syscall_request_page(struct RequestPageData* data) {
     }
     assert(((uint64_t)data->page_virt_addr & PAGE_MASK) == 0);
 
-    struct LimitData lim = get_rlimit(RLIMIT_DATA);
-    if(lim.current_value + PAGE_SIZE > lim.limit.rlim_cur) {
-        data->err = ENOMEM;
-        return;
-    }
+    // struct LimitData lim = get_rlimit(RLIMIT_DATA);
+    // if(lim.current_value + PAGE_SIZE > lim.limit.rlim_cur) {
+    //     data->err = ENOMEM;
+    //     return;
+    // }
+    //TODO
     
     allocate_ram_page(data->page_virt_addr, false);
 }
-
-void syscall_get_heap_start(struct GetHeapStartData* data) {
-    if(DEBUG_SYSCALLS) printf("%s: \n", __func__);
-    data->output = get_current_heap_start();
-}
-
-void syscall_write_fd(struct WriteFDData* data) {
-    if(DEBUG_SYSCALLS) printf("%s: write %llu bytes to fd %d\n", __func__, data->num_bytes, data->file_descriptor_number);
-    const struct FileOperations* file_operations = get_file_descriptor(data->file_descriptor_number);
-    if(file_operations == NULL) {HCF}
-    data->num_bytes_actually_written = file_operations->write(file_operations->special_data, data->buffer, data->num_bytes);
-}
-
-void syscall_open_file(struct OpenFileData* data);
-
-void syscall_read_fd(struct ReadFDData* data, struct ProcessorState* processor_state);
-
-void syscall_lseek_fd(struct LseekFDData* data);
-
-void syscall_close_fd(struct CloseFDData* data);
-
-void syscall_fork(struct ForkData* data, struct ProcessorState* parent_state);
-
-void syscall_get_pgrp(struct GetPgrpData* data);
-
-void syscall_get_pid(struct GetPidData* data);
-
-void syscall_dupfd(struct DupFdData* data);
 
 void syscall_getcwd(struct GetCwdData* data) {
     if(DEBUG_SYSCALLS) printf("%s: \n", __func__);
@@ -84,8 +57,6 @@ void syscall_getcwd(struct GetCwdData* data) {
 
     strcpy(data->buf, cwd);
 }
-
-void syscall_chdir(struct ChdirData* data);
 
 void syscall_execve(const struct ExecveData* data) {
     if(DEBUG_SYSCALLS) {
@@ -126,20 +97,13 @@ void syscall_execve(const struct ExecveData* data) {
     run_next_task(NULL);
 }
 
-void syscall_wait(struct WaitData* data, struct ProcessorState* state);
-
-void syscall_isatty(struct IsattyData* data);
-
-void syscall_pipe(struct PipeData* data);
-
 void syscall_stat(struct StatData* data) {
     if(DEBUG_SYSCALLS) printf("%s: %s\n", __func__, data->path);
     struct VNode file = vfs_get(get_cwd(), data->path, 0);
     data->result = file.stat_file(file.id);
 }
 
-void syscall_sigprocmask(struct SigProcMaskData* data) {
-    HCF
+// void syscall_sigprocmask(struct SigProcMaskData* data) {
     // if(DEBUG_SYSCALLS) printf("%s: \n", __func__);
     // sigset_t *curr = &get_process(0)->signal_mask;
     // data->oldset = *curr;
@@ -155,18 +119,16 @@ void syscall_sigprocmask(struct SigProcMaskData* data) {
     //             HCF
     //     }
     // }
-}
+// }
 
-void syscall_setsignalhandler(struct SetSignalHandlerData *data) {
-    HCF
+// void syscall_setsignalhandler(struct SetSignalHandlerData *data) {
     // if(DEBUG_SYSCALLS) printf("%s: \n", __func__);
     // sighandler_t* sig = get_process(0)->signal_handlers + data->signal_number;
     // data->old_handler = *sig;
     // *sig = data->handler;
-}
+// }
 
-void syscall_kill(struct KillData *data, struct ProcessorState* state) {
-    HCF
+// void syscall_kill(struct KillData *data, struct ProcessorState* state) {
     // if(DEBUG_SYSCALLS) printf("%s: \n", __func__);
     // if (data->pid > 0) {
     //     struct ProcessData *proc = get_process(data->pid);
@@ -185,10 +147,9 @@ void syscall_kill(struct KillData *data, struct ProcessorState* state) {
     // }
 
     // run_next_task(state);
-}
+// }
 
-void syscall_tcgetattr(struct TcGetAttrData *data) {
-    HCF
+// void syscall_tcgetattr(struct TcGetAttrData *data) {
     // if(DEBUG_SYSCALLS) printf("%s: \n", __func__);
     // //DRY from isatty, TODO out of range file descriptors
     // struct FileOperations* fop = get_process(0)->file_descriptors[data->fd];
@@ -200,57 +161,9 @@ void syscall_tcgetattr(struct TcGetAttrData *data) {
     // }
 
     // data->output = tty_settings;
-}
-
-void syscall_setrlimit(struct SetRLimitData *data) {
-    if(DEBUG_SYSCALLS) printf("%s: limit %d = soft: %llu, hard: %llu\n", __func__, data->resource, data->limit.rlim_cur, data->limit.rlim_max);
-
-    set_rlimit(data->resource, data->limit);
-}
-void syscall_getrlimit(struct GetRLimitData *data) {
-    if(DEBUG_SYSCALLS) printf("%s: limit %d\n", __func__, data->resource);
-
-    data->limit = get_rlimit(data->resource).limit;
-}
+// }
 
 void syscall_yield(void*, struct ProcessorState *processor_state) {
     if(DEBUG_SYSCALLS) printf("%s: \n", __func__);
     run_next_task(processor_state);
 }
-
-void *syscall_table[] = {
-    syscall_halt,
-    NULL,
-    NULL,
-    NULL,
-    NULL,
-    NULL,
-    NULL,
-    syscall_get_uptime_ms,
-    NULL,
-    NULL,
-    NULL,
-    syscall_request_page,
-    syscall_get_heap_start,
-    syscall_write_fd,
-    syscall_open_file,
-    syscall_read_fd,
-    syscall_lseek_fd,
-    syscall_close_fd,
-    syscall_fork,
-    syscall_get_pgrp,
-    syscall_get_pid,
-    syscall_dupfd,
-    syscall_getcwd,
-    syscall_chdir,
-    syscall_execve,
-    syscall_wait,
-    syscall_isatty,
-    syscall_pipe,
-    syscall_stat,
-    syscall_sigprocmask,
-    [TCGETATTR_SYSCALL] = syscall_tcgetattr,
-    [SETRLIMIT_SYSCALL] = syscall_setrlimit,
-    [GETRLIMIT_SYSCALL] = syscall_getrlimit,
-    [YIELD_SYSCALL] = syscall_yield,
-};

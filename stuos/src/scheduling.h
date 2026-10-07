@@ -44,13 +44,9 @@ void run_next_task(const struct ProcessorState* const interrupted_processor_stat
 
 void set_current_as_zombie(uint8_t exit_code);
 
-void *get_current_heap_start();
-
 const struct FileOperations *get_file_descriptor(int fd_number);
 void set_file_descriptor(int fd_number, struct FileOperations operations);
 const char *get_cwd();
-struct LimitData get_rlimit(int resource);
-void set_rlimit(int resource, struct rlimit new_limit);
 void replace_current_process(struct LoadedProgram program);
 
 

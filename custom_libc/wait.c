@@ -2,6 +2,7 @@
 
 #include "sys/types.h"
 #include "uapi/syscalls.h"
+#include "uapi/types.h"
 #include "sys/wait.h"
 
 pid_t wait(int *status) {
@@ -9,12 +10,14 @@ pid_t wait(int *status) {
 }
 
 pid_t waitpid(pid_t pid, int *status, int options) {
+    pid_t output_pid = 67;
     struct WaitData data = {
         .pid = pid,
         .status = status,
         .options = options,
+        .output_pid = &output_pid
     };
     do_syscall(&data, WAIT_SYSCALL);
 
-    return data.output_pid;
+    return output_pid;
 }

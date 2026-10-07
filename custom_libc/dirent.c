@@ -27,16 +27,17 @@ int closedir(DIR *dirp) {
 }
 
 struct dirent *readdir(DIR *dirp) {
+    size_t num_bytes_actually_read = 0;
     struct ReadFDData data = {
         .file_descriptor_number = dirp->file_descriptor_number,
         .buffer = (void*)&dirp->current,
         .num_bytes = sizeof(struct dirent),
-        .num_bytes_actually_read = 0
+        .num_bytes_actually_read = &num_bytes_actually_read
     };
     
     do_syscall(&data, READ_FD_SYSCALL);
 
-    if(data.num_bytes_actually_read != sizeof(struct dirent)) {
+    if(num_bytes_actually_read != sizeof(struct dirent)) {
         //TODO what if I read part of a dirent randomly
         return NULL;
     } else {

@@ -1,5 +1,5 @@
-use core::{fmt::Debug, ptr::null};
-use crate::{memory::set_pml4_phys, pipes_and_files::FileOperations, println, processes::{LimitData, LoadedProgram, PollResult, Process, ProcessorState, WaitingState}, rs_uapi::{resource::{RLIMIT_DATA, RLimit}, types::Pid}};
+use core::ptr::null;
+use crate::{memory::set_pml4_phys, pipes_and_files::FileOperations, println, processes::{LimitData, LoadedProgram, PollResult, Process, ProcessorState, WaitingState}, rs_uapi::{types::Pid}};
 use alloc::{boxed::Box, collections::VecDeque};
 use spin::{Mutex, MutexGuard};
 
@@ -88,10 +88,6 @@ pub extern "C" fn set_current_as_zombie(exit_code: u8) {
     queue().current_mut().waiting_state = Some(WaitingState::AmZombie { exit_code })
 }
 #[unsafe(no_mangle)]
-pub extern "C" fn get_current_heap_start() -> *mut () {
-    queue().current().heap_start
-}
-#[unsafe(no_mangle)]
 pub extern "C" fn get_file_descriptor(fd_number: i32) -> *const FileOperations {
     //I point into a mutex that then gets unlocked?! danger!!!
     queue().current().file_descriptors[fd_number as usize].as_ref().map(|x| &raw const *x.as_ref()).unwrap_or(null())
@@ -100,28 +96,6 @@ pub extern "C" fn get_file_descriptor(fd_number: i32) -> *const FileOperations {
 pub extern "C" fn get_cwd() -> *const i8 {
     //I point into a mutex that then gets unlocked?! danger!!!
     queue().current().cwd.as_ptr()
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn get_rlimit(resource: i32) -> LimitData {
-    match resource {
-        RLIMIT_DATA => queue().current().memory_limit,
-        x => panic!("invalid resource {}", x)
-    }
-}
-#[unsafe(no_mangle)]
-pub extern "C" fn set_rlimit(resource: i32, new_limit: RLimit) {
-    let mut q = queue();
-    let limit = match resource {
-        RLIMIT_DATA => &mut q.current_mut().memory_limit.limit,
-        x => panic!("invalid resource {}", x)
-    };
-
-    assert!(new_limit.rlim_max <= limit.rlim_max);
-    limit.rlim_max = new_limit.rlim_max;
-
-    assert!(new_limit.rlim_cur <= limit.rlim_max);
-    limit.rlim_cur = new_limit.rlim_cur;
 }
 
 #[unsafe(no_mangle)]

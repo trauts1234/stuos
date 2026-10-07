@@ -71,20 +71,21 @@ int fseek(FILE *stream, long offset, int whence) {
 
 size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream) {
     size_t num_bytes = size * nmemb;
+    size_t num_bytes_actually_read = 0;
     struct ReadFDData data = {
         .file_descriptor_number = stream->file_descriptor_number,
         .buffer = ptr,
         .num_bytes = num_bytes,
-        .num_bytes_actually_read = 0
+        .num_bytes_actually_read = &num_bytes_actually_read
     };
     
     do_syscall(&data, READ_FD_SYSCALL);
 
-    if(data.num_bytes_actually_read % size != 0) {
+    if(num_bytes_actually_read % size != 0) {
         abort();//TODO guarantee that all are written, as this error can totally happen
     }
 
-    return data.num_bytes_actually_read / size;
+    return num_bytes_actually_read / size;
 }
 
 size_t fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream) {
@@ -116,15 +117,16 @@ int fputs(const char *s, FILE *stream) {
 }
 int fgetc(FILE *stream) {
     uint8_t buffer[1];
+    size_t num_bytes_actually_read = 0;
     struct ReadFDData data = {
         .file_descriptor_number = stream->file_descriptor_number,
         .buffer = buffer,
         .num_bytes = 1,
-        .num_bytes_actually_read = 0
+        .num_bytes_actually_read = &num_bytes_actually_read
     };
     do_syscall(&data, READ_FD_SYSCALL);
 
-    if(data.num_bytes_actually_read == 0) {
+    if(num_bytes_actually_read == 0) {
         return EOF;
     }
     
@@ -141,15 +143,16 @@ char *fgets(char *s, int size, FILE *stream) {
         //read n-1 characters
         if (curr-start == size - 1) break;
 
+        size_t num_bytes_actually_read = 0;
         struct ReadFDData data = {
             .file_descriptor_number = stream->file_descriptor_number,
             .buffer = curr,
             .num_bytes = 1,
-            .num_bytes_actually_read = 0
+            .num_bytes_actually_read = &num_bytes_actually_read
         };
         do_syscall(&data, READ_FD_SYSCALL);
 
-        if(*curr == '\n' || data.num_bytes_actually_read == 0) {
+        if(*curr == '\n' || num_bytes_actually_read == 0) {
             break;
         }
         curr++;
@@ -173,12 +176,12 @@ void perror(const char *s) {
 
 int fputc(int c, FILE *stream) {
     uint8_t arr[1] = {c};
-    struct WriteFDData data = {.file_descriptor_number=stream->file_descriptor_number, .buffer=arr, .num_bytes=1};
+    struct WriteFDData data = {.file_descriptor_number=stream->file_descriptor_number, .buffer=arr, .num_bytes=1ull};
     do_syscall(&data, WRITE_FD_SYSCALL);
     return c;
 }
 int puts(const char *s) {
-    struct WriteFDData data = {.file_descriptor_number=stdout->file_descriptor_number, .buffer=(const uint8_t*)s, .num_bytes=1};
+    struct WriteFDData data = {.file_descriptor_number=stdout->file_descriptor_number, .buffer=s, .num_bytes=1};
     do_syscall(&data, WRITE_FD_SYSCALL);
     return 1;
 }
