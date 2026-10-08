@@ -29,7 +29,7 @@ fn run_rs_with_processor_state<T>(f: fn(input: T, processor_state: ProcessorStat
 
 //called by the assembly stub
 #[unsafe(no_mangle)]
-extern "C" fn process_syscall(syscall_number: u64, data: *mut (), processor_state: *const ProcessorState) {
+extern "C" fn process_syscall(data: *mut (), syscall_number: u64, processor_state: *const ProcessorState) {
     let processor_state = unsafe {processor_state.read()};
     match syscall_number {
         HALT_SYSCALL => unsafe {syscall_halt(data.cast())},

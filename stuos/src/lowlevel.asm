@@ -120,7 +120,7 @@ apply_idt:
     ret
 
 ; stick with borrowing the user's stack for now
-; passed: syscall number in RDI, syscall data pointer in RSI
+; passed: data pointer in RDI and syscall number in RSI
 ; clobbers registers in line with SYSV ABI
 handle_syscall:
 
@@ -153,6 +153,7 @@ handle_syscall:
     sti; start interrupts, since they get disabled at a syscall
 
     mov rdx, rsp; processor state is third arg - convert the stack into a struct, as it has the right layout - pass a pointer to it
+    mov rbp, 0
     call process_syscall
 
     pop r15

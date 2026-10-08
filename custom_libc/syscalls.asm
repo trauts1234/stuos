@@ -1,7 +1,7 @@
 global do_syscall
 
+;passes data pointer in RDI and syscall number in RSI
 do_syscall:
-    mov rax, rsi; put syscall number in rax
-    ; syscall data pointer is already in rdi
+    ;like a function call, I don't guarantee that all registers will be preserved with this call
     syscall
     ret
