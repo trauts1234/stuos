@@ -2,5 +2,5 @@ limine/
 .build/
 disasm.asm
 .clangd
-rs_uapi/errno.rs
-rs_uapi/syscalls.rs
+src/rs_uapi/errno.rs
+src/rs_uapi/syscalls.rs

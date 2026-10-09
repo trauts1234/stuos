@@ -156,6 +156,20 @@ pub enum PollResult {
     }
 }
 
+#[derive(Debug)]
+pub struct Thread {
+    pub paused_state: ProcessorState,
+    pub waiting_state: Option<WaitingState>,
+}
+impl Thread {
+    fn new(state: ProcessorState) -> Self {
+        Thread {
+            paused_state: state,
+            waiting_state: None,
+        }
+    }
+}
+
 //can I be sure this send is OK? perhaps heap_start should just be usize
 unsafe impl Send for Process{}
 #[derive(Debug)]
@@ -169,14 +183,14 @@ pub struct Process {
 
     pub identity: ProcessIdentity,
 
+    //TODO array of these
+    threads: Thread,
+
     //TODO signals
 
     pub cwd: CString,
 
     pub memory_limit: LimitData,
-
-    pub paused_state: ProcessorState,
-    pub waiting_state: Option<WaitingState>,
 }
 
 impl Drop for Process {
@@ -202,8 +216,7 @@ impl Process {
             page_table_root: program.page_table_root,
             cwd: CString::new("/").unwrap(),
             memory_limit: Default::default(),
-            paused_state: program.initial_state,
-            waiting_state: None,
+            threads: Thread::new(program.initial_state),
             identity: ProcessIdentity {pgrp: 1, ppid: 0, pid: allocate_pid()},
         }
     }
@@ -214,8 +227,7 @@ impl Process {
             page_table_root: program.page_table_root,
             cwd: parent.cwd.clone(),
             memory_limit: parent.memory_limit,
-            paused_state: program.initial_state,
-            waiting_state: None,
+            threads: Thread::new(program.initial_state),
             identity: ProcessIdentity { pid: allocate_pid(), pgrp: parent.identity.pgrp, ppid: parent.identity.pid }
         }
     }
@@ -226,8 +238,7 @@ impl Process {
             page_table_root: program.page_table_root,
             cwd: parent.cwd.clone(),
             memory_limit: parent.memory_limit,
-            paused_state: program.initial_state,
-            waiting_state: None,
+            threads: Thread::new(program.initial_state),
             identity: parent.identity
         }
     }
@@ -253,10 +264,17 @@ impl Process {
         }
     }
 
+    pub fn curr_thread(&self) -> &Thread {
+        &self.threads
+    }
+    pub fn curr_thread_mut(&mut self) -> &mut Thread {
+        &mut self.threads
+    }
+
     pub fn poll<'a>(&'a self, others: impl IntoIterator<Item=&'a Process>) -> PollResult {
-        match self.waiting_state {
+        match self.threads.waiting_state {
             None => {
-                PollResult::StartUserland(self.paused_state)
+                PollResult::StartUserland(self.threads.paused_state)
             },
             Some(WaitingState::WaitingRead { fd_num, output_buf, num_bytes, output_num_bytes_ptr }) => {
                 let fop = self.file_descriptors[fd_num].as_ref().unwrap();
@@ -274,7 +292,7 @@ impl Process {
                 for proc in others {
                     if proc.identity.ppid != self.identity.pid {continue;}//only find children
                     if !child_type.is_valid(self.identity.pgrp, proc.identity.pid, proc.identity.pgrp) {continue;}//only find acceptable children
-                    if let Some(WaitingState::AmZombie { exit_code }) = proc.waiting_state {
+                    if let Some(WaitingState::AmZombie { exit_code }) = proc.threads.waiting_state {
                         assert!(!output_pid.is_null());
                         unsafe {*output_pid = exit_code.into();}
                         if !status.is_null() {

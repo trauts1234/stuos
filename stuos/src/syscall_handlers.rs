@@ -117,8 +117,9 @@ fn syscall_open_file(mut data: OpenFileData) -> OpenFileData {
 fn syscall_read_fd(data: ReadFDData, processor_state: ProcessorState) -> ReadFDData {
     if DEBUG_SYSCALLS {println!("syscall read fd: read up to {} bytes from fd {}", data.num_bytes, data.file_descriptor_number);}
     let mut q = queue();
-    assert!(q.current().waiting_state.is_none());
-    q.current_mut().waiting_state = Some(WaitingState::WaitingRead {
+    let curr_thread = q.current_mut().curr_thread_mut();
+    assert!(curr_thread.waiting_state.is_none());
+    curr_thread.waiting_state = Some(WaitingState::WaitingRead {
         fd_num: data.file_descriptor_number.try_into().unwrap(),
         output_buf: data.buffer,
         num_bytes: data.num_bytes,
@@ -202,14 +203,17 @@ fn syscall_chdir(data: ChdirData) -> ChdirData {
 
 fn syscall_wait(data: WaitData, state: ProcessorState) -> WaitData {
     if DEBUG_SYSCALLS {println!("syscall wait: for pid {}", data.pid);}
-    assert!(queue().current().waiting_state.is_none());
-    queue().current_mut().waiting_state = Some(WaitingState::WaitingChild {
+    let mut q = queue();
+    let curr_thread = q.current_mut().curr_thread_mut();
+    assert!(curr_thread.waiting_state.is_none());
+    curr_thread.waiting_state = Some(WaitingState::WaitingChild {
         child_type: ChildType::from_pid(data.pid),
         status: data.status,
         options: data.options,
         output_pid: data.output_pid,
     });
 
+    drop(q);
     run_next_task(&raw const state);
 }
 

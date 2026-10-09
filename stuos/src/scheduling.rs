@@ -1,5 +1,5 @@
 use core::ptr::null;
-use crate::{memory::set_pml4_phys, pipes_and_files::FileOperations, println, processes::{LimitData, LoadedProgram, PollResult, Process, ProcessorState, WaitingState}, rs_uapi::{types::Pid}};
+use crate::{memory::set_pml4_phys, pipes_and_files::FileOperations, processes::{LoadedProgram, PollResult, Process, ProcessorState, WaitingState}, rs_uapi::{types::Pid}};
 use alloc::{boxed::Box, collections::VecDeque};
 use spin::{Mutex, MutexGuard};
 
@@ -53,7 +53,7 @@ pub extern "C" fn run_next_task(interrupted_processor_state: *const ProcessorSta
     let mut q = queue();
 
     if !interrupted_processor_state.is_null() {
-        unsafe{q.current_mut().paused_state = *interrupted_processor_state;}
+        unsafe{q.current_mut().curr_thread_mut().paused_state = *interrupted_processor_state;}
     }
 
     loop {
@@ -72,7 +72,7 @@ pub extern "C" fn run_next_task(interrupted_processor_state: *const ProcessorSta
                 start_userland(&processor_state);
             },
             PollResult::HandleWaiting { remove_zombie } => {
-                q.current_mut().waiting_state = None;
+                q.current_mut().curr_thread_mut().waiting_state = None;
                 if let Some(pid) = remove_zombie {
                     let (index, _) = q.processes.iter().enumerate().find(|(_,x)| x.identity.pid == pid).unwrap();
                     q.processes.swap_remove_back(index).unwrap();
@@ -85,7 +85,7 @@ pub extern "C" fn run_next_task(interrupted_processor_state: *const ProcessorSta
 
 #[unsafe(no_mangle)]
 pub extern "C" fn set_current_as_zombie(exit_code: u8) {
-    queue().current_mut().waiting_state = Some(WaitingState::AmZombie { exit_code })
+    queue().current_mut().curr_thread_mut().waiting_state = Some(WaitingState::AmZombie { exit_code })
 }
 #[unsafe(no_mangle)]
 pub extern "C" fn get_file_descriptor(fd_number: i32) -> *const FileOperations {
