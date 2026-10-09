@@ -12,6 +12,8 @@ panic = "abort"
 panic = "abort"
 
 [dependencies]
+foldhash = {version="0.2.0", default-features=false}
+hashbrown = {version="0.17.1"}
 spin = {version = "0.12.3", default-features = false, features = ["spin_mutex", "mutex"] }
 
 [build-dependencies]

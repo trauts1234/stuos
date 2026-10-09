@@ -1,13 +1,6 @@
-use core::{ffi::c_void, ptr::null_mut, sync::atomic::{AtomicI32, Ordering}};
+use core::{ffi::c_void, ptr::null_mut};
 use alloc::{ffi::CString, rc::Rc};
 use crate::{memory::{get_pml4_phys, remove_virtual_addressing, set_pml4_phys}, pipes_and_files::{FileOperations, do_nothing_close, invalid_lseek, invalid_read, invalid_write, stdin_read, stdout_write}, rs_uapi::{limits::OPEN_MAX, syscalls::{RLIMIT_DATA, rlim_t, rlimit}, types::Pid}};
-
-static NEXT_FREE_PID: AtomicI32 = AtomicI32::new(1);
-fn allocate_pid() -> Pid {
-    let next = NEXT_FREE_PID.fetch_add(1, Ordering::Relaxed);
-    assert!(next > 0);
-    next
-}
 
 impl Default for rlimit {
     fn default() -> Self {
@@ -143,7 +136,7 @@ pub struct ProcessorState {
 
 #[derive(Clone, Copy, Debug)]
 pub struct ProcessIdentity {
-    pub pid: Pid,
+    // pub pid: Pid,
     pub pgrp: Pid,
     pub ppid: Pid,
 }
@@ -217,10 +210,10 @@ impl Process {
             cwd: CString::new("/").unwrap(),
             memory_limit: Default::default(),
             threads: Thread::new(program.initial_state),
-            identity: ProcessIdentity {pgrp: 1, ppid: 0, pid: allocate_pid()},
+            identity: ProcessIdentity {pgrp: 1, ppid: 0},
         }
     }
-    pub fn create_with_parent(program: LoadedProgram, parent: &Self) -> Self {
+    pub fn create_with_parent(program: LoadedProgram, parent: &Self, parent_pid: Pid) -> Self {
         Process {
             heap_start: program.heap_start,
             file_descriptors: parent.file_descriptors.clone(),
@@ -228,18 +221,18 @@ impl Process {
             cwd: parent.cwd.clone(),
             memory_limit: parent.memory_limit,
             threads: Thread::new(program.initial_state),
-            identity: ProcessIdentity { pid: allocate_pid(), pgrp: parent.identity.pgrp, ppid: parent.identity.pid }
+            identity: ProcessIdentity { pgrp: parent.identity.pgrp, ppid: parent_pid }
         }
     }
-    pub fn create_to_replace(program: LoadedProgram, parent: Self) -> Self {
-        Process {
+    pub fn replace(&mut self, program: LoadedProgram) {
+        *self = Process {
             heap_start: program.heap_start,
-            file_descriptors: parent.file_descriptors.clone(),
+            file_descriptors: self.file_descriptors.clone(),
             page_table_root: program.page_table_root,
-            cwd: parent.cwd.clone(),
-            memory_limit: parent.memory_limit,
+            cwd: self.cwd.clone(),
+            memory_limit: self.memory_limit,
             threads: Thread::new(program.initial_state),
-            identity: parent.identity
+            identity: self.identity
         }
     }
     pub fn find_free_fd(&mut self, minimum: usize) -> Result<(usize, &mut Option<Rc<FileOperations>>), ()> {
@@ -271,7 +264,7 @@ impl Process {
         &mut self.threads
     }
 
-    pub fn poll<'a>(&'a self, others: impl IntoIterator<Item=&'a Process>) -> PollResult {
+    pub fn poll<'a>(&'a self, children: impl IntoIterator<Item=(Pid, &'a Process)>) -> PollResult {
         match self.threads.waiting_state {
             None => {
                 PollResult::StartUserland(self.threads.paused_state)
@@ -289,16 +282,15 @@ impl Process {
             Some(WaitingState::WaitingChild {child_type, status, options, output_pid }) => {
                 assert!(options == 0);//TODO options
                 //TODO what if I wait for myself
-                for proc in others {
-                    if proc.identity.ppid != self.identity.pid {continue;}//only find children
-                    if !child_type.is_valid(self.identity.pgrp, proc.identity.pid, proc.identity.pgrp) {continue;}//only find acceptable children
+                for (child_pid, proc) in children {
+                    if !child_type.is_valid(self.identity.pgrp, child_pid, proc.identity.pgrp) {continue;}//only find acceptable children
                     if let Some(WaitingState::AmZombie { exit_code }) = proc.threads.waiting_state {
                         assert!(!output_pid.is_null());
                         unsafe {*output_pid = exit_code.into();}
                         if !status.is_null() {
                             unsafe {*status = exit_code as i32}
                         }
-                        return PollResult::HandleWaiting { remove_zombie: Some(proc.identity.pid) };
+                        return PollResult::HandleWaiting { remove_zombie: Some(child_pid) };
                     }
                 }
                 PollResult::DoNothing

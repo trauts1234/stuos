@@ -1,6 +1,8 @@
 use core::ptr::null;
 use crate::{memory::set_pml4_phys, pipes_and_files::FileOperations, processes::{LoadedProgram, PollResult, Process, ProcessorState, WaitingState}, rs_uapi::{types::Pid}};
-use alloc::{boxed::Box, collections::VecDeque};
+use alloc::collections::VecDeque;
+use foldhash::fast::FixedState;
+use hashbrown::HashMap;
 use spin::{Mutex, MutexGuard};
 
 unsafe extern "C" {
@@ -15,29 +17,46 @@ pub fn queue<'a>() -> MutexGuard<'a, ProcessQueue>{
 }
 
 pub struct ProcessQueue {
-    processes: VecDeque<Box<Process>>,
+    processes: HashMap<Pid,Process, FixedState>,
+    order: VecDeque<Pid>,
+    next_free_pid: Pid
 }
 impl ProcessQueue {
     const fn new() -> Self {
-        Self{ processes: VecDeque::new() }
+        Self {
+            processes: HashMap::with_hasher(FixedState::with_seed(69)),
+            order: VecDeque::new(),
+            next_free_pid: 1
+        }
     }
 
+    pub fn current_pid(&self) -> Pid {
+        self.order[0]
+    }
     pub fn current(&self) -> &Process {
-        &self.processes[0]
+        self.processes.get(&self.order[0]).unwrap()
     }
     pub fn current_mut(&mut self) -> &mut Process {
-        &mut self.processes[0]
+        self.processes.get_mut(&self.order[0]).unwrap()
     }
 
     pub fn push(&mut self, program: LoadedProgram) -> Pid {
 
-        let new_proc = match self.processes.front() {
-            Some(parent) => Process::create_with_parent(program, parent),
+        let new_proc = match self.order.front() {
+            Some(parent_pid) => Process::create_with_parent(program, self.processes.get(parent_pid).unwrap(), *parent_pid),
             None => Process::create(program)
         };
-        let new_pid = new_proc.identity.pid;
-        self.processes.push_back(Box::new(new_proc));
+
+        let new_pid = self.allocate_pid();
+        assert!(self.processes.insert(new_pid, new_proc).is_none());
+        self.order.push_back(new_pid);
         new_pid
+    }
+
+    fn allocate_pid(&mut self) -> Pid {
+        let res = self.next_free_pid;
+        self.next_free_pid += 1;
+        res
     }
 }
 
@@ -58,12 +77,17 @@ pub extern "C" fn run_next_task(interrupted_processor_state: *const ProcessorSta
 
     loop {
         //move the previous process to the back
-        let prev = q.processes.pop_front().unwrap();
-        q.processes.push_back(prev);
+        let prev = q.order.pop_front().unwrap();
+        q.order.push_back(prev);
 
         let curr = q.current();
+        let curr_pid = q.current_pid();
         unsafe {set_pml4_phys(curr.page_table_root)};
-        let result = curr.poll(q.processes.iter().map(|b| b.as_ref()));
+
+        let children = q.processes.iter()
+            .filter(|(_, proc)| proc.identity.ppid == curr_pid)
+            .map(|(&pid, proc)| (pid, proc));
+        let result = curr.poll(children);
 
         match result {
             PollResult::DoNothing => {},
@@ -74,8 +98,10 @@ pub extern "C" fn run_next_task(interrupted_processor_state: *const ProcessorSta
             PollResult::HandleWaiting { remove_zombie } => {
                 q.current_mut().curr_thread_mut().waiting_state = None;
                 if let Some(pid) = remove_zombie {
-                    let (index, _) = q.processes.iter().enumerate().find(|(_,x)| x.identity.pid == pid).unwrap();
-                    q.processes.swap_remove_back(index).unwrap();
+                    q.processes.remove(&pid).unwrap();
+
+                    let (index, _) = q.order.iter().enumerate().find(|(_,x)| **x == pid).unwrap();
+                    q.order.swap_remove_back(index).unwrap();
                 }
             },
         }
@@ -101,6 +127,5 @@ pub extern "C" fn get_cwd() -> *const i8 {
 #[unsafe(no_mangle)]
 pub extern "C" fn replace_current_process(program: LoadedProgram) {
     let mut q = queue();
-    let ready = Process::create_to_replace(program, *q.processes.pop_front().unwrap());
-    q.processes.push_front(Box::new(ready));
+    q.current_mut().replace(program);
 }

@@ -177,7 +177,7 @@ fn syscall_get_pgrp(_: GetPgrpData) -> GetPgrpData {
 
 fn syscall_get_pid(_: GetPidData) -> GetPidData {
     if DEBUG_SYSCALLS {println!("syscall get pid:");}
-    GetPidData { result: queue().current().identity.pid }
+    GetPidData { result: queue().current_pid()}
 }
 
 fn syscall_dupfd(mut data: DupFdData) -> DupFdData {
