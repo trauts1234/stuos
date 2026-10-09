@@ -1,13 +1,11 @@
 use core::{ffi::CStr, mem::MaybeUninit, ptr::write_volatile};
 use alloc::{borrow::ToOwned, rc::Rc};
-use crate::{memory::{clone_virtual_addressing, set_pml4_phys}, pipes_and_files::{FileOperations, fop_generate_file, fop_generate_pipe}, println, processes::{ChildType, LoadedProgram, ProcessorState, WaitingState}, rs_uapi::{limits::OPEN_MAX, syscalls::{CHDIR_SYSCALL, CLOSE_FD_SYSCALL, ChdirData, CloseFDData, DUPFD_SYSCALL, DupFdData, EXECVE_SYSCALL, ExecveData, FORK_SYSCALL, ForkData, GET_CWD_SYSCALL, GET_HEAP_START_SYSCALL, GET_PGRP_SYSCALL, GET_PID_SYSCALL, GET_UPTIME_MS_SYSCALL, GETRLIMIT_SYSCALL, GetCwdData, GetHeapStartData, GetPgrpData, GetPidData, GetRLimitData, GetUptimeMsData, HALT_SYSCALL, HaltSyscallData, ISATTY_SYSCALL, IsattyData, KILL_SYSCALL, LSEEK_FD_SYSCALL, LseekFDData, OPEN_FILE_SYSCALL, OpenFileData, PIPE_SYSCALL, PipeData, READ_FD_SYSCALL, REQUEST_PAGE_SYSCALL, ReadFDData, RequestPageData, SETRLIMIT_SYSCALL, SETSIGNALHANDLER_SYSCALL, SIGPROCMASK_SYSCALL, STAT_SYSCALL, SetRLimitData, StatData, TCGETATTR_SYSCALL, WAIT_SYSCALL, WRITE_FD_SYSCALL, WaitData, WriteFDData, YIELD_SYSCALL}}, scheduling::{get_cwd, queue, run_next_task}};
+use crate::{apic::get_uptime_ms, memory::{allocate_ram_page, clone_virtual_addressing, set_pml4_phys}, pipes_and_files::{FileOperations, fop_generate_file, fop_generate_pipe}, println, processes::{AllocateLimitResult, ChildType, LoadedProgram, ProcessorState, WaitingState}, rs_uapi::{errno::ENOMEM, limits::OPEN_MAX, page_size::PAGE_SIZE, syscalls::{CHDIR_SYSCALL, CLOSE_FD_SYSCALL, ChdirData, CloseFDData, DUPFD_SYSCALL, DupFdData, EXECVE_SYSCALL, ExecveData, FORK_SYSCALL, ForkData, GET_CWD_SYSCALL, GET_HEAP_START_SYSCALL, GET_PGRP_SYSCALL, GET_PID_SYSCALL, GET_UPTIME_MS_SYSCALL, GETRLIMIT_SYSCALL, GetCwdData, GetHeapStartData, GetPgrpData, GetPidData, GetRLimitData, GetUptimeMsData, HALT_SYSCALL, HaltSyscallData, ISATTY_SYSCALL, IsattyData, KILL_SYSCALL, LSEEK_FD_SYSCALL, LseekFDData, OPEN_FILE_SYSCALL, OpenFileData, PIPE_SYSCALL, PipeData, READ_FD_SYSCALL, REQUEST_PAGE_SYSCALL, RLIMIT_DATA, ReadFDData, RequestPageData, SETRLIMIT_SYSCALL, SETSIGNALHANDLER_SYSCALL, SIGPROCMASK_SYSCALL, STAT_SYSCALL, SetRLimitData, StatData, TCGETATTR_SYSCALL, WAIT_SYSCALL, WRITE_FD_SYSCALL, WaitData, WriteFDData, YIELD_SYSCALL}}, scheduling::{get_cwd, queue, run_next_task}};
 
 const DEBUG_SYSCALLS: bool = false;
 
 unsafe extern "C" {
     fn syscall_halt(data: *mut HaltSyscallData);
-    fn syscall_get_uptime_ms(data: *mut GetUptimeMsData);
-    fn syscall_request_page(data: *mut RequestPageData);
     fn syscall_getcwd(data: *mut GetCwdData);
     fn syscall_execve(data: *const ExecveData);
     fn syscall_stat(data: *mut StatData);
@@ -33,8 +31,8 @@ extern "C" fn process_syscall(data: *mut (), syscall_number: u64, processor_stat
     let processor_state = unsafe {processor_state.read()};
     match syscall_number {
         HALT_SYSCALL => unsafe {syscall_halt(data.cast())},
-        GET_UPTIME_MS_SYSCALL => unsafe {syscall_get_uptime_ms(data.cast());},
-        REQUEST_PAGE_SYSCALL => unsafe {syscall_request_page(data.cast());},
+        GET_UPTIME_MS_SYSCALL => run_rs(syscall_get_uptime_ms, data),
+        REQUEST_PAGE_SYSCALL => run_rs(syscall_request_page, data),
         GET_HEAP_START_SYSCALL => run_rs(syscall_get_heap_start, data),
         WRITE_FD_SYSCALL => run_rs(syscall_write_fd, data),
         OPEN_FILE_SYSCALL => run_rs(syscall_open_file, data),
@@ -61,6 +59,30 @@ extern "C" fn process_syscall(data: *mut (), syscall_number: u64, processor_stat
         YIELD_SYSCALL => unsafe {syscall_yield(data, &raw const processor_state)},
 
         x => panic!("invalid syscall {}", x)
+    }
+}
+
+fn syscall_get_uptime_ms(_: GetUptimeMsData) -> GetUptimeMsData {
+    if DEBUG_SYSCALLS {println!("syscall get uptime ms");}
+    GetUptimeMsData {
+        ms: unsafe {get_uptime_ms()},
+    }
+}
+
+fn syscall_request_page(data: RequestPageData) -> RequestPageData {
+    if DEBUG_SYSCALLS {println!("syscall request page: {:#}", data.page_virt_addr.addr())}
+    let mut q = queue();
+    let memory_limit = q.current_mut().rlimit_mut(RLIMIT_DATA);
+
+    let alloc_result = memory_limit.try_allocate(PAGE_SIZE.try_into().unwrap(), || {
+        unsafe {allocate_ram_page(data.page_virt_addr, false);}
+        Ok(())
+    });
+
+    match alloc_result {
+        AllocateLimitResult::Success(()) => RequestPageData { page_virt_addr: data.page_virt_addr, err: 0 },
+        AllocateLimitResult::AboveLimit |
+        AllocateLimitResult::Error(()) => RequestPageData { page_virt_addr: data.page_virt_addr, err: ENOMEM }
     }
 }
 
@@ -99,7 +121,7 @@ fn syscall_read_fd(data: ReadFDData, processor_state: ProcessorState) -> ReadFDD
     q.current_mut().waiting_state = Some(WaitingState::WaitingRead {
         fd_num: data.file_descriptor_number.try_into().unwrap(),
         output_buf: data.buffer,
-        num_bytes: data.num_bytes.try_into().unwrap(),
+        num_bytes: data.num_bytes,
         output_num_bytes_ptr: data.num_bytes_actually_read
     });
     drop(q);
@@ -218,13 +240,13 @@ fn syscall_pipe(_: PipeData) -> PipeData {
 
 fn syscall_setrlimit(data: SetRLimitData) -> SetRLimitData {
     if DEBUG_SYSCALLS {println!("syscall setrlimit: {:?}", data)}
-    queue().current_mut().set_rlimit(data.resource, data.limit);
+    queue().current_mut().rlimit_mut(data.resource).try_update(&data.limit);
 
     data
 }
 fn syscall_getrlimit(mut data: GetRLimitData) -> GetRLimitData {
     if DEBUG_SYSCALLS {println!("syscall getrlimit: {:?}", data)}
-    data.limit = queue().current_mut().get_rlimit(data.resource).limit;
+    data.limit = queue().current().rlimit(data.resource).limit;
 
     data
 }

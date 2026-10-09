@@ -27,29 +27,6 @@ void syscall_halt(struct HaltSyscallData *data) {
     run_next_task(NULL);
 }
 
-void syscall_get_uptime_ms(struct GetUptimeMsData* data) {
-    if(DEBUG_SYSCALLS) printf("%s: \n", __func__);
-    data->ms = get_uptime_ms();
-}
-
-void syscall_request_page(struct RequestPageData* data) {
-    if(DEBUG_SYSCALLS) printf("%s: requested %p\n", __func__, data->page_virt_addr);
-    if ((uint64_t)data->page_virt_addr >> 63) {
-        //higher half
-        HCF
-    }
-    assert(((uint64_t)data->page_virt_addr & PAGE_MASK) == 0);
-
-    // struct LimitData lim = get_rlimit(RLIMIT_DATA);
-    // if(lim.current_value + PAGE_SIZE > lim.limit.rlim_cur) {
-    //     data->err = ENOMEM;
-    //     return;
-    // }
-    //TODO
-    
-    allocate_ram_page(data->page_virt_addr, false);
-}
-
 void syscall_getcwd(struct GetCwdData* data) {
     if(DEBUG_SYSCALLS) printf("%s: \n", __func__);
     const char* cwd = get_cwd();

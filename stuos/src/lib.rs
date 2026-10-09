@@ -12,3 +12,4 @@ pub mod processes;
 mod syscall_handlers;
 #[allow(dead_code, nonstandard_style)]
 pub mod memory;
+pub mod apic;

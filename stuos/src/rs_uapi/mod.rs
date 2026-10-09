@@ -2,3 +2,5 @@
 pub mod limits;
 pub mod types;
 pub mod syscalls;
+pub mod page_size;
+pub mod errno;

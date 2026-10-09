@@ -1,6 +1,6 @@
 use core::{ffi::c_void, ptr::null_mut, sync::atomic::{AtomicI32, Ordering}};
 use alloc::{ffi::CString, rc::Rc};
-use crate::{memory::{get_pml4_phys, remove_virtual_addressing, set_pml4_phys}, pipes_and_files::{FileOperations, do_nothing_close, invalid_lseek, invalid_read, invalid_write, stdin_read, stdout_write}, rs_uapi::{limits::OPEN_MAX, syscalls::{rlim_t, rlimit}, types::Pid}};
+use crate::{memory::{get_pml4_phys, remove_virtual_addressing, set_pml4_phys}, pipes_and_files::{FileOperations, do_nothing_close, invalid_lseek, invalid_read, invalid_write, stdin_read, stdout_write}, rs_uapi::{limits::OPEN_MAX, syscalls::{RLIMIT_DATA, rlim_t, rlimit}, types::Pid}};
 
 static NEXT_FREE_PID: AtomicI32 = AtomicI32::new(1);
 fn allocate_pid() -> Pid {
@@ -20,6 +20,43 @@ impl Default for rlimit {
 pub struct LimitData {
     pub current_value: rlim_t,
     pub limit: rlimit
+}
+
+pub enum AllocateLimitResult<S,E> {
+    //limit usage was increased, and closure was successful
+    Success(S),
+    //limit was hit, and closure wasn't run
+    AboveLimit,
+    //limit left unchanged as closure failed
+    Error(E)
+}
+
+impl LimitData {
+    pub fn try_allocate<S,E,F>(&mut self, increase: rlim_t, f: F) -> AllocateLimitResult<S,E>
+    where F: FnOnce() -> Result<S,E>
+    {
+        let new_value = self.current_value.checked_add(increase).unwrap();
+
+        if new_value > self.limit.rlim_cur {
+            AllocateLimitResult::AboveLimit
+        } else {
+            //limit can be raised, so try and run the closure
+            match f() {
+                Ok(x) => {
+                    self.current_value = new_value;
+                    AllocateLimitResult::Success(x)
+                }
+                Err(x) => AllocateLimitResult::Error(x)
+            }
+        }
+    }
+    pub fn try_update(&mut self, new_limit: &rlimit) {
+        assert!(new_limit.rlim_max <= self.limit.rlim_max);
+        self.limit.rlim_max = new_limit.rlim_max;
+
+        assert!(new_limit.rlim_cur <= self.limit.rlim_max);
+        self.limit.rlim_cur = new_limit.rlim_cur;
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -203,23 +240,17 @@ impl Process {
         Err(())
     }
 
-    pub fn get_rlimit(&self, resource: i32) -> LimitData {
-        match resource {
-            RLIMIT_DATA => self.memory_limit,
+    pub fn rlimit_mut(&mut self, resource: i32) -> &mut LimitData {
+        match resource.try_into().unwrap() {
+            RLIMIT_DATA => &mut self.memory_limit,
             x => panic!("invalid resource {}", x)
         }
     }
-    pub fn set_rlimit(&mut self, resource: i32, new_limit: rlimit) {
-        let limit = match resource {
-            RLIMIT_DATA => &mut self.memory_limit.limit,
+    pub fn rlimit(&self, resource: i32) -> &LimitData {
+        match resource.try_into().unwrap() {
+            RLIMIT_DATA => &self.memory_limit,
             x => panic!("invalid resource {}", x)
-        };
-
-        assert!(new_limit.rlim_max <= limit.rlim_max);
-        limit.rlim_max = new_limit.rlim_max;
-
-        assert!(new_limit.rlim_cur <= limit.rlim_max);
-        limit.rlim_cur = new_limit.rlim_cur;
+        }
     }
 
     pub fn poll<'a>(&'a self, others: impl IntoIterator<Item=&'a Process>) -> PollResult {
