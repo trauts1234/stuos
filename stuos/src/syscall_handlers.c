@@ -49,10 +49,8 @@ void syscall_execve(const struct ExecveData* data) {
 
     uint64_t argc=0;
     for(;data->argv[argc]; argc++);
-
     char** kernel_space_argv = malloc(sizeof(char*) * (argc + 1));//+1 to store NULL
     kernel_space_argv[argc] = NULL;
-
     for(uint64_t i=0;i<argc;i++) {
         uint64_t len = strlen(data->argv[i]);
         char* kernel_copy = malloc(len + 1);
@@ -60,12 +58,28 @@ void syscall_execve(const struct ExecveData* data) {
         kernel_space_argv[i] = kernel_copy;
     }
 
-    const struct LoadedProgram loaded = instantiate_ELF(to_execute, kernel_space_argv);
+    uint64_t env_argc=0;
+    for(;data->envp[env_argc]; env_argc++);
+    char** kernel_space_envp = malloc(sizeof(char*) * (env_argc + 1));//+1 to store NULL
+    kernel_space_envp[env_argc] = NULL;
+    for(uint64_t i=0;i<env_argc;i++) {
+        uint64_t len = strlen(data->envp[i]);
+        char* kernel_copy = malloc(len + 1);
+        strcpy(kernel_copy, data->envp[i]);
+        kernel_space_envp[i] = kernel_copy;
+    }
+
+    const struct LoadedProgram loaded = instantiate_ELF(to_execute, kernel_space_argv, kernel_space_envp);
 
     for(uint64_t i=0;i<argc;i++) {
         free(kernel_space_argv[i]);
     }
     free(kernel_space_argv);
+
+    for(uint64_t i=0;i<env_argc;i++) {
+        free(kernel_space_envp[i]);
+    }
+    free(kernel_space_envp);
     //TODO:
     // - do not preserve signals (ensure to handle signal stacks too if a signal called the execve!)
     // - do not copy the heap

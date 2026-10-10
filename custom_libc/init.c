@@ -2,6 +2,7 @@
 #include "uapi/errno.h"
 #include "uapi/syscalls.h"
 #include "uapi/page_size.h"
+#include "unistd.h"
 #include <stdlib.h>
 
 uint64_t _malloc_expand_heap(void* heap_end, uint64_t bytes){
@@ -26,7 +27,10 @@ uint64_t _malloc_expand_heap(void* heap_end, uint64_t bytes){
     return PAGE_SIZE * i;
 }
 
-void stuos_libc_init() {
+void stuos_libc_init(int argc, char **argv, char **envp) {
+    //set environ
+    environ = envp;
+    //init the heap
     struct GetHeapStartData heap_start;
     do_syscall(&heap_start, GET_HEAP_START_SYSCALL);
     init_memory_allocator(heap_start.output);

@@ -113,6 +113,7 @@ static const uint64_t EXECVE_SYSCALL = 24;
 struct ExecveData {
     const char* filename;
     char *const *argv;
+    char *const *envp;
 };
 
 // bitfield for options

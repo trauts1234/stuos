@@ -6,6 +6,8 @@
 #include <string.h>
 #include <stdio.h>
 #include <nonstandard.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 
 #include "fork_test.h"
 #include "string_test.h"
@@ -158,8 +160,13 @@ int main(int argc, char *argv[]) {
     printf("running stdlib test\n");
     stdlib_test();
     printf("running execve test\n");
-    if(fork() == 0) {
-        execve("other.out", (char*const []) {"other.out", NULL}, NULL);
+    pid_t p = fork();
+    if(p == 0) {
+        execve("other.out", (char*const []) {"other.out", NULL}, (char*const []) {"myenv:100", NULL});
+    } else {
+        int status = 0;
+        waitpid(p, &status, 0);
+        assert(WIFEXITED(status));
     }
     printf("running pipe test\n");
     pipe_test();

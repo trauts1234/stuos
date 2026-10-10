@@ -67,9 +67,9 @@ void kmain(void) {
     mount_fat16(vfs_get("/", "/dev/blkAp1", 0), "/");
 
     // struct VNode fuzz = vfs_get("/", "testing.out", 0);
-    // const struct LoadedProgram elf = instantiate_ELF(fuzz, (char*[]){"testing.out", "helloworld", NULL});
+    // const struct LoadedProgram elf = instantiate_ELF(fuzz, (char*[]){"testing.out", "helloworld", NULL}, (char*[]){NULL});
     struct VNode fuzz = vfs_get("/", "stush", 0);
-    const struct LoadedProgram elf = instantiate_ELF(fuzz, (char*[]){"stush", NULL});
+    const struct LoadedProgram elf = instantiate_ELF(fuzz, (char*[]){"stush", NULL}, (char*[]){NULL});
 
     add_new_process(elf);
     run_next_task(NULL);

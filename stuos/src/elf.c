@@ -120,8 +120,12 @@ static void* find_contiguous_virtual_range(struct VirtualMemoryRegion* virtual_m
     }
 }
 
-/// Allocates in userspace the array and strings for all args, setting output_allocated_argc and output_argv accordingly
-static void setup_args_for_new_process(struct VirtualMemoryRegion* virtual_memory_tracker_head, char*const *argv, char*** output_allocated_argv, uint64_t *output_argc) {
+/// Allocates in userspace the array and strings for all args, setting output_argv accordingly
+///
+///Can also be used to set up environment variables, since they follow the same structure
+///
+/// returns the number of args (argc)
+static uint64_t setup_args_for_new_process(struct VirtualMemoryRegion* virtual_memory_tracker_head, char*const *argv, char*** output_allocated_argv) {
 
     //count args, and work out how much memory is required
     uint64_t argc;
@@ -140,7 +144,7 @@ static void setup_args_for_new_process(struct VirtualMemoryRegion* virtual_memor
     allocate_virtual_range(virtual_memory_tracker_head, args_data_start, args_data_end, false);
 
     *output_allocated_argv = args_data_start;//array of char pointers is at the start
-    *output_argc = argc;
+    // *output_argc = argc;
     
     //walk through the data, putting in the strings and array
     char* curr_offset = args_data_start + (argc+1) * sizeof(char*);//start saving the actual strings after the array
@@ -151,9 +155,10 @@ static void setup_args_for_new_process(struct VirtualMemoryRegion* virtual_memor
         curr_offset += strlen(argv[i]) + 2;//skip null byte and point to the next string start
     }
     (*output_allocated_argv)[argc] = NULL;//set the last pointer to NULL
+    return argc;
 }
 
-struct LoadedProgram instantiate_ELF(struct VNode exe, char*const *argv) {
+struct LoadedProgram instantiate_ELF(struct VNode exe, char*const *argv, char*const *envp) {
 
     //read the header from the file
     struct ElfFile header;
@@ -257,9 +262,10 @@ struct LoadedProgram instantiate_ELF(struct VNode exe, char*const *argv) {
     allocate_virtual_range(virtual_memory_tracker_head, stack_virt_base, stack_virt_base + STACK_SIZE, false);
     void* stack_start = stack_virt_base + STACK_SIZE;//start stack at high address
 
-    uint64_t argc;
     char** argv_in_userspace;
-    setup_args_for_new_process(virtual_memory_tracker_head, argv, &argv_in_userspace, &argc);
+    uint64_t argc = setup_args_for_new_process(virtual_memory_tracker_head, argv, &argv_in_userspace);
+    char** envp_in_userspace;
+    setup_args_for_new_process(virtual_memory_tracker_head, envp, &envp_in_userspace);
 
     void* heap_virt_base = find_contiguous_virtual_range(virtual_memory_tracker_head, ram_size_bytes());
 
@@ -283,7 +289,7 @@ struct LoadedProgram instantiate_ELF(struct VNode exe, char*const *argv) {
             .rsp=(uint64_t)stack_start,
             .rsi=(uint64_t)argv_in_userspace,//argc pointer
             .rdi=argc,//argv value
-            .rdx=0,//no envp arg
+            .rdx=(uint64_t)envp_in_userspace,//envp pointer
             .cs=0x1B,
             .ss=0x23,
             .rflags=0x202,

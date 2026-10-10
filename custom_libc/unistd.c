@@ -138,17 +138,16 @@ int chdir(const char *path) {
 }
 
 int execve(const char *filename, char *const argv[], char *const envp[]) {
-    if (envp != NULL && *envp != NULL) {abort();}//currently can't handle this!
     struct ExecveData data = {
         .filename = filename,
         .argv = argv,
+        .envp = envp
     };
     do_syscall(&data, EXECVE_SYSCALL);
     return -1;
 }
 int execvp(const char *file, char *const argv[]) {
     //TODO check $PATH for file, and handle ./thing
-    //todo use environ to pass to execve
     return execve(file, argv, environ);
 }
 
