@@ -1,5 +1,6 @@
 #include "nonstandard.h"
 #include "stddef.h"
+#include "uapi/stdbool.h"
 #include "uapi/syscalls.h"
 #include "limits.h"
 #include "sys/types.h"
@@ -9,6 +10,8 @@
 #include "errno.h"
 #include "unistd.h"
 #include "fcntl.h"
+#include <assert.h>
+#include <string.h>
 
 char **environ = {NULL};
 
@@ -146,9 +149,68 @@ int execve(const char *filename, char *const argv[], char *const envp[]) {
     do_syscall(&data, EXECVE_SYSCALL);
     return -1;
 }
+int execv(const char *path, char *const argv[]) {
+    return execve(path, argv, environ);
+}
 int execvp(const char *file, char *const argv[]) {
-    //TODO check $PATH for file, and handle ./thing
-    return execve(file, argv, environ);
+    bool found_file_failed_access = false;
+    
+    if (file == NULL || file[0] == '\0' || argv == NULL) {
+        errno = ENOENT;
+        return -1;
+    }
+    
+    /* If file contains '/', do not search PATH. */
+    if (strchr(file, '/') != NULL) {
+        execv(file, argv);
+        return -1;
+    }
+    
+    /* Find PATH using getenv() */
+    const char *path = getenv("PATH");
+    assert(path);
+
+    const char *p = path;
+
+    while(1) {
+        const char *end = strchrnul(p, ':');
+        const size_t dirlen = end - p;
+        const size_t filelen = strlen(file);
+
+        char *candidate = malloc(dirlen + 1 + filelen + 1);
+        assert(candidate);
+
+        if (dirlen != 0) {
+            memcpy(candidate, p, dirlen);
+            candidate[dirlen] = '/';
+            memcpy(candidate + dirlen + 1, file, filelen + 1);
+        } else {
+            /* An empty PATH component means the current directory. */
+            memcpy(candidate, file, filelen + 1);
+        }
+
+        execv(candidate, argv);
+
+        int err = errno;
+
+        assert(err != ENOEXEC);//perhaps need to run code via shell?
+
+        free(candidate);
+
+        if (err == EACCES) {
+            found_file_failed_access = true;
+        } else if (err != ENOENT && err != ENOTDIR) {
+            errno = err;
+            return -1;
+        }
+
+        if (end == NULL) {
+            errno = found_file_failed_access ? EACCES : ENOENT;
+            return -1;
+        }
+
+        p = end + 1;
+    }
 }
 
 int isatty(int fd) {

@@ -16,6 +16,7 @@ OUTPUT_SYSROOT=./sysroot
 setup_sysroot() {
     mkdir -p \
         "${OUTPUT_SYSROOT}/dev" \
+        "${OUTPUT_SYSROOT}/bin" \
         "${OUTPUT_SYSROOT}/usr/include/uapi" \
         "${OUTPUT_SYSROOT}/usr/lib" \
         "${OUTPUT_SYSROOT}/boot/limine" \

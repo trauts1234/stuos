@@ -2,6 +2,8 @@
 #include "uapi/stddef.h"
 #include "uapi/syscalls.h"
 #include "stdio.h"
+#include "unistd.h"
+#include <assert.h>
 #include <string.h>
 
 void exit(int status) {
@@ -38,4 +40,21 @@ long int labs(long int j){
 }
 long long int llabs(long long int j){
     return (j<0ll) ? -j : j;
+}
+
+char *getenv(const char *name) {
+    size_t len;
+    char **env;
+
+    assert(name != NULL && strchr(name, '=') == NULL);
+
+    len = strlen(name);
+
+    for (env = environ; env != NULL && *env != NULL; env++) {
+        if (strncmp(*env, name, len) == 0 && (*env)[len] == '=') {
+            return *env + len + 1;
+        }
+    }
+
+    return NULL;
 }

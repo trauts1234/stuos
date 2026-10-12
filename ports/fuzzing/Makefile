@@ -7,8 +7,8 @@ SRCS = fuzz.c $(wildcard *_test.c)
 OBJS := $(SRCS:.c=.o)
 
 SYSROOT = ../../sysroot
-TESTING_OUT = $(SYSROOT)/testing.out
-OTHER_OUT = $(SYSROOT)/other.out
+TESTING_OUT = $(SYSROOT)/bin/testing.out
+OTHER_OUT = $(SYSROOT)/bin/other.out
 
 all: $(TESTING_OUT) $(OTHER_OUT)
 
