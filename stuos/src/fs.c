@@ -9,43 +9,6 @@
 
 #define ROOT_INODE_NUM 69
 #define TMPFS_DEV 70
-#define MAX_MOUNTS 10
-
-struct MountPoint2 {
-    struct VNode parent;
-    struct VNode replacement;
-} mounts[MAX_MOUNTS] = {};
-
-static uint64_t path_segment_len(const char* path) {
-    uint64_t size = 0;
-    while(*path != '\0' && *path != '/') {
-        size++;
-        path++;
-    }
-    return size;
-}
-
-bool is_eq_vnode(struct VNode l, struct VNode r) {
-    return 1 &&
-        l.id.inode == r.id.inode &&
-        l.id.mount_id == r.id.mount_id &&
-        l.read_dirents == r.read_dirents &&
-        l.write_file == r.write_file &&
-        l.read_file == r.read_file &&
-        l.create_inode == r.create_inode &&
-        l.stat_file == r.stat_file;
-}
-
-bool is_null_vnode(struct VNode v) {
-    return 1 &&
-        v.id.inode == 0 &&
-        v.id.mount_id == 0 &&
-        v.read_dirents == 0 &&
-        v.write_file == 0 &&
-        v.read_file == 0 &&
-        v.create_inode == 0 &&
-        v.stat_file == 0;
-}
 
 static struct stat tmpfs_stat_file(struct VNodeData id) {
     if(id.mount_id != 0) HCF
@@ -102,40 +65,6 @@ struct VNode vfs_get_root() {
         .read_dirents = tmpfs_read_dirents,
         .stat_file = tmpfs_stat_file,
     };
-}
-
-enum StepPathResult {
-    /// all parsing is done - *path_start is now set to NULL and *current is valid
-    STEPPATH_COMPLETE,
-    /// Parsing is incomplete and must be run again - *path_start points to the remainder of the path to be parsed, and *current is an intermediate vnode
-    STEPPATH_INPROGRESS,
-    /// Parsing failed at the last item, *path_start is not modified and *current points to the directory that should have stored the last file
-    STEPPATH_NOTEXIST_LAST,
-    /// Parsing failed somewhere, *path_start points to the remaining path and *current points to the directory walked to so far
-    STEPPATH_NOTEXIST
-};
-
-#define DIR_LOOKUP_BUF_SIZE 2
-//returns: 0 on success, -1 otherwise
-static int directory_lookup(struct VNode* dir, const char* name, struct VNode* out) {
-    struct VNode vnode_buf[DIR_LOOKUP_BUF_SIZE];
-    struct dirent dirent_buf[DIR_LOOKUP_BUF_SIZE];
-
-    uint64_t offset = 0;
-    while(1) {
-        uint64_t res = dir->read_dirents(dir->id, offset, dirent_buf, vnode_buf, DIR_LOOKUP_BUF_SIZE);
-        if(res == 0) {
-            return -1;
-        }
-        for(uint64_t i=0; i<res; i++) {
-            if(strcmp(dirent_buf[i].d_name, name) == 0) {
-                //names match:
-                *out = vnode_buf[i];
-                return 0;
-            }
-        }
-        offset += res;
-    }
 }
 
 //if current is the host for a mount, current is also replaced with the root of the mounted directory

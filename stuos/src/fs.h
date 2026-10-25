@@ -22,13 +22,13 @@ struct VNode {
     /// dirent_buf and/or vnode_buf can be NULL
     ///
     /// Returns the number of items put into dirent_buf and vnode_buf
-    uint64_t (*read_dirents)(struct VNodeData inode_num, uint64_t dirent_index, struct dirent* dirent_buf, struct VNode* vnode_buf, uint64_t dirent_count);
+    size_t (*read_dirents)(struct VNodeData inode_num, size_t dirent_index, struct dirent* dirent_buf, struct VNode* vnode_buf, size_t dirent_count);
 
     /// This function should check that file is a valid file, then try to write data from `input_buf` to index `offset`
     ///
     /// Returns:
     /// number of bytes written
-    uint64_t (*write_file)(struct VNodeData inode_num, uint64_t offset, const uint8_t* input_buf, uint64_t num_bytes);
+    size_t (*write_file)(struct VNodeData inode_num, size_t offset, const void* input_buf, size_t num_bytes);
 
     /// This function should check that file is a valid file, then try to read `num_bytes` bytes into `out` at index in the file `offset`
     ///
@@ -36,7 +36,7 @@ struct VNode {
     ///
     /// Returns:
     /// number of bytes read
-    uint64_t (*read_file)(struct VNodeData inode_num, uint64_t offset, uint8_t* output_buf, uint64_t num_bytes);
+    size_t (*read_file)(struct VNodeData inode_num, size_t offset, void* output_buf, size_t num_bytes);
 
     /// This function should check that `parent` is a directory node, then create a new inode of type `new_inode_type`, returning the VNode that was created into out.
     /// parent.inode_number == 0 means that there is no parent, and the inode that is created is the root node
@@ -47,13 +47,13 @@ struct VNode {
     int (*create_inode)(struct VNodeData parent_inode_num, mode_t new_inode_type, const char* name);
 
     /// This function should check that file is a valid file, then either truncate data or zero-extend to len bytes
-    void (*ftruncate)(struct VNodeData inode_num, uint64_t len);
+    void (*ftruncate)(struct VNodeData inode_num, size_t len);
 };
 
 /// mounts filesystem_root on top of mount_against
-void vfs_add_mount(struct VNode mount_against, struct VNode filesystem_root);
+void vfs_add_mount(char *mount_against, struct VNode filesystem_root);
 
 //gets the VNode at `path`
-struct VNode vfs_get(const char* cwd_path, const char* path, int open_flags);
+struct VNode c_vfs_get(const char* cwd_path, const char* path, int open_flags);
 
 #endif

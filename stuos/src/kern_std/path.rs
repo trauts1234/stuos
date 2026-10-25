@@ -1,6 +1,7 @@
-use core::str::Split;
+use core::{fmt::{Debug, Display}, str::Split};
 
 use alloc::{string::{String, ToString}, vec::Vec};
+use thiserror::Error;
 
 #[derive(Debug, Clone)]
 pub struct AbsolutePath {
@@ -9,15 +10,16 @@ pub struct AbsolutePath {
     data: String
 }
 
-#[derive(Debug)]
+#[derive(Error, Debug)]
 pub enum PathWithCwdErr {
-    /// path contains \0
+    #[error("path contains \0")]
     ContainsNullByte,
-    /// path contains //
+    #[error("path contains //")]
     ContainsEmptySegment,
-    /// path tries to .. on the root directory
+    #[error("path tries to .. on the root directory")]
     TooManyDotDot
 }
+
 #[derive(Debug)]
 pub enum MakeCwdErr {
     /// path contains \0
